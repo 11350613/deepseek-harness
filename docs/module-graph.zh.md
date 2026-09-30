@@ -59,6 +59,7 @@ flowchart TD
     pkg_fs["fs"]
     pkg_fs_local["fs-local"]
     pkg_fs_observation_policy["fs-observation-policy"]
+    pkg_fs_patch["fs-patch"]
     pkg_fs_sandbox["fs-sandbox"]
     pkg_tool_fs["tool-fs"]
     pkg_tool_fs_search["tool-fs-search"]
@@ -1395,6 +1396,7 @@ flowchart TD
 | [`util-workspace-path`](../packages/util/workspace-path) | `util` | — |
 | [`deepseek-llm-api-extensions`](../packages/llm/deepseek-llm-api-extensions) | `llm` | — |
 | [`llm`](../packages/llm/llm) | `llm` | — |
+| [`fs-patch`](../packages/fs/fs-patch) | `fs` | — |
 | [`api-job-controller`](../packages/api/job-controller) | `api` | — |
 | [`api-workspace-files`](../packages/api/workspace-files) | `api` | — |
 | [`cmdline`](../packages/boot/cmdline) | `boot` | — |

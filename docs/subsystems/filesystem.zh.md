@@ -8,6 +8,54 @@
 
 提供方源码：[`packages/fs/fs/src/types.ts`](../../packages/fs/fs/src/types.ts) 与 [`packages/fs/fs/src/index.ts`](../../packages/fs/fs/src/index.ts)。策略源码：[`packages/fs/fs-observation-policy/src/types.ts`](../../packages/fs/fs-observation-policy/src/types.ts)。读取渲染源码：[`packages/fs/tool-fs/src/read-render.ts`](../../packages/fs/tool-fs/src/read-render.ts)。
 
+<a id="patch-syntax-records"></a>
+## 补丁语法记录
+
+[dsh-fs-patch](../../packages/fs/fs-patch/README.zh.md) 将完整补丁文本解析为可序列化的操作。路径仍是未解析的字符串；语法接受既不授予权限，也不检查文件版本。`collectMutationPaths` 返回去重的源路径和目标路径原字符串，供修改前采集文件的调用方使用。固定的语法参照与排除项由包 README 维护。
+
+```ts type-equiv
+/** One contiguous update, with zero-based indices identifying explicit context lines. */
+interface PatchHunk {
+  /** One-based input line containing the marker or first implicit hunk line. */
+  lineNumber: number
+  /** Text following `@@ `, used as a search anchor by the text matcher. */
+  context?: string
+  /** Context and removed lines, without patch prefixes or line endings. */
+  oldLines: string[]
+  /** Context and added lines, without patch prefixes or line endings. */
+  newLines: string[]
+  /** Corresponding old/new offsets for context; identical remove/add pairs are excluded. */
+  contextLineIndices: [number, number][]
+  /** Whether `*** End of File` follows this hunk. */
+  isEndOfFile: boolean
+}
+
+```
+
+```ts type-equiv
+/** Ordered file operation; a move is an update with a destination path. */
+type PatchOperation =
+  | {
+    kind: 'add'
+    path: string
+    lineNumber: number
+    /** Added lines joined with LF, including a final LF for every added line. */
+    content: string
+  }
+  | {
+    kind: 'delete'
+    path: string
+    lineNumber: number
+  }
+  | {
+    kind: 'update'
+    path: string
+    lineNumber: number
+    moveTo?: string
+    hunks: PatchHunk[]
+  }
+```
+
 ## 目标标识与元数据（提供方约定）
 
 每个操作首先将用户提供的路径解析为不透明的后端目标。消费方可以显示 `displayPath`，但禁止解析 `targetKey`（一个品牌化的不透明 id），也不得假设它是本地绝对路径。

@@ -16,9 +16,9 @@ Review work is limited to collecting the tool's affected paths before mutation a
 
 ### Confirmed design choices
 
-The choices below are approved for this design. The feature remains unimplemented, so the note retains `Status: proposed`. Step 1 selects the upstream version and specifies examples and integration details within these choices before parser and mutation work starts.
+The choices below are approved. The complete tool remains proposed; the pure parser is implemented in [dsh-fs-patch](../../../../packages/fs/fs-patch/README.md), with Codex `rust-v0.158.0` as its syntax reference. The package README owns supported syntax and exclusions; subsequent steps add matching and guarded execution.
 
-| Topic | Confirmed choice | Implementation specification in step 1 |
+| Topic | Confirmed choice | Implementation specification |
 |---|---|---|
 | Input | A JSON argument with a `patch` string; reuse filesystem permission fields when applicable. | Final argument schema, activation method, and bounded result fields. |
 | Syntax | `*** Begin Patch`, `*** End Patch`, `*** Add File:`, `*** Update File:`, `*** Delete File:`, `*** Move to:`, hunk markers, and `*** End of File`. | Select an upstream Codex version and enumerate supported forms, malformed input, and any exclusions. |
@@ -31,11 +31,11 @@ The selected Codex version defines patch syntax and text matching. Read-before-e
 
 ### Development plan
 
-Each step produces reviewable evidence. The implementation owner delivers the code and checks; the maintainer reviewing the change accepts the step. There is no calendar estimate or named staffing commitment. The critical path is steps 1–6 followed by integrated acceptance in step 7; evaluation in step 8 starts after acceptance. Parser fixtures and filesystem-operation design can proceed independently once step 1 fixes their shared types and semantics.
+We implement and verify the steps in order. The parser supplies the shared records for matching, execution, and capture. Steps 1–6 precede integrated acceptance in step 7; evaluation in step 8 follows acceptance.
 
-1. **Specify the confirmed behavior and ownership.** Select and record the upstream version; read its parser, matcher, tests, and license, and expand the confirmed choices into a compatibility matrix. Decide where the pure parser and tool plugin live in the filesystem group, using the [architecture](../../../../docs/architecture.md) and [tool integration guide](../../../../docs/cookbook/adding-a-tool.md). Deliver input/output examples for success, rejection, and partial completion, plus the operation and path rules above. Exit when every supported syntax and matching rule has an expected result, package dependencies are explicit, and mutation safety has testable requirements.
+1. **Implement patch parsing and affected-path collection.** Add `packages/fs/fs-patch` as a pure library without tool, Session, or filesystem-provider dependencies. Pin the Codex syntax reference and retain applicable license notices. Define serializable operations and hunks; implement `parsePatch(patch)` with original-input line errors and `collectMutationPaths(operations)` with both move endpoints. Preserve operation order and repeated operations; deduplicate only collected path strings. Cover single/multiple files and hunks, moves, malformed input, and reference syntax cases without filesystem I/O.
 
-2. **Build pure parsing and matching.** Convert patch text into ordered operations, affected paths, and hunks; apply hunks to supplied text without filesystem I/O. Cover multiple files and hunks, malformed markers, repeated context, LF/CRLF, missing final newline, Unicode, and empty files against the compatibility matrix. Exit when selected upstream fixtures and Harness-specific differences have deterministic tests, including rejected cases, and the same parsed operations serve execution and capture.
+2. **Implement hunk matching and text updates.** Apply the parsed hunks to caller-supplied text in the same pure library. Follow the pinned Codex matcher for exact matching, whitespace tolerance, Unicode normalization, repeated contexts, search order, and EOF behavior. Cover LF/CRLF, missing final newline, empty files, and unmatched hunks; document deliberate differences and expected results. Keep file reads, permission checks, and commits outside this step.
 
 3. **Provide guarded filesystem operations.** The current [filesystem service](../../../../packages/fs/fs/README.md) has text writes and literal edits, but no delete or move operation. Add only the primitives needed by the chosen patch design, preserving provider-owned freshness checks and atomic publication of a single file. Update local, sandboxed, and [SSH filesystem](../../../../packages/ssh/fs-ssh/README.md) implementations and any affected RPC helper/schema consumers together. A move spans two paths: define locking, source and destination guards, and failure outcomes explicitly. Exit when stale versions, denied paths, collisions, and interrupted operations leave the documented disk state; do not claim a multi-file transaction.
 
@@ -80,7 +80,7 @@ The [existing Review decision](../../implemented/feature/2026-09-15-changed-file
 
 Upstream matching may be permissive or change between versions. Pin the reference and verify its behavior with compatibility fixtures; fix unintended mismatches against that reference. Any proposed matching-policy change must be recorded as a change to the confirmed design. Copying upstream code also requires license and dependency review.
 
-Preflight can succeed before a later version conflict, cancellation, or storage failure. The implementation owner must preserve provider guards and accurate partial outcomes, especially for moves; a test failure here blocks tool acceptance.
+Preflight can succeed before a later version conflict, cancellation, or storage failure. Provider guards and accurate partial outcomes must survive these failures, especially for moves; a test failure here blocks tool acceptance.
 
 Path extraction can drift from execution or omit a move endpoint. Sharing the parsed operations and testing the complete non-Git path is required before enabling the tool in a profile with Review.
 

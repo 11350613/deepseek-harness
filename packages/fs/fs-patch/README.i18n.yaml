@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/fs/fs-patch/README.md
+/:
+  en: d69a5df3ec2a9c4c
+  zh: 52782873842be61c
+/dsh-fs-patch:
+  en: ad2970c594c3b669
+  zh: fee247cad74b6191
+/dsh-fs-patch/summary:
+  en: 02a55bf8753f1063
+  zh: 2246b43ac37d3dfc
+/dsh-fs-patch/table-of-contents:
+  en: 170f124543e5647a
+  zh: c30de483a11a1c09
+/dsh-fs-patch/use-this-package:
+  en: 18f1bbd36bfda361
+  zh: e5659ff4533d3424
+/dsh-fs-patch/compatibility:
+  en: 5072a9358b1a6c71
+  zh: 1ccc9d6d1dd946db
+/dsh-fs-patch/understand-the-implementation:
+  en: 7e999ec95b539ceb
+  zh: f5e3c833863d3a17
+/dsh-fs-patch/further-exploration:
+  en: e454a5069195a7ac
+  zh: dcab5cbc4a6f78f1
+/dsh-fs-patch/known-limitations-and-deferred-work:
+  en: c7fe6ec530e601b0
+  zh: b9ad03529e1542bb
+/dsh-fs-patch/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: e88aeb617ffb74ea

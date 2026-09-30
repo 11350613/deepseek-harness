@@ -22,11 +22,12 @@ The `fs/` group gives agents durable, policy-governed access to files: the `ctx.
 <a id="packages"></a>
 ## Packages
 
-Seven packages play the filesystem roles; the subsystem reference owns the exhaustive contracts and the error taxonomy.
+The packages below provide filesystem access and patch parsing; the subsystem reference owns the exhaustive contracts and the error taxonomy.
 
 | Package | Role | ctx key |
 |---|---|---|
 | [`fs/`](fs/README.md) | `ctx.fs` service contract: execution-world paths, bounded text I/O, and atomic mutations with an optional version guard | `ctx.fs` |
+| [`fs-patch/`](fs-patch/README.md) | Pure Codex-style patch parsing and affected-path collection | none |
 | [`fs-local/`](fs-local/README.md) | Host-filesystem backend: reads, writes, and edits real files on the local machine | registers on `ctx.fs` |
 | [`fs-sandbox/`](fs-sandbox/README.md) | Sandbox-enforcing backend: fences writes and edits by the per-call sandbox mode while reads pass through | registers on `ctx.fs` |
 | [`fs-observation-policy/`](fs-observation-policy/README.md) | Read-before-edit policy: records observed presence or absence and guards write/edit through the `fs/*` events | `fs/*` listeners |
