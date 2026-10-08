@@ -11,6 +11,9 @@ const END = '*** End Patch'
 const EOF = '*** End of File'
 const MOVE = '*** Move to: '
 
+/** Rust uses Unicode White_Space (all in the BMP); JavaScript trim also removes BOM. */
+const WHITE_SPACE = /\p{White_Space}/u
+
 /** Syntax failure with a one-based line in the original input, including any wrapper. */
 export class PatchParseError extends Error {
   constructor(readonly lineNumber: number, readonly reason: string) {
@@ -19,13 +22,17 @@ export class PatchParseError extends Error {
   }
 }
 
-/** Rust str::trim uses Unicode White_Space, unlike JavaScript trim (which includes BOM). */
+/** Scan the ends to avoid regex backtracking over long interior whitespace. */
 function trim(value: string): string {
-  return value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '')
+  let start = 0
+  while (start < value.length && WHITE_SPACE.test(value.charAt(start))) start++
+  return trimEnd(value.slice(start))
 }
 
 function trimEnd(value: string): string {
-  return value.replace(/\p{White_Space}+$/u, '')
+  let end = value.length
+  while (end > 0 && WHITE_SPACE.test(value.charAt(end - 1))) end--
+  return value.slice(0, end)
 }
 
 interface InputLine {

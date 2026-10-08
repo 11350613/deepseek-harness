@@ -47,7 +47,7 @@ The reference is [OpenAI Codex rust-v0.158.0](https://github.com/openai/codex/tr
 | First update without `@@`; later `@@` or `@@ text` | Ordered hunks with an optional context anchor; empty hunks are rejected. |
 | Move to immediately after Update File | Destination on the update; a move without a nonempty hunk is rejected. |
 | End of File after a hunk | EOF flag; following blank lines are ignored and further content requires a new hunk or file header. |
-| LF/CRLF, outer Unicode whitespace, indented headers | Codex trimming rules; indented markers inside updates remain context. Content whitespace is retained. |
+| LF/CRLF, outer Unicode whitespace, indented headers | Codex trimming rules use Unicode `White_Space`, including U+0085 and excluding BOM (U+FEFF). Indented markers inside updates remain context. Content whitespace is retained. |
 | Literal `<<EOF`, `<<'EOF'`, or `<<"EOF"` wrappers | Accepted without shell evaluation; the closing line must end in `EOF`, as in the reference. |
 | Repeated paths, relative/absolute paths, Unicode text | Retained without path resolution or Unicode normalization. |
 | Environment ID header | Explicitly rejected: this library does not select an execution environment. |

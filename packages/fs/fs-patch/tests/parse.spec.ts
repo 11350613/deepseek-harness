@@ -101,6 +101,37 @@ describe('parsePatch', () => {
     ])
   })
 
+  it.each(['\u0085', '\u00A0', '\u2003', '\u3000'])('trims %j around markers while retaining BOM and content whitespace', (space) => {
+    const content = `${space}🙂\uFEFF${space}`
+    const input = `${space}*** Begin Patch${space}\n${space}*** Update File: a${space}\n*** Move to: b${space}\n@@ anchor\uFEFF${space}\n+${content}\n*** End Patch${space}`
+    expect(parsePatch(input)).toEqual([
+      {
+        kind: 'update', path: 'a', lineNumber: 2, moveTo: 'b',
+        hunks: [{
+          lineNumber: 4, context: 'anchor\uFEFF', oldLines: [], newLines: [content],
+          contextLineIndices: [], isEndOfFile: false,
+        }],
+      },
+    ])
+  })
+
+  it('preserves long whitespace runs inside added and updated content', () => {
+    const content = `${' '.repeat(32_000)}x\t `
+    expect(parsePatch(patch(
+      '*** Add File: a', `+${content}`,
+      '*** Update File: b', `-${content}`, `+${content}y`,
+    ))).toEqual([
+      { kind: 'add', path: 'a', lineNumber: 2, content: `${content}\n` },
+      {
+        kind: 'update', path: 'b', lineNumber: 4,
+        hunks: [{
+          lineNumber: 5, oldLines: [content], newLines: [`${content}y`],
+          contextLineIndices: [], isEndOfFile: false,
+        }],
+      },
+    ])
+  })
+
   it('supports blank lines after EOF, then a new hunk or file', () => {
     const operations = parsePatch(patch(
       '*** Update File: a', '@@', '-a', '+b', '*** End of File', '', ' \t',
@@ -125,6 +156,7 @@ describe('parsePatch', () => {
 
   it.each([
     ['', 1, 'Begin Patch'],
+    [' \t\u0085\n\u3000', 2, 'Begin Patch'],
     ['not a patch', 1, 'Begin Patch'],
     ['*** Begin Patch', 1, 'End Patch'],
     ['*** Begin Patch\n*** Add File: a\n+x', 3, 'End Patch'],
@@ -156,17 +188,18 @@ describe('parsePatch', () => {
     [patch('*** Environment ID: env-1'), 2, 'unsupported'],
     [patch('*** Environment ID:'), 2, 'unsupported'],
   ])('rejects malformed or unsupported input %# at its original line', (input, lineNumber, reason) => {
-    expect(() => parsePatch(input)).toThrow(PatchParseError)
-    expect(() => parsePatch(input)).toThrow(expect.objectContaining({
-      name: 'PatchParseError', lineNumber,
-    }))
+    let caught: unknown
     try {
       parsePatch(input)
     } catch (error) {
-      if (!(error instanceof PatchParseError)) throw error
-      expect(error.reason).toContain(reason)
-      expect(error.message).toContain(`line ${lineNumber}:`)
+      caught = error
     }
+    expect(caught).toBeInstanceOf(PatchParseError)
+    if (!(caught instanceof PatchParseError)) throw caught
+    expect(caught.name).toBe('PatchParseError')
+    expect(caught.lineNumber).toBe(lineNumber)
+    expect(caught.reason).toContain(reason)
+    expect(caught.message).toContain(`line ${lineNumber}:`)
   })
 
   it('counts leading lines and heredoc lines in diagnostics', () => {

@@ -47,7 +47,7 @@ const paths = collectMutationPaths(operations) // ['hello.txt']
 | 首个更新省略 `@@`；后续使用 `@@` 或 `@@ text` | 带可选上下文锚点的有序 hunk；拒绝空 hunk。 |
 | 紧跟 Update File 的 Move to | 更新操作携带目标路径；没有非空 hunk 的移动被拒绝。 |
 | hunk 后的 End of File | 设置 EOF 标志；忽略后续空白行，更多内容需要新的 hunk 或文件头。 |
-| LF/CRLF、外围 Unicode 空白、缩进的文件头 | 遵循 Codex 裁剪规则；更新内部缩进的标记仍作为上下文。保留内容空白。 |
+| LF/CRLF、外围 Unicode 空白、缩进的文件头 | Codex 裁剪规则使用 Unicode `White_Space`，包含 U+0085，不包含 BOM（U+FEFF）。更新内部缩进的标记仍作为上下文。保留内容空白。 |
 | 字面量 `<<EOF`、`<<'EOF'` 或 `<<"EOF"` 包装 | 接受但不执行 shell；与参照实现相同，结束行必须以 `EOF` 结尾。 |
 | 重复路径、相对/绝对路径、Unicode 文本 | 原样保留，不解析路径或进行 Unicode 归一化。 |
 | Environment ID 头 | 明确拒绝：此库不选择执行环境。 |
