@@ -360,6 +360,8 @@ interface FileReadOutcome {
 | delete | `fs/delete-intent` | `fs/delete-intent` | 目标 absent |
 | move | 源 `fs/edit-intent`；目标 `fs/write-intent` | 重新分发同一组意图 | 目标 present(version)；仅在源删除成功时记录 absent |
 
+按需启用的 `apply_patch` 工具返回严格的提交值，包含各操作诊断及用于渲染的完整文本变更输入；持久化元数据只保留 diff hunk 与停止标志。语法和预检拒绝为 `isError: true`；停止的提交报告仍为 `isError: false`，确保已知部分 diff 进入 Session 展示。[工具 README](../../packages/fs/tool-fs/README.zh.md#use-this-package) 维护格式与恢复规则。
+
 ## 错误分类体系（提供方约定）
 
 文件系统故障使用稳定的 `FsErrorCode` 字符串，由 `FsError`（`HarnessError`）携带。工具注册表在错误结果上保留 `{ name, code }`，使重试、权限和 UI 层可以按 code 分支而无需解析文本。

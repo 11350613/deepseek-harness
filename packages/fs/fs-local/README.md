@@ -27,6 +27,8 @@ Use `dsh-fs-local` to read, list, watch, write, edit, patch, delete, and move fi
 
 Mount this backend when a composition needs `ctx.fs` backed by the real host filesystem and accepts a process-local implementation. The common path is explicit: load the backend, give it a base directory, and the model-facing tools (`dsh-tool-fs`) or your own plugins can read, write, and edit files.
 
+Atomic write failures preserve filesystem error codes: denied parent or staging creation is `FS_PERMISSION_DENIED`; other Node I/O failures are `FS_IO_ERROR`. Unexpected non-I/O defects still reject unchanged.
+
 ### When to choose it
 
 Choose `fs-local` for ordinary host-file access in a single process. Choose [`fs-sandbox`](../fs-sandbox/README.md) when a session's writes and edits must be confined to its workspace and temp roots — it extends this backend and adds only the mode fence. `config.cwd` is a resolution default, not a containment boundary: absolute paths and `..` escape it.

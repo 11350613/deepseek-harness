@@ -574,11 +574,22 @@ async function throwGuardedCreateFailure(
   throw new FsError(`cannot write "${displayPath}": ${errorMessage(error)}`, 'FS_IO_ERROR', { cause: error })
 }
 
+/** Preserve typed failures and defects; map Node write errors for filesystem consumers. */
+function writeIoError(path: string, error: unknown): unknown {
+  if (error instanceof FsError) return error
+  if (isPermissionError(error)) return new FsError(`cannot write "${path}": permission denied`, 'FS_PERMISSION_DENIED', { cause: error })
+  if (error instanceof Error && 'code' in error && typeof error.code === 'string') {
+    return new FsError(`cannot write "${path}": ${error.message}`, 'FS_IO_ERROR', { cause: error })
+  }
+  return error
+}
+
 /**
  * Atomically replace a file through a private, synced staging file in the same directory.
  * POSIX protects the staging directory and file with `0o700` and `0o600`. A new Windows file
  * inherits the destination directory's DACL; a replacement copies the existing target's DACL
  * onto the empty temp before writing and preserves the target descriptor at publication.
+ * Node write errors become FsError; permission refusals use FS_PERMISSION_DENIED and other I/O uses FS_IO_ERROR.
  * @param absolutePath - destination; missing parent directories are created.
  * @param content - the full UTF-8 text to write.
  * @param mode - POSIX mode to apply, or undefined to retain the new-file default.
@@ -601,7 +612,7 @@ export async function writeFileAtomic(
 ): Promise<void> {
   throwIfAborted(signal, 'write')
   const directory = dirname(absolutePath)
-  await mkdir(directory, { recursive: true })
+  try { await mkdir(directory, { recursive: true }) } catch (error) { throw writeIoError(absolutePath, error) }
 
   throwIfAborted(signal, 'write')
   const stagingDirName = internals.tempDirName?.(absolutePath) ?? `.${basename(absolutePath)}.${process.pid}.${randomUUID()}.tmpdir`
@@ -661,7 +672,7 @@ export async function writeFileAtomic(
     }
   } catch (error: unknown) {
     /* v8 ignore next -- abort-mid-write needs a writeFile/signal race; the non-abort (rename/open) side is tested. */
-    let failure: unknown = isAbortError(error) ? new FsError('write aborted', 'FS_ABORTED') : error
+    let failure: unknown = isAbortError(error) ? new FsError('write aborted', 'FS_ABORTED') : writeIoError(absolutePath, error)
     /* v8 ignore next 8 -- reached only if writeFile/sync throws with the handle open (IO fault); close-failure is a double fault. */
     if (handle) {
       try {

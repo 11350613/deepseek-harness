@@ -10,6 +10,7 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import { applyReadTool, READ_LIMIT, STREAM_MIN_SIZE } from './read.ts'
 import { applyWriteTool } from './write.ts'
+import { applyApplyPatchTool } from './apply-patch.ts'
 import { applyEditTool } from './edit.ts'
 import { applyReadImageTool } from './read-image.ts'
 import { READ_MAX_BYTES, READ_MAX_LINE_LENGTH } from './read-render.ts'
@@ -23,6 +24,8 @@ export const inject = ['tools', 'fs', 'systemPrompt']
 
 /** Plugin config (all optional — `Config` supplies the defaults). */
 export interface Config {
+  /** Evaluation switch for apply_patch; default profiles leave it disabled. */
+  enableApplyPatch?: boolean
   /** Default and maximum number of lines returned by one `read` call. */
   readLimit?: number
   /** Maximum characters returned for a single line before truncation. */
@@ -34,6 +37,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
+  enableApplyPatch: z.boolean().default(false),
   readLimit: z.number().default(READ_LIMIT),
   readMaxLineLength: z.number().default(READ_MAX_LINE_LENGTH),
   readMaxBytes: z.number().default(READ_MAX_BYTES),
@@ -76,4 +80,5 @@ export function apply(ctx: Context, config: Config): void {
   const sandbox = new FsSandboxController(ctx)
   applyWriteTool(ctx, sandbox)
   applyEditTool(ctx, sandbox)
+  if (resolved.enableApplyPatch) applyApplyPatchTool(ctx, sandbox)
 }

@@ -816,7 +816,7 @@ describe('writeFileAtomic — temp-file safety', () => {
       platform: 'win32',
       copyFileDacl: () => Promise.resolve(),
       replaceFile: async () => { throw denied },
-    })).rejects.toBe(denied)
+    })).rejects.toMatchObject({ code: 'FS_PERMISSION_DENIED', cause: denied })
     expect(await readFile(file, 'utf8')).toBe('old')
     expect((await readdir(dir)).filter(name => name.includes('.tmp'))).toEqual([])
   })
@@ -905,7 +905,7 @@ describe('writeFileAtomic — temp-file safety', () => {
     await writeFile(join(dir, tempDirName, 'PRECIOUS'), 'keep')
     await expect(
       writeFileAtomic(file, 'hello', undefined, undefined, { tempDirName: () => tempDirName }),
-    ).rejects.toMatchObject({ code: 'EEXIST' })
+    ).rejects.toMatchObject({ code: 'FS_IO_ERROR', cause: { code: 'EEXIST' } })
     expect(await readFile(join(dir, tempDirName, 'PRECIOUS'), 'utf8')).toBe('keep')
     await expect(stat(file)).rejects.toMatchObject({ code: 'ENOENT' })
   })
@@ -995,4 +995,30 @@ describe('readForEdit + restoreLineEndings', () => {
     ac.abort()
     await expect(pending).rejects.toMatchObject({ code: 'FS_ABORTED' })
   })
+})
+
+
+describe('atomic write failures', () => {
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('maps denied parent and staging creation to typed permission failures', async () => {
+    const locked = join(dir, 'locked')
+    await mkdir(locked, { mode: 0o555 })
+    try {
+      for (const target of [join(locked, 'file'), join(locked, 'missing', 'file')]) {
+        await expect(writeFileAtomic(target, 'content', undefined, undefined)).rejects.toMatchObject({
+          code: 'FS_PERMISSION_DENIED', message: `cannot write "${target}": permission denied`,
+        })
+      }
+      expect(await readdir(locked)).toEqual([])
+    } finally { await chmod(locked, 0o755) }
+  })
+
+  it.each([new Error('provider defect'), Object.assign(new Error('invalid errno'), { code: 1 }), 'provider defect'])(
+    'preserves unexpected failures during staging: %s', async (failure) => {
+      const file = join(dir, 'a')
+      await expect(writeFileAtomic(file, 'new', undefined, undefined, {
+        inspectTemp: async () => { throw failure },
+      })).rejects.toBe(failure)
+      expect(await readdir(dir)).toEqual([])
+    },
+  )
 })

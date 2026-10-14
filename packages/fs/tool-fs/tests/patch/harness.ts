@@ -28,7 +28,7 @@ export const remove = (path: string) => `*** Delete File: ${path}`
 export const move = (source: string, destination: string, before = 'old', after = 'new') =>
   `*** Update File: ${source}\n*** Move to: ${destination}\n@@\n-${before}\n+${after}`
 
-export async function setup(options: { policy?: boolean; mode?: SandboxMode; provider?: typeof LocalFileSystem } = {}) {
+export async function setup(options: { policy?: boolean; mode?: SandboxMode; provider?: typeof LocalFileSystem; enableApplyPatch?: boolean; toolMode?: 'native' | 'both' } = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-patch-executor-')))
   onTestFinished(() => rm(root, { recursive: true, force: true }))
   const workspace = join(root, 'workspace')
@@ -39,14 +39,14 @@ export async function setup(options: { policy?: boolean; mode?: SandboxMode; pro
   onTestFinished(() => ctx.fiber.dispose())
   onTestFinished(() => { vi.restoreAllMocks() })
   await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime)
+  await ctx.plugin(ToolRuntime, { mode: options.toolMode ?? 'native' })
   if (options.mode !== undefined) {
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SandboxPolicyService, { mode: options.mode })
     await ctx.plugin(SandboxedFileSystem, { cwd: providerRoot })
   } else await ctx.plugin(options.provider ?? LocalFileSystem, { cwd: providerRoot })
   if (options.policy !== false) await ctx.plugin(FsPolicy)
-  await ctx.plugin(ToolFs)
+  const toolFiber = await ctx.plugin(ToolFs, { enableApplyPatch: options.enableApplyPatch ?? false })
   const fs = ctx.fs as LocalFileSystem
   const controller = new AbortController()
   const exec: ToolExecution = {
@@ -85,6 +85,6 @@ export async function setup(options: { policy?: boolean; mode?: SandboxMode; pro
   const bytes = (name: string) => readFile(resolve(workspace, name), 'utf8')
   const editIntent = async (name: string) => ctx.waterfall('fs/edit-intent', await target(name), exec, () => undefined)
   const version = async (name: string) => (await fs.stat(await target(name)))?.version ?? FsVersion('missing-fixture')
-  return { ctx, fs, workspace, controller, exec, sandbox, policy, observations,
+  return { ctx, fs, toolFiber, workspace, controller, exec, sandbox, policy, observations,
     target, file, absent, record, run, bytes, editIntent, version }
 }

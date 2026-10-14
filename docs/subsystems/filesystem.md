@@ -360,6 +360,8 @@ The internal [tool-fs patch executor](../../packages/fs/tool-fs/README.md#unders
 | delete | `fs/delete-intent` | `fs/delete-intent` | target absent |
 | move | source `fs/edit-intent`; destination `fs/write-intent` | same two intents, freshly dispatched | destination present(version); source absent only when removed |
 
+The opt-in `apply_patch` tool returns strict commit values with per-operation diagnostics and full-text change inputs for rendering; persisted metadata holds diff hunks and a stopped flag. Syntax and preflight refusals set `isError: true`; commit reports retain `isError: false` even when stopped so known partial diffs reach Session presentation. The [tool README](../../packages/fs/tool-fs/README.md#use-this-package) owns formatting and recovery.
+
 ## Error taxonomy (provider contract)
 
 Filesystem failures use stable `FsErrorCode` strings carried by `FsError` (`HarnessError`). The tool registry preserves `{ name, code }` on error results, so retry, permission, and UI layers can branch without parsing text.
