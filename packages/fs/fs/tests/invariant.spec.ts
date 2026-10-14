@@ -53,3 +53,11 @@ describe('filesystem invariants', () => {
     }).toThrow(/kind must be present or absent/)
   })
 })
+
+it('checks delete-intent identities before policy dispatch', async () => {
+  const ctx = await setup()
+  try {
+    expect(await ctx.waterfall('fs/delete-intent', target(), undefined, () => undefined)).toBeUndefined()
+    expect(() => ctx.waterfall('fs/delete-intent', target(''), undefined, () => undefined)).toThrow(/targetKey must be non-empty/)
+  } finally { await ctx.fiber.dispose() }
+})

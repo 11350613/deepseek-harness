@@ -102,7 +102,7 @@ The batch parser builds syntax records without a Session or provider dependency.
 <a id="known-limitations-and-deferred-work"></a>
 
 - Text updates implement only `NormalizeToLf`; callers own line-ending conversion. Parsing alone says nothing about whether a hunk matches a file.
-- Filesystem mutations, permissions, freshness guards, path safety, tool registration, and Review capture belong to consumers and are not performed here.
+- [dsh-fs](../fs/README.md) provides guarded `patchText`, `deleteFile`, and `moveFile`; providers own permissions, freshness, path safety, and line-ending conversion. Tool registration and Review capture belong to consumers.
 - The public API accepts complete strings, not streaming deltas. It exposes no Codex workdir or environment-routing metadata.
 
 <a id="dev-note"></a>

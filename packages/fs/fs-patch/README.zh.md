@@ -102,7 +102,7 @@ if (operation?.kind === 'update') {
 <a id="known-limitations-and-deferred-work"></a>
 
 - 文本更新只实现 `NormalizeToLf`；调用方负责行尾转换。仅解析成功不能说明 hunk 能否匹配文件。
-- 文件系统修改、权限、新鲜度保护、路径安全、工具注册和 Review 采集由消费方负责，此库不执行这些操作。
+- [dsh-fs](../fs/README.zh.md) 提供受防护的 `patchText`、`deleteFile` 和 `moveFile`；提供方负责权限、新鲜度、路径安全和行尾转换。工具注册与 Review 采集属于消费方。
 - 公开 API 接受完整字符串，不接收流式增量。不暴露 Codex workdir 或环境路由元数据。
 
 <a id="dev-note"></a>

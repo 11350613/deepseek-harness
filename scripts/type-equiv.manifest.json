@@ -3,6 +3,21 @@
   "entries": [
     {
       "doc": "docs/subsystems/filesystem.md",
+      "symbol": "FsDeleteOutcome",
+      "source": "packages/fs/fs/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/filesystem.md",
+      "symbol": "FsMoveSourceFailure",
+      "source": "packages/fs/fs/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/filesystem.md",
+      "symbol": "FsMoveOutcome",
+      "source": "packages/fs/fs/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/filesystem.md",
       "symbol": "HunkApplyFailure",
       "source": "packages/fs/fs-patch/src/types.ts"
     },

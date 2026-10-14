@@ -10,8 +10,11 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
+import type { PatchHunk } from '@deepseek-ai/dsh-fs-patch'
 import { FsError } from './types.ts'
 import type {
+  FsDeleteOutcome,
+  FsMoveOutcome,
   FsDirEntry,
   FsEditOutcome,
   FsEditRequest,
@@ -30,6 +33,9 @@ export {
   FsVersion,
 } from './types.ts'
 export type {
+  FsDeleteOutcome,
+  FsMoveOutcome,
+  FsMoveSourceFailure,
   FsEditOutcome,
   FsEditRequest,
   FsDirEntry,
@@ -66,6 +72,14 @@ declare module '@deepseek-ai/cordis' {
      */
     'fs/edit-intent'(target: FsTarget, actor: object | undefined, next: () => { version: FsVersion } | undefined | Promise<{ version: FsVersion } | undefined>): Promise<{ version: FsVersion } | undefined>
     /**
+     * Single-slot decision for FileSystem.deleteFile; the first returned guard wins.
+     * Calling next() delegates to an unconditional deletion.
+     * @param target - the resolved source about to be removed.
+     * @param actor - the opaque tool-execution context used to select observed state.
+     * @mode waterfall
+     */
+    'fs/delete-intent'(target: FsTarget, actor: object | undefined, next: () => { version: FsVersion } | undefined | Promise<{ version: FsVersion } | undefined>): Promise<{ version: FsVersion } | undefined>
+    /**
      * Record an authoritative positive or negative observation. Listeners must
      * be synchronous recorders: throws fail the tool call and returned promises
      * are not awaited.
@@ -81,7 +95,8 @@ declare module '@deepseek-ai/cordis' {
 /**
  * Abstract filesystem provider. Targets must preserve identity across aliases;
  * reads expose regular UTF-8 text or typed errors, listings are stable and
- * content-free, and mutations are atomic. Optional guards add stale protection
+ * content-free, and single-file publication is atomic. Moves can retain their
+ * source after publishing the destination. Optional guards add stale protection
  * without changing the unguarded provider contract.
  */
 export abstract class FileSystem extends Service {
@@ -291,6 +306,75 @@ export abstract class FileSystem extends Service {
     signal?: AbortSignal,
     sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsEditOutcome>
+
+  /**
+   * Apply hunks under the version guard and mutation lock. Missing targets and
+   * stale versions report FS_STALE_VERSION; unmatched hunks report FS_PATCH_MISMATCH.
+   * Callers obtain expected through fs/edit-intent and record present(version)
+   * through fs/observed on success. Internal preflight reads are not model observations.
+   * @param target - resolved regular UTF-8 file to update.
+   * @param hunks - ordered parsed hunks applied to LF-normalized content.
+   * @param expected - observed version; omit to patch the current content unconditionally.
+   * @param signal - aborts before atomic publication.
+   * @param sandboxPolicy - per-call confinement; omit to use the provider default.
+   * @returns the published version and LF-normalized before/after text.
+   */
+  abstract patchText(
+    target: FsTarget,
+    hunks: readonly PatchHunk[],
+    expected?: { version: FsVersion },
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsEditOutcome>
+
+  /**
+   * Remove a resolved regular file. Missing/stale targets report FS_STALE_VERSION;
+   * other types report FS_NOT_REGULAR_FILE. Obtain expected through fs/delete-intent
+   * and record absent through fs/observed after successful removal.
+   * Resolution follows symlinks: callers rejecting symlink sources must lstat before resolve.
+   * @param target - resolved file to remove, including the real target of a symlink.
+   * @param expected - observed version; omit for unconditional removal of the current file.
+   * @param signal - aborts before removal; successful removal is not rolled back.
+   * @param sandboxPolicy - per-call confinement; omit to use the provider default.
+   * @returns the bounded LF-normalized removed content, or null when no basis is available.
+   */
+  abstract deleteFile(
+    target: FsTarget,
+    expected?: { version: FsVersion },
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsDeleteOutcome>
+
+  /**
+   * Publish source text at a destination, optionally patching it, then remove the source.
+   * Both paths remain locked in canonical order. FS_SAME_TARGET rejects identical keys;
+   * source guards match patchText, destination guards match writeText. No cross-path
+   * transaction is promised: destination publication with the source retained is a final outcome.
+   * Obtain source/destination guards through fs/edit-intent and fs/write-intent. On
+   * resolution, record destination present(destination.version); record source absent
+   * only when sourceDeleted is true. Providers do not emit these observations.
+   * Resolution follows symlinks: callers rejecting symlink sources must lstat before resolve.
+   * @param source - resolved regular UTF-8 source; its line-ending style and mode are preserved.
+   * @param destination - resolved destination in the same provider, distinct from source.
+   * @param options - optional hunks and source/destination guards; omitted fields mean
+   *   no text patch and unconditional source/destination mutations respectively.
+   * @param signal - checked before destination staging; once staging starts, cancellation
+   *   does not interrupt the local commit. Remote cancellation can leave the outcome unknown.
+   * @param sandboxPolicy - confinement for both paths; omit to use the provider default.
+   * @returns destination outcome and source-removal status; failures before publication reject.
+   */
+  abstract moveFile(
+    source: FsTarget,
+    destination: FsTarget,
+    options: {
+      hunks?: readonly PatchHunk[]
+      expectedSource?: { version: FsVersion }
+      expectedDestination?: FsWriteIntent
+    },
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsMoveOutcome>
+
 }
 
 export default FileSystem

@@ -22,6 +22,7 @@ const install: InvariantInstaller = (ctx, fail) => {
   ctx.on('internal/dispatch', (_mode, eventName, args) => {
     if (eventName !== 'fs/write-intent'
       && eventName !== 'fs/edit-intent'
+      && eventName !== 'fs/delete-intent'
       && eventName !== 'fs/observed') return
     validateTarget(args[0] as FsTarget, fail)
     if (eventName === 'fs/observed') {

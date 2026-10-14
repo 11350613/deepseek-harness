@@ -94,7 +94,7 @@ export function applyHunks(before: string, hunks: readonly PatchHunk[]): ApplyHu
     if (found === undefined) {
       return {
         ok: false,
-        failure: { hunkLineNumber: hunk.lineNumber, stage: 'oldLines', searchStart: lineIndex, pattern: hunk.oldLines },
+        failure: { hunkLineNumber: hunk.lineNumber, stage: 'oldLines', searchStart: lineIndex, pattern: [...hunk.oldLines] },
       }
     }
     replacements.push({ start: found, oldLength: pattern.length, newLines })

@@ -95,6 +95,10 @@ export interface FsIoInternals {
   linkFile?: (existingPath: string, newPath: string) => Promise<void>
   /** Override target inspection after guarded publication fails. */
   inspectPublicationTarget?: (path: string) => Promise<BigIntStats>
+  /** Observe the final cancellable checkpoint before delete or move commits. */
+  inspectBeforeMutation?: (target: LocalTarget) => void | Promise<void>
+  /** Override non-recursive source removal for delete and move failures. */
+  removeFile?: (path: string) => Promise<void>
   /** Override staging-directory removal for commit-point failure coverage. */
   removeStagingDir?: (stagingDir: string) => Promise<void>
   /** Test hook after the temp file is written/synced but before final chmod+publication. */
@@ -577,13 +581,14 @@ async function throwGuardedCreateFailure(
  * onto the empty temp before writing and preserves the target descriptor at publication.
  * @param absolutePath - destination; missing parent directories are created.
  * @param content - the full UTF-8 text to write.
- * @param mode - existing destination's POSIX mode to preserve, or `undefined` for a new file;
- * inert as a mode on Windows but identifies replacement security semantics.
+ * @param mode - POSIX mode to apply, or undefined to retain the new-file default.
  * @param signal - cancellation checked before final publication.
  * @param internals - Test hook for pinning temp names and observing the staged file.
  * @param createIfAbsent - when provided, publish with a hard-link no-replace
  * primitive; a concurrent creator's file is preserved and this write is
  * rejected with `FS_NOT_OBSERVED` using the supplied display path.
+ * @param existingDestination - whether Windows must preserve destination security; defaults
+ * to mode presence for ordinary writes. Moves pass destination presence separately from source mode.
  */
 export async function writeFileAtomic(
   absolutePath: string,
@@ -592,6 +597,7 @@ export async function writeFileAtomic(
   signal: AbortSignal | undefined,
   internals: FsIoInternals = {},
   createIfAbsent?: { displayPath: string },
+  existingDestination = mode !== undefined,
 ): Promise<void> {
   throwIfAborted(signal, 'write')
   const directory = dirname(absolutePath)
@@ -619,7 +625,7 @@ export async function writeFileAtomic(
 
     handle = await open(tempPath, 'wx', 0o600)
     await handle.chmod(0o600)
-    if (platform === 'win32' && mode !== undefined) {
+    if (platform === 'win32' && existingDestination) {
       await copyFileDacl(absolutePath, tempPath)
     }
     await handle.writeFile(content, { encoding: 'utf8', ...signal ? { signal } : {} })
@@ -636,7 +642,7 @@ export async function writeFileAtomic(
       } catch (error: unknown) {
         await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
       }
-    } else if (platform === 'win32' && mode !== undefined) {
+    } else if (platform === 'win32' && existingDestination) {
       try {
         await replaceFile(absolutePath, tempPath)
       } catch (error: unknown) {
@@ -666,6 +672,22 @@ export async function writeFileAtomic(
     }
     if (!stagingCreated) throw failure
     return removeStagingDirOrThrow(stagingDir, failure, removeStagingDir)
+  }
+}
+
+/**
+ * Remove one resolved file without recursive traversal.
+ * @param absolutePath - resolved file identity; a concurrently substituted directory is refused.
+ * @param displayPath - caller-facing source path for diagnostics.
+ * @param internals - optional source-removal fault injection; omission uses non-recursive rm.
+ * @returns once removal completes; permission and other failures use filesystem error codes.
+ */
+export async function removeFile(absolutePath: string, displayPath: string, internals: FsIoInternals = {}): Promise<void> {
+  try {
+    await (internals.removeFile ?? rm)(absolutePath)
+  } catch (error: unknown) {
+    throw new FsError(`cannot delete "${displayPath}": ${errorMessage(error)}`,
+      isPermissionError(error) ? 'FS_PERMISSION_DENIED' : 'FS_IO_ERROR', { cause: error })
   }
 }
 

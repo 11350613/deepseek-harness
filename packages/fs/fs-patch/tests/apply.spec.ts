@@ -118,3 +118,12 @@ describe('applyHunks', () => {
     expect(applyHunks(before, hunks)).toEqual({ ok: true, after })
   })
 })
+
+it('returns failure patterns independent of the parsed hunk arrays', () => {
+  const hunks = update('-missing', '+replacement')
+  const result = applyHunks('other\n', hunks)
+  expect(result).toEqual({ ok: false, failure: { hunkLineNumber: 3, stage: 'oldLines', searchStart: 0, pattern: ['missing'] } })
+  if (result.ok) throw new Error('Expected failure')
+  result.failure.pattern.push('caller annotation')
+  expect(hunks[0]?.oldLines).toEqual(['missing'])
+})
