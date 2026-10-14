@@ -39,6 +39,8 @@ Through `ctx.fs`, resolve paths, read text or bounded bytes, list direct childre
 
 `watch(target, changed, signal)` reports invalidations for one file or a directory's direct entries. It resolves once observation is ready with an asynchronous close function that the caller must await. The signal cancels initialization; unsupported providers reject without polling.
 
+Move results include `sourceBefore`, the LF source text captured while both paths are locked. Complete and partial moves return it so consumers can record the source basis.
+
 -----
 
 <a id="understand-the-implementation"></a>

@@ -21,6 +21,7 @@ interface SimulatedFile {
 
 class Preflight {
   failurePath = ''
+  private roots: Promise<FsTarget[]> | undefined
   private readonly states = new Map<FsTargetKey, SimulatedFile>()
 
   constructor(
@@ -39,7 +40,7 @@ class Preflight {
   private async fence(operation: PlannedOperation): Promise<void> {
     if (this.policy === undefined || this.policy.mode === 'danger-full-access') return
     if (this.policy.mode === 'read-only') throw new FsError('filesystem mutations are denied', 'FS_SANDBOX_DENIED')
-    const roots = await Promise.all(writableRoots(this.policy).map(root => this.ctx.fs.resolve(root)))
+    const roots = await (this.roots ??= Promise.all(writableRoots(this.policy).map(root => this.ctx.fs.resolve(root))))
     for (const target of mutationTargets(operation)) {
       if (!roots.some(root => this.ctx.fs.contains(root, target))) {
         throw new FsError(`cannot modify "${target.displayPath}": outside writable roots`, 'FS_SANDBOX_DENIED')
@@ -53,8 +54,8 @@ class Preflight {
     }
   }
 
-  private async source(state: SimulatedFile, target: FsTarget, kind: 'delete' | 'edit'): Promise<void> {
-    const intent = state.touched ? undefined : await sourceIntent(this.ctx, this.exec, target, kind)
+  private async source(state: SimulatedFile, target: FsTarget, kind: 'delete' | 'edit' | 'move'): Promise<void> {
+    const intent = state.touched ? undefined : await sourceIntent(this.ctx, this.exec, target, kind === 'delete' ? 'delete' : 'edit')
     if (!state.exists) throw new FsError(`cannot ${kind} "${target.displayPath}": not found`, 'FS_NOT_FOUND')
     this.regular(state, target)
     if (intent !== undefined && intent.version !== state.info?.version) {
@@ -106,7 +107,7 @@ class Preflight {
         return
       case 'update':
       case 'move': {
-        await this.source(state, operation.target, 'edit')
+        await this.source(state, operation.target, operation.kind === 'move' ? 'move' : 'edit')
         if (operation.kind === 'move') {
           this.failurePath = operation.destination.displayPath
           await this.destination(await this.state(operation.destination), operation.destination)

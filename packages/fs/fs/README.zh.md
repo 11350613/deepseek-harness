@@ -39,6 +39,8 @@ kind: "package-reference"
 
 `watch(target, changed, signal)` 报告单个文件或目录直接子项的失效通知。观察就绪后，它返回调用方必须等待完成的异步关闭函数。signal 取消初始化；不支持监听的提供方直接拒绝，不使用轮询。
 
+移动结果的 `sourceBefore` 是提供方在两端锁内取得的 LF 源文本；完整与部分移动均返回它，调用方据此记录源基线。
+
 -----
 
 <a id="understand-the-implementation"></a>

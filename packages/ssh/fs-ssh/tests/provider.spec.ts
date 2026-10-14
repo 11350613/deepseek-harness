@@ -214,7 +214,7 @@ it.each([false, true])('forwards patch/delete/move with explicit policy %s and p
   const edited = { version: 'v2', before: 'old', after: 'new' }
   const deleted = { before: 'old' }
   const destination = { targetKey: FsTargetKey('/remote/work/new.txt'), displayPath: 'new.txt' }
-  const moved = { destination: { ...edited, operation: 'create' }, sourceDeleted: false, sourceFailure: { code: 'FS_PERMISSION_DENIED', message: 'cannot delete source' } }
+  const moved = { sourceBefore: 'source before patch\n', destination: { ...edited, operation: 'create' }, sourceDeleted: false, sourceFailure: { code: 'FS_PERMISSION_DENIED', message: 'cannot delete source' } }
   dispatch.mockResolvedValueOnce(edited).mockResolvedValueOnce(deleted).mockResolvedValueOnce(moved)
   expect(await fs.patchText(target, hunks, expected, signal, selected)).toEqual(edited)
   expect(dispatch).toHaveBeenLastCalledWith('fs.patch', { target, hunks, expected, policy: resolved }, signal)
@@ -233,7 +233,7 @@ it.each(['FS_PATCH_MISMATCH', 'FS_SAME_TARGET'])('preserves new remote error %s'
 
 it.each([
   { destination: { operation: 'create', version: 'v', before: null, after: '' }, sourceDeleted: false },
-  { destination: { operation: 'create', version: 'v', before: null, after: '' }, sourceDeleted: false, sourceFailure: { code: 'INVALID', message: 'bad' } },
+  { destination: { operation: 'create', version: 'v', before: null, after: '' }, sourceDeleted: false, sourceBefore: '', sourceFailure: { code: 'INVALID', message: 'bad' } },
 ])('rejects malformed move outcomes', async (outcome) => {
   const { fs, dispatch } = await setup()
   dispatch.mockResolvedValue(outcome)

@@ -340,9 +340,10 @@ export class LocalFileSystem extends FileSystem {
       } catch (error) {
         // removeFile maps I/O failures; unexpected defects must still reject.
         if (!(error instanceof FsError)) throw error
-        return { destination: outcome, sourceDeleted: false, sourceFailure: { code: error.code, message: error.message } }
+        return { sourceBefore: original.content, destination: outcome, sourceDeleted: false,
+          sourceFailure: { code: error.code, message: error.message } }
       }
-      return { destination: outcome, sourceDeleted: true }
+      return { sourceBefore: original.content, destination: outcome, sourceDeleted: true }
     })
   }
 

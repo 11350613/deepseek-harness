@@ -58,6 +58,8 @@ Read, listing, and mutation failures are typed `FsError`s with stable codes — 
 
 Chokidar observes one file or a directory's direct entries through OS events, without polling or recursive watching. Files use a filtered parent-directory watch, so readiness also covers creation of an initially missing file. File watches cover in-place writes, atomic replacement, deletion, and same-path recreation while the parent directory remains.
 
+Move results include `sourceBefore`, the LF source text captured while both paths are locked. Complete and partial moves return it so consumers can record the source basis.
+
 -----
 
 <a id="understand-the-implementation"></a>

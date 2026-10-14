@@ -238,3 +238,21 @@ it('preserves source simulation after a move destination fails admission', async
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
 })
+
+
+it('names the missing move source operation', async () => {
+  const t = await setup({ policy: false })
+  expect(await t.run(patch(move('missing', 'destination')))).toEqual({
+    phase: 'preflight', outcomes: [{ status: 'failed', operation: t.record('move', 'missing', 0, 2, 'destination'),
+      failure: { code: 'FS_NOT_FOUND', message: `cannot move "${resolve(t.workspace, 'missing')}": not found` }, changes: [] }],
+    affectedPaths: [], cancelled: false,
+  })
+})
+
+it('resolves writable roots once while admitting multiple operations', async () => {
+  const t = await setup({ mode: 'workspace-write' })
+  const resolve = vi.spyOn(t.fs, 'resolve')
+  // A later unread source prevents provider commits, isolating admission's root lookups.
+  await t.run(patch(add('a'), add('b'), update('unread')))
+  expect(resolve.mock.calls.filter(([path]) => path === t.workspace)).toHaveLength(1)
+})

@@ -117,7 +117,7 @@ describe.skipIf(process.platform === 'win32')('guarded patch helper dispatch', (
       expect(await readFile(`${test.root}/a`, 'utf8')).toBe('new\r\n')
       const options = guarded ? { hunks: [{ ...hunks[0], context: 'new', oldLines: [], newLines: ['tail'] }], expectedSource: { version: patched.version }, expectedDestination: { kind: 'createIfAbsent' } } : {}
       const moved = await test.client.request('fs.move', { source: target, destination, options, policy: policy(test.root) }, moveResultSchema)
-      expect(moved).toMatchObject({ sourceDeleted: true, destination: { operation: 'create', before: null, after: guarded ? 'new\ntail\n' : 'new\n' } })
+      expect(moved).toMatchObject({ sourceBefore: 'new\n', sourceDeleted: true, destination: { operation: 'create', before: null, after: guarded ? 'new\ntail\n' : 'new\n' } })
       await expect(readFile(`${test.root}/a`)).rejects.toMatchObject({ code: 'ENOENT' })
       expect(await readFile(`${test.root}/b`, 'utf8')).toBe(guarded ? 'new\r\ntail\r\n' : 'new\r\n')
       expect(await test.client.request('fs.delete', { target: destination, expected: guarded ? { version: moved.destination.version } : undefined, policy: policy(test.root) }, deleteResultSchema)).toEqual({ before: guarded ? 'new\ntail\n' : 'new\n' })

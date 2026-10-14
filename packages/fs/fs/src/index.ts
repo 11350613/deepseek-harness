@@ -362,7 +362,7 @@ export abstract class FileSystem extends Service {
    * @param signal - checked before destination staging; once staging starts, cancellation
    *   does not interrupt the local commit. Remote cancellation can leave the outcome unknown.
    * @param sandboxPolicy - confinement for both paths; omit to use the provider default.
-   * @returns destination outcome and source-removal status; failures before publication reject.
+   * @returns locked LF sourceBefore, destination outcome, and source-removal status; failures before publication reject.
    */
   abstract moveFile(
     source: FsTarget,

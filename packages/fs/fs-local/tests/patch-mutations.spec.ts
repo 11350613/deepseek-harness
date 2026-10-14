@@ -119,7 +119,7 @@ describe('moveFile', () => {
       ? { kind: 'replaceIfVersion' as const, version: await version(destination) }
       : { kind: 'createIfAbsent' as const }
     const result = await fs.moveFile(source, destination, { expectedSource: { version: await version(source) }, expectedDestination })
-    expect(result).toEqual({ sourceDeleted: true, destination: {
+    expect(result).toEqual({ sourceBefore: 'old\ntail\n', sourceDeleted: true, destination: {
       operation: exists ? 'update' : 'create', version: await version(destination),
       before: exists ? 'destination\n' : null, after: 'old\ntail\n',
     } })
@@ -167,7 +167,7 @@ describe('moveFile', () => {
     fs.internals.removeFile = async () => { throw Object.assign(new Error('injected'), { code }) }
     expect(await fs.moveFile(source, destination, {})).toEqual({
       destination: { operation: 'update', version: await version(destination), before: 'previous', after: 'old\n' },
-      sourceDeleted: false,
+      sourceBefore: 'old\n', sourceDeleted: false,
       sourceFailure: { code: code === 'EACCES' ? 'FS_PERMISSION_DENIED' : 'FS_IO_ERROR', message: `cannot delete "${source.displayPath}": injected` },
     })
     expect(await bytes('a')).toBe('old\n')

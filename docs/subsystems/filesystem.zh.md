@@ -215,10 +215,10 @@ interface FsMoveSourceFailure {
 ```
 
 ```ts type-equiv
-/** Resolved move outcome: the destination is written, while source removal may have failed. */
+/** Published destination and removal status; sourceBefore is the LF source text captured under the move lock. */
 type FsMoveOutcome =
-  | { destination: FsWriteOutcome; sourceDeleted: true }
-  | { destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
+  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: true }
+  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
 ```
 
 `writeText` 和 `editText` 的版本守卫都是可选的：省略守卫时执行无条件的裸提供方变更，提供守卫时则执行相应的条件检查。`writeText` 的守卫是 `FsWriteIntent`：`createIfAbsent` 在目标缺失时创建，目标已存在时以 `FS_NOT_OBSERVED` 拒绝；即使目标在提供方初始探测后才出现，也必须拒绝，因为发布操作本身不得替换。`replaceIfVersion` 仅在目标存在且版本匹配时替换，否则报 `FS_STALE_VERSION`。省略 `expected` 则无条件创建或覆盖。联合类型本身只包含两种有守卫的意图；「无守卫」通过省略表达，因此 write 和 edit 都使用同一个可选的 `expected` 字段。
@@ -610,7 +610,7 @@ abstract deleteFile( target: FsTarget, expected?: { version: FsVersion }, signal
  * @param signal - checked before destination staging; once staging starts, cancellation
  *   does not interrupt the local commit. Remote cancellation can leave the outcome unknown.
  * @param sandboxPolicy - confinement for both paths; omit to use the provider default.
- * @returns destination outcome and source-removal status; failures before publication reject.
+ * @returns locked LF sourceBefore, destination outcome, and source-removal status; failures before publication reject.
  */
 abstract moveFile( source: FsTarget, destination: FsTarget, options: { hunks?: readonly PatchHunk[] expectedSource?: { version: FsVersion } expectedDestination?: FsWriteIntent }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsMoveOutcome>
 ```

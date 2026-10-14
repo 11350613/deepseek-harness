@@ -215,10 +215,10 @@ interface FsMoveSourceFailure {
 ```
 
 ```ts type-equiv
-/** Resolved move outcome: the destination is written, while source removal may have failed. */
+/** Published destination and removal status; sourceBefore is the LF source text captured under the move lock. */
 type FsMoveOutcome =
-  | { destination: FsWriteOutcome; sourceDeleted: true }
-  | { destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
+  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: true }
+  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
 ```
 
 Both `writeText` and `editText` take their version guard OPTIONALLY: omit it for an unconditional (bare-provider) mutation, supply it to guard. `writeText`'s guard is an `FsWriteIntent` — `createIfAbsent` creates a missing target and rejects an existing one with `FS_NOT_OBSERVED`, including a target that appears after the provider's initial probe because publication itself must be no-replace; `replaceIfVersion` replaces only when the target exists at the observed version, else `FS_STALE_VERSION`. Omitting `expected` unconditionally creates-or-overwrites. The union itself carries only the two guarded intents; "no guard" is expressed by omission, so write and edit both use the same optional `expected` field.
@@ -610,7 +610,7 @@ abstract deleteFile( target: FsTarget, expected?: { version: FsVersion }, signal
  * @param signal - checked before destination staging; once staging starts, cancellation
  *   does not interrupt the local commit. Remote cancellation can leave the outcome unknown.
  * @param sandboxPolicy - confinement for both paths; omit to use the provider default.
- * @returns destination outcome and source-removal status; failures before publication reject.
+ * @returns locked LF sourceBefore, destination outcome, and source-removal status; failures before publication reject.
  */
 abstract moveFile( source: FsTarget, destination: FsTarget, options: { hunks?: readonly PatchHunk[] expectedSource?: { version: FsVersion } expectedDestination?: FsWriteIntent }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsMoveOutcome>
 ```

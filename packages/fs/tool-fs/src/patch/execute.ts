@@ -82,9 +82,6 @@ export async function commitPatch(
           const expectedSource = await sourceIntent(ctx, exec, target, 'edit')
           failurePath = operation.destination.displayPath
           const expectedDestination = await destinationIntent(ctx, exec, operation.destination)
-          failurePath = target.displayPath
-          const sourceBefore = (await ctx.fs.readText(target, exec.signal)).replace(/\r\n/g, '\n')
-          failurePath = operation.destination.displayPath
           started = true
           const result = await ctx.fs.moveFile(target, operation.destination, {
             hunks: operation.hunks,
@@ -95,7 +92,7 @@ export async function commitPatch(
           ctx.emit('fs/observed', operation.destination, { kind: 'present', version: result.destination.version }, exec)
           if (result.sourceDeleted) {
             ctx.emit('fs/observed', target, { kind: 'absent' }, exec)
-            outcome = { status: 'completed', operation: record, changes: [...changes, { path: target.displayPath, before: sourceBefore, after: null }] }
+            outcome = { status: 'completed', operation: record, changes: [...changes, { path: target.displayPath, before: result.sourceBefore, after: null }] }
           } else {
             const error = new FsError(result.sourceFailure.message, result.sourceFailure.code)
             outcome = { status: 'failed', operation: record, failure: patchFailure(sandbox, policy, error, target.displayPath), changes }

@@ -1151,7 +1151,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'abstract moveFile( source: FsTarget, destination: FsTarget, options: { hunks?: readonly PatchHunk[] expectedSource?: { version: FsVersion } expectedDestination?: FsWriteIntent }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsMoveOutcome>',
         description: 'Publish source text at a destination, optionally patching it, then remove the source. Both paths remain locked in canonical order. FS_SAME_TARGET rejects identical keys; source guards match patchText, destination guards match writeText. No cross-path transaction is promised: destination publication with the source retained is a final outcome. Obtain source/destination guards through fs/edit-intent and fs/write-intent. On resolution, record destination present(destination.version); record source absent only when sourceDeleted is true. Providers do not emit these observations. Resolution follows symlinks: callers rejecting symlink sources must lstat before resolve.',
         parameters: [{ name: 'source', description: 'resolved regular UTF-8 source; its line-ending style and mode are preserved.' }, { name: 'destination', description: 'resolved destination in the same provider, distinct from source.' }, { name: 'options', description: 'optional hunks and source/destination guards; omitted fields mean no text patch and unconditional source/destination mutations respectively.' }, { name: 'signal', description: 'checked before destination staging; once staging starts, cancellation does not interrupt the local commit. Remote cancellation can leave the outcome unknown.' }, { name: 'sandboxPolicy', description: 'confinement for both paths; omit to use the provider default.' }],
-        returns: 'destination outcome and source-removal status; failures before publication reject.',
+        returns: 'locked LF sourceBefore, destination outcome, and source-removal status; failures before publication reject.',
       },
     ],
   },
@@ -5243,7 +5243,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'FsMoveOutcome',
-    declaration: 'export type FsMoveOutcome = {\n    destination: FsWriteOutcome;\n    sourceDeleted: true;\n} | {\n    destination: FsWriteOutcome;\n    sourceDeleted: false;\n    sourceFailure: FsMoveSourceFailure;\n};',
+    declaration: 'export type FsMoveOutcome = {\n    sourceBefore: string;\n    destination: FsWriteOutcome;\n    sourceDeleted: true;\n} | {\n    sourceBefore: string;\n    destination: FsWriteOutcome;\n    sourceDeleted: false;\n    sourceFailure: FsMoveSourceFailure;\n};',
   },
   {
     name: 'FsMoveSourceFailure',
