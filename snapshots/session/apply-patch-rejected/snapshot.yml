@@ -1,0 +1,14 @@
+# Pending live recording: no DEEPSEEK_API_KEY was available. Do not author Session JSONL.
+version: 1
+scenario: apply-patch-rejected
+profile: headless
+composition: apply-patch
+recording: live
+header:
+  class: apply-patch
+platform: posix
+workspace:
+  final: true
+input:
+  task: >-
+    First attempt apply_patch to change old to new in src/unread.txt without reading it. After the refusal, read the file and retry the same patch. Use no other mutation tool.
