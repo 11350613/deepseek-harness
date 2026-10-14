@@ -85,7 +85,7 @@ This section explains the design decisions behind the tool suite and points at t
 
 ### Design concept
 
-The tools are the executor; policy is an event gate. The tools inject no policy service and inspect no cache — each mutation asks the single intent slot for its guard through `ctx.waterfall`, and each operation emits `fs/observed` only after it succeeded. Reads do exactly one provider `stat` (type and size routing plus the observed version); mutations do none, because the guard comes from the intent slot and the provider re-checks under its lock.
+The tools are the executor; policy is an event gate. The tools inject no policy service and inspect no cache — each mutation asks the single intent slot for its guard through `ctx.waterfall`, and each operation emits `fs/observed` only after it succeeded. Reads do exactly one provider `stat` (type and size routing plus the observed version); `write` and `edit` do none, because the guard comes from the intent slot and the provider re-checks under its lock.
 
 ### Source map
 
@@ -96,6 +96,10 @@ The tools are the executor; policy is an event gate. The tools inject no policy 
 | [`src/read-image.ts`](src/read-image.ts) | `read_image` executor: route and media-type gates, bounded bytes, attachment save |
 | [`src/write.ts`](src/write.ts) | `write` executor: intent waterfall, atomic write, observation |
 | [`src/edit.ts`](src/edit.ts) | `edit` executor: intent waterfall, literal edit, observation |
+| [`src/patch/index.ts`](src/patch/index.ts), [`types.ts`](src/patch/types.ts) | Internal `executePatch` entry and serializable per-operation reports; not exported from the package entry |
+| [`src/patch/plan.ts`](src/patch/plan.ts) | Parse and resolve Session-relative paths; preserve ordered operations sharing a canonical target |
+| [`src/patch/preflight.ts`](src/patch/preflight.ts) | Simulate preceding successes and collect observation, sandbox, type, and hunk failures before any write |
+| [`src/patch/execute.ts`](src/patch/execute.ts) | Reacquire guards, commit sequentially, record actual effects, and classify uncertain failures |
 | [`src/read-render.ts`](src/read-render.ts) | Cordis-free windowing and envelope formatting |
 | [`src/sandbox.ts`](src/sandbox.ts) | Escalation API shared by `write`/`edit`: policy resolution and denial-marker mapping |
 | [`src/error.ts`](src/error.ts) | Stable model-facing diagnostics for guarded-mutation failures |
@@ -104,9 +108,15 @@ The tools are the executor; policy is an event gate. The tools inject no policy 
 
 All four tools share one flow shape: resolve the path with the calling session's cwd, run the applicable gate, perform exactly one provider operation, and emit `fs/observed` only after success. `read` and `read_image` pay one `stat` for type and size routing; `write` and `edit` pay none because their guard comes from the intent slot, and provider failures surface as typed `FsError` results. The per-tool executors live in `src/read.ts`, `src/read-image.ts`, `src/write.ts`, and `src/edit.ts`.
 
+The internal patch executor accepts a raw patch and an already resolved sandbox policy. It builds an ordered plan, preflights all operations against simulated state, then commits through `writeText`, `patchText`, `deleteFile`, or one `moveFile` call. A failed preflight operation has no simulated effect; any preflight failure prevents every write. Reports retain one entry per operation with `completed`, `failed`, `unknown`, or `skipped` status and known LF text changes. Syntax failures precede the plan. Resolution failures retain the raw patch spelling only for unresolved paths; successful resolutions use provider display paths. Programming errors reject the call. The executor is not registered as a tool.
+
 ### Observation and concurrency
 
 `fs/observed` fires after the operation succeeded via a plain `ctx.emit`; a listener is contractually a synchronous, side-effect-only recorder, so async or fallible observation does not belong on this event. `read` opts into concurrent scheduling because its only mutation is the synchronous version recorder; recorder races fail closed when a later `write` or `edit` re-checks the version under its target lock, and both mutation tools remain exclusive.
+
+Patch preflight reads never emit `fs/observed`. The first operation on a target dispatches its intent; later preflight operations use the expected state after preceding successes. Each commit dispatches its intents again to obtain current observation guards. Add/update records present, delete records absent, and move records its destination plus source absence only after successful removal. A partial move is failed with a destination-only change and preserves the source observation.
+
+After a mutation rejects with `FS_IO_ERROR` or `FS_ABORTED`, the executor compares each affected target’s existence and version with its metadata before the call, using a fresh `stat` without the cancelled signal. Unchanged targets mean a known failure; a changed target or failed verification means `unknown` and records no fabricated observation or change. `affectedPaths` contains only known effects. Execution stops at the first failed or unknown commit, or before an operation whose signal is aborted.
 
 </details>
 
@@ -238,6 +248,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 These limits define when the tool suite is a poor fit or needs special operational care. They are current package constraints, not a general filesystem comparison or a task backlog.
 
+- **Patch commits do not roll back** — earlier successes and a published move destination remain on disk after later failure. Sandbox preflight is best effort; providers enforce permissions and version guards again. An `unknown` result requires re-reading the affected files before retrying.
 - **No model-facing directory listing ships** — `ctx.fs.listDir` serves provider code such as skill discovery, while the sibling `dsh-tool-fs-search` package supplies ripgrep-backed `glob` and `grep` rather than extending the filesystem seam.
 - **`read` handles UTF-8 text files only** — images use the separate `read_image` tool; PDF, audio, and video remain deferred. A directory target is `FS_NOT_REGULAR_FILE`.
 - **Extension-declared media type** — an extension selects the declared type and the attachment store's magic-byte validation stays authoritative; a correctly formatted image under a wrong extension is refused with the rename remedy rather than sniffed. Only a path with no extension is identified from its file signature.

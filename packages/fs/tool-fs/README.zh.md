@@ -85,7 +85,7 @@ kind: "package-reference"
 
 ### 设计理念
 
-工具就是执行器；策略是事件门禁。工具不注入策略服务，也不检查任何缓存——每次变更都通过 `ctx.waterfall` 向单一意图槽位请求防护，每个操作只在成功后发出 `fs/observed`。读取恰好执行一次提供方 `stat`（类型与大小路由加观察到的版本）；变更一次也不执行，因为防护来自意图槽位，提供方在锁内重新检查。
+工具就是执行器；策略是事件门禁。工具不注入策略服务，也不检查任何缓存——每次变更都通过 `ctx.waterfall` 向单一意图槽位请求防护，每个操作只在成功后发出 `fs/observed`。读取恰好执行一次提供方 `stat`（类型与大小路由加观察到的版本）；`write` 与 `edit` 一次也不执行，因为防护来自意图槽位，提供方在锁内重新检查。
 
 ### 源码地图
 
@@ -96,6 +96,10 @@ kind: "package-reference"
 | [`src/read-image.ts`](src/read-image.ts) | `read_image` 执行器：路由与媒体类型门禁、有界字节、附件保存 |
 | [`src/write.ts`](src/write.ts) | `write` 执行器：意图 waterfall、原子写入、观察 |
 | [`src/edit.ts`](src/edit.ts) | `edit` 执行器：意图 waterfall、字面量编辑、观察 |
+| [`src/patch/index.ts`](src/patch/index.ts)、[`types.ts`](src/patch/types.ts) | 内部 `executePatch` 入口与可序列化的逐操作报告；不从包入口导出 |
+| [`src/patch/plan.ts`](src/patch/plan.ts) | 解析补丁并按 Session 工作目录解析路径；保留共享规范化目标的有序操作 |
+| [`src/patch/preflight.ts`](src/patch/preflight.ts) | 模拟前序成功操作，在任何写入前收集观察、沙箱、类型与 hunk 失败 |
+| [`src/patch/execute.ts`](src/patch/execute.ts) | 重新获取防护、顺序提交、记录实际效果并判断不确定失败 |
 | [`src/read-render.ts`](src/read-render.ts) | 不依赖 Cordis 的窗口构建与信封格式化 |
 | [`src/sandbox.ts`](src/sandbox.ts) | `write`/`edit` 共享的升权 API：策略解析与拒绝标记映射 |
 | [`src/error.ts`](src/error.ts) | 防护变更失败的稳定模型侧诊断 |
@@ -104,9 +108,15 @@ kind: "package-reference"
 
 四个工具共享同一种流程形态：用调用会话的 cwd 解析路径、运行适用的门禁、恰好执行一次提供方操作，并且只在成功后发出 `fs/observed`。`read` 与 `read_image` 为类型与大小路由付出一次 `stat`；`write` 与 `edit` 不执行 stat，因为防护来自意图槽位，提供方失败以类型化 `FsError` 结果呈现。各工具执行器位于 `src/read.ts`、`src/read-image.ts`、`src/write.ts` 与 `src/edit.ts`。
 
+内部补丁执行器接收原始补丁和已解析的沙箱策略。它建立有序计划，针对模拟状态预检全部操作，再通过 `writeText`、`patchText`、`deleteFile` 或一次 `moveFile` 调用提交。预检失败的操作不产生模拟效果；任何预检失败都会阻止全部写入。报告为每个操作保留 `completed`、`failed`、`unknown` 或 `skipped` 状态及已知的 LF 文本变化。语法失败发生在计划建立前。路径解析失败时，仅未解析的路径保留补丁原始写法；成功解析的路径使用提供方显示路径。编程错误使调用拒绝。执行器尚未注册为工具。
+
 ### 观察与并发
 
 `fs/observed` 在操作成功之后通过普通 `ctx.emit` 发出；监听器的约定是同步且只有副作用的记录器，因此异步或可能失败的观察不属于该事件。`read` 允许并发调度，因为它唯一改变状态的操作是同步记录版本；稍后的 `write` 或 `edit` 会在目标锁内重新检查版本，因此记录器竞态会安全地失败，两个变更工具仍保持互斥。
+
+补丁预检读取从不发出 `fs/observed`。对目标的首次操作分发意图；后续预检操作使用前序成功操作后的预期状态。每次提交重新分发意图以取得当前观察防护。新增/更新记录存在，删除记录缺失，移动记录目标存在，且仅在源删除成功后记录源缺失。部分移动报告失败且只包含目标变化，保留源观察。
+
+变更以 `FS_IO_ERROR` 或 `FS_ABORTED` 拒绝后，执行器使用不携带已取消信号的新 `stat`，将每个受影响目标的存在性与版本和调用前元数据比较。全部未变表示已知失败；任何目标已变或验证失败均为 `unknown`，不伪造观察或变化记录。`affectedPaths` 仅包含已知效果。执行在首个失败或未知提交后停止，或在信号已取消的操作开始前停止。
 
 </details>
 
@@ -238,6 +248,7 @@ Read a file before editing it (the default fs-observation-policy requires it), u
 
 这些限制说明工具套件何时不合适，或何时需要特别的运维注意。它们是当前包约束，不是通用文件系统对比或任务积压。
 
+- **补丁提交不回滚**——后续失败后，先前成功操作和已发布的移动目标仍保留在磁盘上。沙箱预检尽力提前检查；提供方仍会再次执行权限与版本防护。`unknown` 结果要求重读受影响文件后再重试。
 - **未交付面向模型的目录列表工具**：`ctx.fs.listDir` 服务于 skill（技能）发现等提供方代码，同级 `dsh-tool-fs-search` 包则提供基于 ripgrep 的 `glob` 与 `grep`，而不是扩展文件系统 seam。
 - **`read` 只处理 UTF-8 文本文件**：图像使用独立的 `read_image` 工具；PDF、音频和视频仍延期处理。目录目标为 `FS_NOT_REGULAR_FILE`。
 - **媒体类型按扩展名声明**：扩展名选择声明类型，附件存储的魔数校验保持权威；扩展名错误但格式正确的图像会得到改名修复提示，而不是被嗅探接受。只有没有扩展名的路径按文件签名识别格式。
