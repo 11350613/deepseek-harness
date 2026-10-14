@@ -187,6 +187,8 @@ describe('parsePatch', () => {
     [patch('*** End Patch', '+later'), 3, 'after'],
     [patch('*** Environment ID: env-1'), 2, 'unsupported'],
     [patch('*** Environment ID:'), 2, 'unsupported'],
+    [patch('*** Add File: a', '*** Environment ID: env-1'), 3, 'header'],
+    [patch('*** Update File: a', '+a', '*** Environment ID: env-1'), 4, 'context'],
   ])('rejects malformed or unsupported input %# at its original line', (input, lineNumber, reason) => {
     let caught: unknown
     try {

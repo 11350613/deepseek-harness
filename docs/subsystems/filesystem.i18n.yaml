@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/filesystem.md
 /filesystem:
-  en: 138588c5fbb57f50
-  zh: 740cc27f36d79cd6
+  en: 5b0250c5db332af5
+  zh: c96c20d3767c15f8
+/filesystem/target-identity-and-metadata-provider-contract:
+  en: 488f0fc292d79388
+  zh: 498a0b882a2eaccd
 /filesystem/patch-syntax-records:
   en: 0d73e842eec35dd2
   zh: f5bea43be1873440
-/filesystem/target-identity-and-metadata-provider-contract:
-  en: 345def8a8e6c58e0
-  zh: 01d6e2f0f22daf9d
 /filesystem/write-and-edit-guards-provider-contract:
   en: 067137c8b8181c98
   zh: 0a9c8282789d147f

@@ -2,59 +2,11 @@
 
 [English](filesystem.md) | 中文
 
-可选的文件系统能力由四个部分组成：[dsh-fs](../../packages/fs/fs) 拥有 `ctx.fs` 以及带可选守卫的原子文本操作；[dsh-fs-local](../../packages/fs/fs-local) 实现本地磁盘后端；[dsh-fs-observation-policy](../../packages/fs/fs-observation-policy) 记录观测到的存在或缺失状态，并通过事件（而非服务）添加新鲜度规则；[dsh-tool-fs](../../packages/fs/tool-fs) 直接执行面向模型的 read/write/edit 调用并渲染窗口。它位于 agent loop（智能体循环）主干之外；替换后端不会改变策略或工具 schema。
+可选的文件系统能力由以下角色组成：[dsh-fs](../../packages/fs/fs) 拥有 `ctx.fs` 以及带可选守卫的原子文本操作；[dsh-fs-local](../../packages/fs/fs-local) 实现本地磁盘后端；[dsh-fs-observation-policy](../../packages/fs/fs-observation-policy) 记录观测到的存在或缺失状态，并通过事件（而非服务）添加新鲜度规则；[dsh-tool-fs](../../packages/fs/tool-fs) 直接执行面向模型的 read/write/edit 调用并渲染窗口。它位于 agent loop（智能体循环）主干之外；替换后端不会改变策略或工具 schema。纯库 [dsh-fs-patch](../../packages/fs/fs-patch/README.zh.md) 提供补丁解析与受影响路径收集。
 
 `dsh-fs-observation-policy` 是可选插件。没有该插件时，`FileSystem` 服务定义、一个提供方和 `dsh-tool-fs` 消费方组成完整且不受约束的文件系统 seam：`write` 无条件创建或覆盖，`edit` 无条件替换字面文本。策略插件通过裁决 `fs/*` waterfall（瀑布式事件）来改变这些操作。移除该插件不会破坏工具，因为工具调用 `ctx.fs` 并分发事件，而不调用策略方法。加载了 `dsh-tool-fs` 的部署也应加载 `dsh-fs-observation-policy`，使默认行为为「先读后写/编辑」。
 
 提供方源码：[`packages/fs/fs/src/types.ts`](../../packages/fs/fs/src/types.ts) 与 [`packages/fs/fs/src/index.ts`](../../packages/fs/fs/src/index.ts)。策略源码：[`packages/fs/fs-observation-policy/src/types.ts`](../../packages/fs/fs-observation-policy/src/types.ts)。读取渲染源码：[`packages/fs/tool-fs/src/read-render.ts`](../../packages/fs/tool-fs/src/read-render.ts)。
-
-<a id="patch-syntax-records"></a>
-## 补丁语法记录
-
-[dsh-fs-patch](../../packages/fs/fs-patch/README.zh.md) 将完整补丁文本解析为可序列化的操作。路径仍是未解析的字符串；语法接受既不授予权限，也不检查文件版本。`collectMutationPaths` 返回去重的源路径和目标路径原字符串，供修改前采集文件的调用方使用。固定的语法参照与排除项由包 README 维护。
-
-```ts type-equiv
-/** One contiguous update, with zero-based indices identifying explicit context lines. */
-interface PatchHunk {
-  /** One-based input line containing the marker or first implicit hunk line. */
-  lineNumber: number
-  /** Text following `@@ `, used as a search anchor by the text matcher. */
-  context?: string
-  /** Context and removed lines, without patch prefixes or line endings. */
-  oldLines: string[]
-  /** Context and added lines, without patch prefixes or line endings. */
-  newLines: string[]
-  /** Corresponding old/new offsets for context; identical remove/add pairs are excluded. */
-  contextLineIndices: [number, number][]
-  /** Whether `*** End of File` follows this hunk. */
-  isEndOfFile: boolean
-}
-
-```
-
-```ts type-equiv
-/** Ordered file operation; a move is an update with a destination path. */
-type PatchOperation =
-  | {
-    kind: 'add'
-    path: string
-    lineNumber: number
-    /** Added lines joined with LF, including a final LF for every added line. */
-    content: string
-  }
-  | {
-    kind: 'delete'
-    path: string
-    lineNumber: number
-  }
-  | {
-    kind: 'update'
-    path: string
-    lineNumber: number
-    moveTo?: string
-    hunks: PatchHunk[]
-  }
-```
 
 ## 目标标识与元数据（提供方约定）
 
@@ -157,6 +109,54 @@ interface FsDirEntry {
   /** Byte size of a regular file, when the backend can report it. */
   size?: number
 }
+```
+
+<a id="patch-syntax-records"></a>
+## 补丁语法记录
+
+[dsh-fs-patch](../../packages/fs/fs-patch/README.zh.md) 将完整补丁文本解析为可序列化的操作。路径仍是未解析的字符串；语法接受既不授予权限，也不检查文件版本。`collectMutationPaths` 返回去重的源路径和目标路径原字符串，供修改前采集文件的调用方使用。固定的语法参照与排除项由包 README 维护。
+
+```ts type-equiv
+/** One contiguous update, with zero-based indices identifying explicit context lines. */
+interface PatchHunk {
+  /** One-based input line containing the marker or first implicit hunk line. */
+  lineNumber: number
+  /** Text following `@@ `, used as a search anchor by the text matcher. */
+  context?: string
+  /** Context and removed lines, without patch prefixes or line endings. */
+  oldLines: string[]
+  /** Context and added lines, without patch prefixes or line endings. */
+  newLines: string[]
+  /** Corresponding old/new offsets for context; identical remove/add pairs are excluded. */
+  contextLineIndices: [number, number][]
+  /** Whether `*** End of File` follows this hunk. */
+  isEndOfFile: boolean
+}
+
+```
+
+```ts type-equiv
+/** Ordered file operation; a move is an update with a destination path. */
+type PatchOperation =
+  | {
+    kind: 'add'
+    path: string
+    lineNumber: number
+    /** Added lines joined with LF, including a final LF for every added line. */
+    content: string
+  }
+  | {
+    kind: 'delete'
+    path: string
+    lineNumber: number
+  }
+  | {
+    kind: 'update'
+    path: string
+    lineNumber: number
+    moveTo?: string
+    hunks: PatchHunk[]
+  }
 ```
 
 ## 写入与编辑守卫（提供方约定）

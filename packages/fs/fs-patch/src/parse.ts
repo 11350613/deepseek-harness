@@ -10,6 +10,9 @@ const BEGIN = '*** Begin Patch'
 const END = '*** End Patch'
 const EOF = '*** End of File'
 const MOVE = '*** Move to: '
+const ADD = '*** Add File: '
+const DELETE = '*** Delete File: '
+const UPDATE = '*** Update File: '
 
 /** Rust uses Unicode White_Space (all in the BMP); JavaScript trim also removes BOM. */
 const WHITE_SPACE = /\p{White_Space}/u
@@ -150,16 +153,16 @@ export function parsePatch(patch: string): PatchOperation[] {
     if (header === END) {
       ensureUpdate(operation, line.number)
       ended = true
-    } else if (header.startsWith('*** Add File: ')) {
+    } else if (header.startsWith(ADD)) {
       ensureUpdate(operation, line.number)
-      operations.push({ kind: 'add', path: header.slice(14), lineNumber: line.number, content: '' })
-    } else if (header.startsWith('*** Delete File: ')) {
+      operations.push({ kind: 'add', path: header.slice(ADD.length), lineNumber: line.number, content: '' })
+    } else if (header.startsWith(DELETE)) {
       ensureUpdate(operation, line.number)
-      operations.push({ kind: 'delete', path: header.slice(17), lineNumber: line.number })
-    } else if (header.startsWith('*** Update File: ')) {
+      operations.push({ kind: 'delete', path: header.slice(DELETE.length), lineNumber: line.number })
+    } else if (header.startsWith(UPDATE)) {
       ensureUpdate(operation, line.number)
-      operations.push({ kind: 'update', path: header.slice(17), lineNumber: line.number, hunks: [] })
-    } else if (header.startsWith('*** Environment ID:')) {
+      operations.push({ kind: 'update', path: header.slice(UPDATE.length), lineNumber: line.number, hunks: [] })
+    } else if (operations.length === 0 && header.startsWith('*** Environment ID:')) {
       throw new PatchParseError(line.number, 'Environment ID headers are unsupported; the caller selects the filesystem provider')
     } else if (operation?.kind === 'add' && line.text.startsWith('+')) {
       operation.content += `${line.text.slice(1)}\n`

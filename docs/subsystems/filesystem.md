@@ -2,59 +2,11 @@
 
 English | [中文](filesystem.zh.md)
 
-The optional filesystem capability has four parts: [dsh-fs](../../packages/fs/fs) owns `ctx.fs` and atomic text operations with optional guards, [dsh-fs-local](../../packages/fs/fs-local) implements local disk, [dsh-fs-observation-policy](../../packages/fs/fs-observation-policy) records observed presence or absence and adds freshness rules through events rather than a service, and [dsh-tool-fs](../../packages/fs/tool-fs) directly executes model-facing read/write/edit calls and renders windows. It is outside the agent-loop spine; alternate backends do not change policy or tool schemas.
+The optional filesystem capability composes these roles: [dsh-fs](../../packages/fs/fs) owns `ctx.fs` and atomic text operations with optional guards, [dsh-fs-local](../../packages/fs/fs-local) implements local disk, [dsh-fs-observation-policy](../../packages/fs/fs-observation-policy) records observed presence or absence and adds freshness rules through events rather than a service, and [dsh-tool-fs](../../packages/fs/tool-fs) directly executes model-facing read/write/edit calls and renders windows. It is outside the agent-loop spine; alternate backends do not change policy or tool schemas. The pure [dsh-fs-patch](../../packages/fs/fs-patch/README.md) library supplies patch parsing and affected-path collection.
 
 `dsh-fs-observation-policy` is optional. Without it, the `FileSystem` Service Definition, a provider, and the `dsh-tool-fs` Consumer form the complete, unconstrained filesystem seam: `write` unconditionally creates or overwrites, and `edit` unconditionally replaces literal text. The policy plugin changes these operations by deciding the `fs/*` waterfalls. Removing it does not break the tool because the tool calls `ctx.fs` and dispatches events; it does not call policy methods. A deployment that loads `dsh-tool-fs` is expected to also load `dsh-fs-observation-policy` so the default behavior is read-before-write/edit.
 
 Provider source: [`packages/fs/fs/src/types.ts`](../../packages/fs/fs/src/types.ts) and [`packages/fs/fs/src/index.ts`](../../packages/fs/fs/src/index.ts). Policy source: [`packages/fs/fs-observation-policy/src/types.ts`](../../packages/fs/fs-observation-policy/src/types.ts). Read-rendering source: [`packages/fs/tool-fs/src/read-render.ts`](../../packages/fs/tool-fs/src/read-render.ts).
-
-<a id="patch-syntax-records"></a>
-## Patch syntax records
-
-[dsh-fs-patch](../../packages/fs/fs-patch/README.md) parses complete patch text into serializable operations. Paths remain unresolved strings; syntax acceptance neither grants permission nor checks file versions. `collectMutationPaths` returns unique source and destination spellings for callers that capture files before mutation. The package README owns the pinned syntax reference and exclusions.
-
-```ts type-equiv
-/** One contiguous update, with zero-based indices identifying explicit context lines. */
-interface PatchHunk {
-  /** One-based input line containing the marker or first implicit hunk line. */
-  lineNumber: number
-  /** Text following `@@ `, used as a search anchor by the text matcher. */
-  context?: string
-  /** Context and removed lines, without patch prefixes or line endings. */
-  oldLines: string[]
-  /** Context and added lines, without patch prefixes or line endings. */
-  newLines: string[]
-  /** Corresponding old/new offsets for context; identical remove/add pairs are excluded. */
-  contextLineIndices: [number, number][]
-  /** Whether `*** End of File` follows this hunk. */
-  isEndOfFile: boolean
-}
-
-```
-
-```ts type-equiv
-/** Ordered file operation; a move is an update with a destination path. */
-type PatchOperation =
-  | {
-    kind: 'add'
-    path: string
-    lineNumber: number
-    /** Added lines joined with LF, including a final LF for every added line. */
-    content: string
-  }
-  | {
-    kind: 'delete'
-    path: string
-    lineNumber: number
-  }
-  | {
-    kind: 'update'
-    path: string
-    lineNumber: number
-    moveTo?: string
-    hunks: PatchHunk[]
-  }
-```
 
 ## Target identity and metadata (provider contract)
 
@@ -157,6 +109,54 @@ interface FsDirEntry {
   /** Byte size of a regular file, when the backend can report it. */
   size?: number
 }
+```
+
+<a id="patch-syntax-records"></a>
+## Patch syntax records
+
+[dsh-fs-patch](../../packages/fs/fs-patch/README.md) parses complete patch text into serializable operations. Paths remain unresolved strings; syntax acceptance neither grants permission nor checks file versions. `collectMutationPaths` returns unique source and destination spellings for callers that capture files before mutation. The package README owns the pinned syntax reference and exclusions.
+
+```ts type-equiv
+/** One contiguous update, with zero-based indices identifying explicit context lines. */
+interface PatchHunk {
+  /** One-based input line containing the marker or first implicit hunk line. */
+  lineNumber: number
+  /** Text following `@@ `, used as a search anchor by the text matcher. */
+  context?: string
+  /** Context and removed lines, without patch prefixes or line endings. */
+  oldLines: string[]
+  /** Context and added lines, without patch prefixes or line endings. */
+  newLines: string[]
+  /** Corresponding old/new offsets for context; identical remove/add pairs are excluded. */
+  contextLineIndices: [number, number][]
+  /** Whether `*** End of File` follows this hunk. */
+  isEndOfFile: boolean
+}
+
+```
+
+```ts type-equiv
+/** Ordered file operation; a move is an update with a destination path. */
+type PatchOperation =
+  | {
+    kind: 'add'
+    path: string
+    lineNumber: number
+    /** Added lines joined with LF, including a final LF for every added line. */
+    content: string
+  }
+  | {
+    kind: 'delete'
+    path: string
+    lineNumber: number
+  }
+  | {
+    kind: 'update'
+    path: string
+    lineNumber: number
+    moveTo?: string
+    hunks: PatchHunk[]
+  }
 ```
 
 ## Write and edit guards (provider contract)
