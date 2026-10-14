@@ -349,6 +349,17 @@ interface FileReadOutcome {
 
 已观测状态是 `dsh-fs-observation-policy` 插件内部持有的 `WeakMap<owner, Map<targetKey, FsObservation>>`。映射中没有条目表示未见；`{ kind: 'absent' }` 表示 `read` 的元数据未命中，或 `str_replace_editor` 的 `view`、`str_replace`、`insert` 命令发生元数据未命中，从而确认缺失；`{ kind: 'present', version }` 表示 read、write 或 edit 观测到该版本。写入决策把未见和缺失映射到 `createIfAbsent`，把存在映射到 `replaceIfVersion`；编辑/删除决策把未见映射到 `FS_NOT_OBSERVED`，把缺失映射到 `FS_NOT_FOUND`，把存在映射到其版本守卫。所有者从事件 actor 推导（通常是 `exec.agent.session`），被视为不透明且从不读取。dispose（资源释放）时丢弃全部数据（HMR（热模块替换）安全），策略不执行任何文件系统 I/O。
 
+## 补丁执行（消费方）
+
+内部 [tool-fs 补丁执行器](../../packages/fs/tool-fs/README.zh.md#understand-the-implementation) 在预检时分发纯意图决策、模拟前序成功操作，并在每次提交时重新取得防护。内部读取从不建立模型观察。提供方结果决定记录哪些实际效果；执行器细节与失败保证由包 README 维护。
+
+| 操作 | 首次使用目标的预检意图 | 提交意图 | 成功观察 |
+|---|---|---|---|
+| add | `fs/write-intent` | `fs/write-intent` | 目标 present(version) |
+| update | `fs/edit-intent` | `fs/edit-intent` | 目标 present(version) |
+| delete | `fs/delete-intent` | `fs/delete-intent` | 目标 absent |
+| move | 源 `fs/edit-intent`；目标 `fs/write-intent` | 重新分发同一组意图 | 目标 present(version)；仅在源删除成功时记录 absent |
+
 ## 错误分类体系（提供方约定）
 
 文件系统故障使用稳定的 `FsErrorCode` 字符串，由 `FsError`（`HarnessError`）携带。工具注册表在错误结果上保留 `{ name, code }`，使重试、权限和 UI 层可以按 code 分支而无需解析文本。

@@ -5235,7 +5235,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'FsErrorCode',
-    declaration: 'export type FsErrorCode = \'FS_NOT_FOUND\' | \'FS_NOT_DIRECTORY\' | \'FS_NOT_TEXT\' | \'FS_NOT_REGULAR_FILE\' | \'FS_TOO_LARGE\' | \'FS_PERMISSION_DENIED\' | \'FS_SANDBOX_DENIED\' | \'FS_IO_ERROR\' | \'FS_STALE_VERSION\' | \'FS_NOT_OBSERVED\' | \'FS_AMBIGUOUS_EDIT\' | \'FS_EDIT_NOT_FOUND\' | \'FS_ABORTED\' | \'FS_PATCH_MISMATCH\' | \'FS_SAME_TARGET\';',
+    declaration: 'export type FsErrorCode = typeof FS_ERROR_CODES[number];',
   },
   {
     name: 'FsInfo',

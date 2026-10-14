@@ -349,6 +349,17 @@ interface FileReadOutcome {
 
 Observed state is a `WeakMap<owner, Map<targetKey, FsObservation>>` held inside the `dsh-fs-observation-policy` plugin. Missing map entry means unseen; `{ kind: 'absent' }` means a `read` or `str_replace_editor` `view`, `str_replace`, or `insert` metadata miss confirmed absence; `{ kind: 'present', version }` means a read, write, or edit observed that version. The write decision maps unseen and absent to `createIfAbsent`, while present maps to `replaceIfVersion`; the edit/delete decision maps unseen to `FS_NOT_OBSERVED`, absent to `FS_NOT_FOUND`, and present to its version guard. The owner is derived from the event actor (normally `exec.agent.session`), treated as opaque and never read. Disposal drops everything (HMR safety), and the policy performs no filesystem I/O.
 
+## Patch execution (consumer)
+
+The internal [tool-fs patch executor](../../packages/fs/tool-fs/README.md#understand-the-implementation) dispatches pure intent decisions in preflight, simulates preceding successful operations, and reacquires guards for each commit. Internal reads never establish model observation. Provider results determine which effects are recorded; executor details and failure guarantees belong to the package README.
+
+| Operation | Preflight intent on first target use | Commit intent | Successful observation |
+|---|---|---|---|
+| add | `fs/write-intent` | `fs/write-intent` | target present(version) |
+| update | `fs/edit-intent` | `fs/edit-intent` | target present(version) |
+| delete | `fs/delete-intent` | `fs/delete-intent` | target absent |
+| move | source `fs/edit-intent`; destination `fs/write-intent` | same two intents, freshly dispatched | destination present(version); source absent only when removed |
+
 ## Error taxonomy (provider contract)
 
 Filesystem failures use stable `FsErrorCode` strings carried by `FsError` (`HarnessError`). The tool registry preserves `{ name, code }` on error results, so retry, permission, and UI layers can branch without parsing text.
