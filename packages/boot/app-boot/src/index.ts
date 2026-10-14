@@ -388,10 +388,13 @@ async function recompose(
     const prepared = prepareProfilePatches(ctx, patches, parentURL, binName)
     applying = true
     const retried = [...new Set([...running, ...withResolution ? [...ctx.loader.entries()].filter(importFailed) : []])]
+    const priorOptions = new Map(retried.map(row => [row, row.options]))
     try {
       await entry.update({ config: { ...includeConfig, patches: prepared } })
     } finally {
-      await resume(ctx, retried)
+      // Group replaces options when it attempts a row, including failed imports.
+      // Only untouched rows still need an explicit retry after the awaited update.
+      await resume(ctx, retried.filter(row => row.options === priorOptions.get(row)))
     }
     const results = await Promise.allSettled(previousFibers.map(({ fiber }) => fiber.await()))
     await ctx.loader.await()
@@ -1221,11 +1224,6 @@ export async function boot(
   try {
     ctx.baseUrl = pathToFileURL(dirname(absoluteConfigPath)).href + '/'
     ctx.provide('dshHomePath', dshHomePath)
-    // Fiber.update() discards the restart promise. Observe it before the
-    // waterfall returns; activation audits still report the failed fiber.
-    ctx.on('internal/update', (_config, _noSave, next: () => unknown) => {
-      void Promise.resolve(next()).catch((error: unknown) => { ctx.logger.error(error) })
-    }, { global: true, prepend: true })
     await ctx.plugin(Loader)
     await prepare?.(ctx)
     stage = 'plugin tree failed to load'

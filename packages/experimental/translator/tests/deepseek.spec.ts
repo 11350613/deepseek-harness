@@ -270,15 +270,16 @@ describe('native Flash translation', () => {
     const rejected = expect(pending).rejects.toMatchObject({ code: 'TRANSLATION_UNAVAILABLE' })
     await entered.promise
     const owner = [...b.ctx.loader.entries()].find(entry => entry.options.id === 'official-custom-id')!
+    let withdrawal: Promise<void> | undefined
     if (change === 'withdrawn') {
-      await owner.fiber!.dispose()
-      await rejected
+      withdrawal = owner.fiber!.dispose()
     } else if (change === 'catalog') {
       const config = owner.fiber!.effectiveConfig as ReturnType<typeof OfficialConfig>
       config.models = OfficialConfig({ models: [{ id: 'deepseek-v4-flash' }] }).models
     } else b.setConfigured(false)
     release.resolve(undefined)
     await rejected
+    await withdrawal
     expect(b.requests).toEqual([])
     expect(b.session?.snapshotEvents()).toEqual([])
   })

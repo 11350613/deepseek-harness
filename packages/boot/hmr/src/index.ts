@@ -831,7 +831,7 @@ class Hmr extends Service {
       const owner = (fiber: Fiber): Entry | undefined => {
         for (let current = fiber; current.uid !== 0; current = current.parent.fiber) {
           const entry = current.entry
-          if (entry?.fiber === current && managed.has(entry) && affectedFibers.has(current)) return entry
+          if (entry?.fiber?.ctx.fiber === current && managed.has(entry) && affectedFibers.has(current)) return entry
         }
         return undefined
       }
