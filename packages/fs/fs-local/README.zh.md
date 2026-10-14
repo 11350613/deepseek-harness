@@ -54,7 +54,7 @@ kind: "package-reference"
 
 补丁与移动的文本在内存中规范化为 LF，写回时还原源文件的行尾风格。结果文本使用 LF。删除基线和被覆盖目标的基线遵循 `diffBasisMaxBytes`；不可用或过大的基线为 null。移动在暂存目标前检查取消，随后完成提交且不再检查取消。源删除失败返回已发布目标及 `sourceDeleted: false`，不会回滚或隐去该写入。
 
-读取、列出与变更操作的失败是携带稳定错误码的类型化 `FsError`——`FS_NOT_FOUND`、`FS_NOT_TEXT`（二进制内容）、`FS_STALE_VERSION`（自观察以来已变化）、`FS_EDIT_NOT_FOUND` 或 `FS_AMBIGUOUS_EDIT`（无唯一字面量匹配）等——因此调用方依据错误码分支，绝不解析消息文本。编辑遇到缺失目标时，无论是否提供版本防护，都报告 `FS_STALE_VERSION`。
+读取、列出与变更操作的失败是携带稳定错误码的类型化 `FsError`——`FS_NOT_FOUND`、`FS_NOT_TEXT`（二进制内容）、`FS_STALE_VERSION`（自观察以来已变化）、`FS_EDIT_NOT_FOUND` 或 `FS_AMBIGUOUS_EDIT`（无唯一字面量匹配）等——因此调用方依据错误码分支，绝不解析消息文本。编辑遇到缺失目标时，无论是否提供版本防护，都报告 `FS_STALE_VERSION`。 移动仅在源删除抛出类型化 `FsError` 时返回 `sourceFailure`；意外的编程错误使调用拒绝。
 
 Chokidar 通过 OS 事件观察单个文件或目录的直接子项，不使用轮询或递归监听。文件使用筛选到目标的父目录监听，因此就绪时也能接收起初缺失文件的创建事件。父目录保持存在时，文件监听覆盖原地写入、原子替换、删除和同路径重建。
 

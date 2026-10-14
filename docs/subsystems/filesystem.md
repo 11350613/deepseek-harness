@@ -355,28 +355,13 @@ Filesystem failures use stable `FsErrorCode` strings carried by `FsError` (`Harn
 
 `FS_PATCH_MISMATCH` means a hunk failed inside the provider commit; its message names the patch line and failed search stage. `FS_SAME_TARGET` means a move source and destination share the resolved identity. Delete intent follows edit intent: unseen is `FS_NOT_OBSERVED`, observed absence is `FS_NOT_FOUND`, and present state supplies a version. Provider-side missing patch/delete/move sources use `FS_STALE_VERSION` even without a guard.
 
+```ts
+import { FS_ERROR_CODES } from '@deepseek-ai/dsh-fs'
+```
+
 ```ts type-equiv
-/**
- * Stable, machine-routable codes for filesystem failures. Carried on
- * {@link FsError}; the tool registry exposes `{ name, code }` on `isError`
- * results so retry/permission/UI layers can branch without parsing messages.
- */
-type FsErrorCode =
-  | 'FS_NOT_FOUND'
-  | 'FS_NOT_DIRECTORY'
-  | 'FS_NOT_TEXT'
-  | 'FS_NOT_REGULAR_FILE'
-  | 'FS_TOO_LARGE'
-  | 'FS_PERMISSION_DENIED'
-  | 'FS_SANDBOX_DENIED'
-  | 'FS_IO_ERROR'
-  | 'FS_STALE_VERSION'
-  | 'FS_NOT_OBSERVED'
-  | 'FS_AMBIGUOUS_EDIT'
-  | 'FS_EDIT_NOT_FOUND'
-  | 'FS_ABORTED'
-  | 'FS_PATCH_MISMATCH'
-  | 'FS_SAME_TARGET'
+/** One machine-routable filesystem failure code from FS_ERROR_CODES. */
+type FsErrorCode = typeof FS_ERROR_CODES[number]
 ```
 
 `FS_NOT_DIRECTORY`, `FS_PERMISSION_DENIED`, and `FS_IO_ERROR` are used by directory listing to distinguish an existing non-directory target, a denied listing, and an unexpected backend I/O failure. `FS_SANDBOX_DENIED` is a POLICY refusal from a sandbox-enforcing backend (`dsh-fs-sandbox`) — the mode fence denied a mutation — distinct from `FS_PERMISSION_DENIED` (the host kernel refusing). `FS_NOT_OBSERVED` means the policy plugin has no prior-observation record for this owner (or a `createIfAbsent` hit an existing file). `FS_NOT_FOUND` also represents an edit rejected from confirmed absence. `FS_STALE_VERSION` means the backend version no longer matches the observed one (or the provider itself receives an edit for a missing target). Freshness authorization has no partial/full distinction, so there is no `FS_PARTIAL_OBSERVATION`.

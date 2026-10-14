@@ -338,9 +338,9 @@ export class LocalFileSystem extends FileSystem {
       try {
         await removeFile(source.targetKey, source.displayPath, this.internals)
       } catch (error) {
-        // removeFile translates every source-removal rejection into FsError.
-        const failure = error as FsError
-        return { destination: outcome, sourceDeleted: false, sourceFailure: { code: failure.code, message: failure.message } }
+        // removeFile maps I/O failures; unexpected defects must still reject.
+        if (!(error instanceof FsError)) throw error
+        return { destination: outcome, sourceDeleted: false, sourceFailure: { code: error.code, message: error.message } }
       }
       return { destination: outcome, sourceDeleted: true }
     })

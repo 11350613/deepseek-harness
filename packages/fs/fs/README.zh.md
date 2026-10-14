@@ -35,6 +35,8 @@ kind: "package-reference"
 
 通过 `ctx.fs` 可解析路径、读取文本或有界字节、列出直接子项并执行受防护变更。`patchText` 在版本检查的同一把锁内应用解析后的 hunk。`deleteFile` 删除普通文件。`moveFile` 锁定两端，按需修改源文本，发布目标后再删除源。防护是可选的：省略时无条件使用当前状态。失败携带稳定的 `FsError` 错误码；应按代码分支，不解析消息。
 
+`FS_ERROR_CODES` 是 `FsErrorCode` 与传输校验器共用的运行时列表。构造错误码 schema 时应导入该常量。
+
 `watch(target, changed, signal)` 报告单个文件或目录直接子项的失效通知。观察就绪后，它返回调用方必须等待完成的异步关闭函数。signal 取消初始化；不支持监听的提供方直接拒绝，不使用轮询。
 
 -----

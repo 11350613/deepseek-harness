@@ -186,27 +186,27 @@ export type FsMoveOutcome =
   | { destination: FsWriteOutcome; sourceDeleted: true }
   | { destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
 
-/**
- * Stable, machine-routable codes for filesystem failures. Carried on
- * {@link FsError}; the tool registry exposes `{ name, code }` on `isError`
- * results so retry/permission/UI layers can branch without parsing messages.
- */
-export type FsErrorCode =
-  | 'FS_NOT_FOUND'
-  | 'FS_NOT_DIRECTORY'
-  | 'FS_NOT_TEXT'
-  | 'FS_NOT_REGULAR_FILE'
-  | 'FS_TOO_LARGE'
-  | 'FS_PERMISSION_DENIED'
-  | 'FS_SANDBOX_DENIED'
-  | 'FS_IO_ERROR'
-  | 'FS_STALE_VERSION'
-  | 'FS_NOT_OBSERVED'
-  | 'FS_AMBIGUOUS_EDIT'
-  | 'FS_EDIT_NOT_FOUND'
-  | 'FS_ABORTED'
-  | 'FS_PATCH_MISMATCH'
-  | 'FS_SAME_TARGET'
+/** Stable filesystem failure codes shared by providers, consumers, and wire validators. */
+export const FS_ERROR_CODES = [
+  'FS_NOT_FOUND',
+  'FS_NOT_DIRECTORY',
+  'FS_NOT_TEXT',
+  'FS_NOT_REGULAR_FILE',
+  'FS_TOO_LARGE',
+  'FS_PERMISSION_DENIED',
+  'FS_SANDBOX_DENIED',
+  'FS_IO_ERROR',
+  'FS_STALE_VERSION',
+  'FS_NOT_OBSERVED',
+  'FS_AMBIGUOUS_EDIT',
+  'FS_EDIT_NOT_FOUND',
+  'FS_ABORTED',
+  'FS_PATCH_MISMATCH',
+  'FS_SAME_TARGET',
+] as const
+
+/** One machine-routable filesystem failure code from FS_ERROR_CODES. */
+export type FsErrorCode = typeof FS_ERROR_CODES[number]
 
 /**
  * Typed filesystem error. Extends {@link HarnessError} so it carries a stable

@@ -1,5 +1,6 @@
 /** Strict JSON validation for SSH helper requests and remote observations. */
 import { z } from 'zod'
+import { FS_ERROR_CODES } from '@deepseek-ai/dsh-fs'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 
 /** Identity of one prepared or running process in its owning SSH helper. */
@@ -51,9 +52,7 @@ export const deleteResultSchema = z.object({ before: z.string().nullable() }).st
 export const moveResultSchema = z.discriminatedUnion('sourceDeleted', [
   z.object({ destination: writeResultSchema, sourceDeleted: z.literal(true) }).strict(),
   z.object({ destination: writeResultSchema, sourceDeleted: z.literal(false), sourceFailure: z.object({
-    code: z.enum(['FS_NOT_FOUND', 'FS_NOT_DIRECTORY', 'FS_NOT_TEXT', 'FS_NOT_REGULAR_FILE',
-      'FS_TOO_LARGE', 'FS_PERMISSION_DENIED', 'FS_SANDBOX_DENIED', 'FS_IO_ERROR', 'FS_STALE_VERSION',
-      'FS_NOT_OBSERVED', 'FS_AMBIGUOUS_EDIT', 'FS_EDIT_NOT_FOUND', 'FS_ABORTED', 'FS_PATCH_MISMATCH', 'FS_SAME_TARGET']),
+    code: z.enum(FS_ERROR_CODES),
     message: z.string(),
   }).strict() }).strict(),
 ])

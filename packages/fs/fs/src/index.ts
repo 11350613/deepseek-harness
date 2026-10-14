@@ -28,6 +28,7 @@ import type {
 } from './types.ts'
 
 export {
+  FS_ERROR_CODES,
   FsError,
   FsTargetKey,
   FsVersion,

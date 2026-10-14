@@ -35,6 +35,8 @@ Pick [`fs-local`](../fs-local/README.md) for ordinary host files or [`fs-sandbox
 
 Through `ctx.fs`, resolve paths, read text or bounded bytes, list direct children, and perform guarded mutations. `patchText` applies parsed hunks under the same lock as its version check. `deleteFile` removes a regular file. `moveFile` locks both targets, optionally patches the source text, publishes the destination, then removes the source. Guards are optional: omission uses the current state unconditionally. Failures carry stable `FsError` codes; branch on the code instead of parsing messages.
 
+`FS_ERROR_CODES` is the runtime list shared by `FsErrorCode` and transport validators. Import it when constructing an error-code schema.
+
 `watch(target, changed, signal)` reports invalidations for one file or a directory's direct entries. It resolves once observation is ready with an asynchronous close function that the caller must await. The signal cancels initialization; unsupported providers reject without polling.
 
 -----

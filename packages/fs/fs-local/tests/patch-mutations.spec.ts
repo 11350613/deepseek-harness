@@ -7,6 +7,7 @@ import { FsVersion } from '@deepseek-ai/dsh-fs'
 import type { FsTarget } from '@deepseek-ai/dsh-fs'
 import { parsePatch } from '@deepseek-ai/dsh-fs-patch'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import * as fsio from '../src/fsio.ts'
 import { LocalFileSystem } from '../src/index.ts'
 
 function hunks(old = 'old', replacement = 'new', context?: string) {
@@ -262,5 +263,17 @@ it('does not treat source mode as an existing Windows destination', async () => 
   fs.internals = { platform: 'win32', copyFileDacl }
   expect(await fs.moveFile(source, destination, {})).toMatchObject({ sourceDeleted: true })
   expect(copyFileDacl).not.toHaveBeenCalled()
+  expect(await bytes('b')).toBe('source')
+})
+
+it('rethrows an unexpected source-removal defect after destination publication', async () => {
+  const { fs, file, bytes } = await setup()
+  const source = await file('a', 'source')
+  const destination = await file('b')
+  const defect = new Error('unexpected removal defect')
+  const remove = vi.spyOn(fsio, 'removeFile').mockRejectedValueOnce(defect)
+  onTestFinished(() => { remove.mockRestore() })
+  await expect(fs.moveFile(source, destination, {})).rejects.toBe(defect)
+  expect(await bytes('a')).toBe('source')
   expect(await bytes('b')).toBe('source')
 })
