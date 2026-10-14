@@ -3,32 +3,38 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/fs/fs-patch/README.md
 /:
-  en: d69a5df3ec2a9c4c
-  zh: 52782873842be61c
+  en: b1423ce8f8e485a4
+  zh: 3aa0c738a9e9e644
 /dsh-fs-patch:
   en: ad2970c594c3b669
   zh: fee247cad74b6191
 /dsh-fs-patch/summary:
-  en: 02a55bf8753f1063
-  zh: 2246b43ac37d3dfc
+  en: 4df049dd40249119
+  zh: 452de8411dbf87ef
 /dsh-fs-patch/table-of-contents:
   en: 170f124543e5647a
   zh: c30de483a11a1c09
 /dsh-fs-patch/use-this-package:
-  en: 18f1bbd36bfda361
-  zh: e5659ff4533d3424
+  en: 90b982536638c6e3
+  zh: 27ff79a787e43e06
 /dsh-fs-patch/compatibility:
-  en: 4585832c899ff971
-  zh: a8b48442edb0f8b8
+  en: 70da6aede0649b32
+  zh: 2e3ed2964ae0461a
+/dsh-fs-patch/compatibility/parsing:
+  en: 3e84b50d523a539b
+  zh: 38ceb4216753ac79
+/dsh-fs-patch/compatibility/matching-and-text-updates:
+  en: 12cd4980041ddf4e
+  zh: b5559a4316309ea0
 /dsh-fs-patch/understand-the-implementation:
-  en: 7e999ec95b539ceb
-  zh: f5e3c833863d3a17
+  en: c843cf32d16ab46f
+  zh: a2cabd9293705cc6
 /dsh-fs-patch/further-exploration:
   en: e454a5069195a7ac
   zh: dcab5cbc4a6f78f1
 /dsh-fs-patch/known-limitations-and-deferred-work:
-  en: c7fe6ec530e601b0
-  zh: b9ad03529e1542bb
+  en: d01f30aa21aef07f
+  zh: fad7093d678ee258
 /dsh-fs-patch/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: e88aeb617ffb74ea

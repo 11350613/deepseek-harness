@@ -114,7 +114,7 @@ interface FsDirEntry {
 <a id="patch-syntax-records"></a>
 ## Patch syntax records
 
-[dsh-fs-patch](../../packages/fs/fs-patch/README.md) parses complete patch text into serializable operations. Paths remain unresolved strings; syntax acceptance neither grants permission nor checks file versions. `collectMutationPaths` returns unique source and destination spellings for callers that capture files before mutation. The package README owns the pinned syntax reference and exclusions.
+[dsh-fs-patch](../../packages/fs/fs-patch/README.md) parses complete patch text into serializable operations and applies hunks to caller-supplied LF-normalized text. Paths remain unresolved strings; syntax acceptance neither grants permission nor checks file versions. `collectMutationPaths` returns unique source and destination spellings for callers that capture files before mutation. `applyHunks` returns complete new text or a structured match failure. The package README owns the pinned parsing and matching rules and exclusions.
 
 ```ts type-equiv
 /** One contiguous update, with zero-based indices identifying explicit context lines. */
@@ -157,6 +157,28 @@ type PatchOperation =
     moveTo?: string
     hunks: PatchHunk[]
   }
+```
+
+```ts type-equiv
+/** The first hunk whose anchor or old lines could not be located in the original text. */
+interface HunkApplyFailure {
+  /** One-based line of the failing hunk in the patch input. */
+  hunkLineNumber: number
+  /** The failed anchor or old-content search. */
+  stage: 'context' | 'oldLines'
+  /** Zero-based sequential search cursor; EOF searches override it with the tail candidate. */
+  searchStart: number
+  /** Original anchor or old lines, including any trailing empty line retried without its sentinel. */
+  pattern: string[]
+}
+
+```
+
+```ts type-equiv
+/** Complete new text or a match failure; failures contain no partially updated text. */
+type ApplyHunksResult =
+  | { ok: true; after: string }
+  | { ok: false; failure: HunkApplyFailure }
 ```
 
 ## Write and edit guards (provider contract)

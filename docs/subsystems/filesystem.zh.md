@@ -114,7 +114,7 @@ interface FsDirEntry {
 <a id="patch-syntax-records"></a>
 ## 补丁语法记录
 
-[dsh-fs-patch](../../packages/fs/fs-patch/README.zh.md) 将完整补丁文本解析为可序列化的操作。路径仍是未解析的字符串；语法接受既不授予权限，也不检查文件版本。`collectMutationPaths` 返回去重的源路径和目标路径原字符串，供修改前采集文件的调用方使用。固定的语法参照与排除项由包 README 维护。
+[dsh-fs-patch](../../packages/fs/fs-patch/README.zh.md) 将完整补丁文本解析为可序列化的操作，并将 hunk 应用于调用方提供的 LF 规范化文本。路径仍是未解析的字符串；语法接受既不授予权限，也不检查文件版本。`collectMutationPaths` 返回去重的源路径和目标路径原字符串，供修改前采集文件的调用方使用。`applyHunks` 返回完整新文本或结构化匹配失败。固定的解析与匹配规则及排除项由包 README 维护。
 
 ```ts type-equiv
 /** One contiguous update, with zero-based indices identifying explicit context lines. */
@@ -157,6 +157,28 @@ type PatchOperation =
     moveTo?: string
     hunks: PatchHunk[]
   }
+```
+
+```ts type-equiv
+/** The first hunk whose anchor or old lines could not be located in the original text. */
+interface HunkApplyFailure {
+  /** One-based line of the failing hunk in the patch input. */
+  hunkLineNumber: number
+  /** The failed anchor or old-content search. */
+  stage: 'context' | 'oldLines'
+  /** Zero-based sequential search cursor; EOF searches override it with the tail candidate. */
+  searchStart: number
+  /** Original anchor or old lines, including any trailing empty line retried without its sentinel. */
+  pattern: string[]
+}
+
+```
+
+```ts type-equiv
+/** Complete new text or a match failure; failures contain no partially updated text. */
+type ApplyHunksResult =
+  | { ok: true; after: string }
+  | { ok: false; failure: HunkApplyFailure }
 ```
 
 ## 写入与编辑守卫（提供方约定）

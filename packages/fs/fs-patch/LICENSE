@@ -1,11 +1,15 @@
 DeepSeek contributions are licensed under MIT below.
 
-This package adapts the patch grammar and parsing rules from OpenAI Codex
-rust-v0.158.0 (codex-rs/apply-patch/src/parser.rs and streaming_parser.rs).
+This package adapts patch parsing and text updates from OpenAI Codex
+rust-v0.158.0 (codex-rs/apply-patch/src/parser.rs, streaming_parser.rs,
+seek_sequence.rs, and file_update.rs), with text_file.rs as a reference
+for the line-ending representations. Test fixtures also draw from
+file_update_tests.rs and lib.rs in that directory.
 Copyright 2025 OpenAI. Those portions remain under Apache License 2.0 below.
 Modifications: pure TypeScript batch API, original-input line locations,
-serializable records, and explicit rejection of environment-routing headers.
-Selected parser tests are adapted from the same Apache-licensed sources.
+serializable records, explicit rejection of environment-routing headers,
+and a filesystem-independent NormalizeToLf updater with structured failures.
+Selected parser and text tests are adapted from the same Apache-licensed sources.
 
 MIT License
 

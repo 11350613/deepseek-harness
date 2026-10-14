@@ -3,6 +3,16 @@
   "entries": [
     {
       "doc": "docs/subsystems/filesystem.md",
+      "symbol": "HunkApplyFailure",
+      "source": "packages/fs/fs-patch/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/filesystem.md",
+      "symbol": "ApplyHunksResult",
+      "source": "packages/fs/fs-patch/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/filesystem.md",
       "symbol": "PatchHunk",
       "source": "packages/fs/fs-patch/src/types.ts"
     },

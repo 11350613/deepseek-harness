@@ -1,4 +1,4 @@
-/** Serializable syntax records for Codex-style file patches; paths remain unresolved. */
+/** Serializable patch syntax and text-application results; paths remain unresolved. */
 
 /** One contiguous update, with zero-based indices identifying explicit context lines. */
 export interface PatchHunk {
@@ -37,3 +37,20 @@ export type PatchOperation =
     moveTo?: string
     hunks: PatchHunk[]
   }
+
+/** The first hunk whose anchor or old lines could not be located in the original text. */
+export interface HunkApplyFailure {
+  /** One-based line of the failing hunk in the patch input. */
+  hunkLineNumber: number
+  /** The failed anchor or old-content search. */
+  stage: 'context' | 'oldLines'
+  /** Zero-based sequential search cursor; EOF searches override it with the tail candidate. */
+  searchStart: number
+  /** Original anchor or old lines, including any trailing empty line retried without its sentinel. */
+  pattern: string[]
+}
+
+/** Complete new text or a match failure; failures contain no partially updated text. */
+export type ApplyHunksResult =
+  | { ok: true; after: string }
+  | { ok: false; failure: HunkApplyFailure }

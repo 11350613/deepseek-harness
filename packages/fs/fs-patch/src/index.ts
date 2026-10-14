@@ -1,9 +1,10 @@
-/** Pure patch parsing and mutation-path enumeration, independent of filesystem providers. */
+/** Pure patch parsing, text application, and path enumeration, independent of filesystem providers. */
 
 import type { PatchOperation } from './types.ts'
 
 export { parsePatch, PatchParseError } from './parse.ts'
-export type { PatchHunk, PatchOperation } from './types.ts'
+export { applyHunks } from './apply.ts'
+export type { ApplyHunksResult, HunkApplyFailure, PatchHunk, PatchOperation } from './types.ts'
 
 /**
  * Collect source paths and move destinations in first-seen order for pre-mutation capture.
