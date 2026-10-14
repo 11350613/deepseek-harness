@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { executePatch } from './patch/index.ts'
 import { patchOutputSchema, patchToolValue, renderPatch, patchPresentationMeta } from './apply-patch-output.ts'
+import { presentPatchCall, presentPatchResult } from './apply-patch-presentation.ts'
 import type { FsEscalationArgs, FsSandboxController } from './sandbox.ts'
 
 /** Model arguments after tool-schema validation. */
@@ -44,5 +45,7 @@ export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController):
       const sandboxPolicy = await sandbox.resolvePolicy('apply_patch', args, exec)
       return patchToolValue(await executePatch(ctx, sandbox, exec, { patch: args.patch, sandboxPolicy }))
     },
+    presentCall: args => presentPatchCall(args.patch),
+    presentResult: (_args, result) => presentPatchResult(result),
   }))
 }

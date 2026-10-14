@@ -10,6 +10,7 @@ import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/c
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
+import { toolRowModel } from '../src/client/tool/models/tool-call-model.ts'
 import { CHAT_DIFF_MAX_LINES, diffCardModel } from '../src/client/tool/models/diff-card-model.ts'
 import { GenericToolCard, type GenericToolCardProps } from '../src/client/tool/toolviews/GenericToolCard.tsx'
 import { FileMutationRow, fileMutationToolview } from '../src/client/tool/toolviews/file-mutation-row.tsx'
@@ -41,6 +42,15 @@ const settled = (over?: Partial<ToolResultNode>): ToolResultNode => ({
 })
 
 describe('diffCardModel', () => {
+  it('derives patch diffs only from settled metadata without parsing the patch', () => {
+    const call = { name: 'apply_patch', argsRaw: '{"patch":"invalid"}' }
+    expect(diffCardModel(running(call))).toBeNull()
+    expect(diffCardModel(settled({ call }))).toEqual({ card: { diffs: DIFFS } })
+    expect(diffCardModel(settled({ call, isError: true }))).toBeNull()
+    expect(diffCardModel(settled({ call, meta: {} }))).toBeNull()
+    expect(diffCardModel(settled({ call, meta: { diffs: [] } }))).toBeNull()
+  })
+
   it('derives a running card from raw edit arguments', () => {
     expect(diffCardModel(running())).toEqual({
       card: { diffs: [{ path: 'notes/demo.txt', oldText: 'hello', newText: 'hello fixture' }] },
@@ -218,6 +228,28 @@ describe('FileMutationRow diff card', () => {
     fireEvent.click(view.container.querySelector('[data-expandable]')!)
   }
 
+  it('shows patch titles, applied multi-file diffs, and stopped reasons together', () => {
+    const output = 'Patch stopped after 1 of 3 operations.\nFailed:\nsource removal denied\n  destination b was written; source a remains'
+    const block = settled({ call: { name: 'apply_patch', argsRaw: JSON.stringify({ patch: '*** Begin Patch' }) },
+      content: [{ type: 'text', text: output }], meta: { stopped: true, diffs: [
+        { path: 'first', oldText: null, newText: 'created' }, { path: 'b', oldText: 'before', newText: 'after' },
+      ] } })
+    const model = toolRowModel('apply_patch', block)
+    expect(model.variant).toBe('edit')
+    expect(model.titleKey).toBe('tool.title.applyPatch')
+    expect(model.summary).toBe('')
+    expect(model.filePath).toBeUndefined()
+    expect(model.state).toBe('error')
+    expect(model.errorSummary).toBe('Patch stopped after 1 of 3 operations.')
+    const view = render(<FileMutationRow {...rowProps(block, 'apply_patch')} />)
+    expect(view.getByText('应用补丁')).toBeTruthy()
+    toggleRow(view)
+    expect(view.container.querySelectorAll('[data-diff]').length).toBeGreaterThan(0)
+    expect(view.getByText('created')).toBeTruthy()
+    expect(view.getByText('after')).toBeTruthy()
+    expect(view.container.textContent).toContain(output)
+  })
+
   it('collapses to the summary row; expanding reveals the applied diff card', () => {
     const view = render(<FileMutationRow {...rowProps(settled())} />)
     // The diff card is collapsed by default — not in the DOM until expanded.
@@ -318,7 +350,7 @@ describe('FileMutationRow diff card', () => {
 })
 
 describe('fileMutationToolview registration', () => {
-  it('registers one component under both edit and write, and each disposes', () => {
+  it('registers one component under all file mutation tools, and each disposes', () => {
     const registered: { key: string; locale: unknown; disposed: boolean }[] = []
     const disposers: (() => void)[] = []
     let disposeInjection = (): void => {}
@@ -339,9 +371,9 @@ describe('fileMutationToolview registration', () => {
       },
     }
     fileMutationToolview.apply(ctx as never)
-    expect(registered.map(r => r.key).sort()).toEqual(['edit', 'write'])
-    // Both keys claim the conversation locale seat ToolRow's body copy needs.
-    expect(registered.map(r => r.locale)).toEqual(['conversation', 'conversation'])
+    expect(registered.map(r => r.key).sort()).toEqual(['apply_patch', 'edit', 'write'])
+    // All keys claim the conversation locale seat ToolRow's body copy needs.
+    expect(registered.map(r => r.locale)).toEqual(['conversation', 'conversation', 'conversation'])
     expect(fileMutationToolview.inject).toEqual(['slots'])
     // Disposal removes each contribution (packages/AGENTS.md registry contract).
     disposeInjection()

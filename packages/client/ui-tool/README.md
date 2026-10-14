@@ -51,6 +51,13 @@ Every registered view receives the explicit `preparing`, `start`, and `result` p
 
 This package owns the generic fallback and the built-in shell/pwsh, read, read_image, write/edit, running `str_replace_editor` `create`/`str_replace`, grep/glob, web, todo, question, and PTC dispatch presentations. Structured cards derive directly from first-party raw event fields; Host `presentCall` and `presentResult` values never enter the Client. Running and settled foreground standard `bash`/`pwsh` and `terminal_send` calls use terminal cards at the root and in PTC dispatch children, subject to the same argument, result, and error checks. Persistent `bash`/`pwsh` calls use terminal cards only while running. Shell output ending in a recognized spill-policy notice uses expandable generic output in shell rows and generic output in Details; a displaced or omitted exit marker cannot establish success. Settled persistent-shell results stay generic because reset and partial-output diagnostics do not always describe one process exit status; root persistent results are expandable, while background acknowledgements remain collapsed. A native or PTC dispatch failure carrying `AUTO_REVIEW_DENIED` shows the Auto review verdict in its collapsed row and one normalized not-executed reason when expanded; a missing or whitespace-only reason uses localized fallback text. A successful question row pairs call questions with result answers by their stable ids and shows readable question/answer lines when expanded. A cancelled or interrupted row shows its verdict and original questions without inventing answers. Unsupported, malformed, or ambiguous inputs fall back to flattened Tool input/result text. `ui-skill` demonstrates a business-owned registration for `skill`.
 
+
+| Tool | Title | Presentation |
+|---|---|---|
+| `apply_patch` | Apply patch | Edit row; settled `meta.diffs` only, with stopped result text beside known diffs |
+
+The patch row shows its title without a single-file summary. Running calls derive no diff; settled calls use known hunks from metadata, and a stopped commit retains its failure text alongside them.
+
 -----
 
 <a id="understand-the-implementation"></a>

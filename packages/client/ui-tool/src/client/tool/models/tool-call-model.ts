@@ -58,6 +58,7 @@ const TOOL_VARIANTS: Record<string, ToolRowVariant> = {
   glob: 'search',
   write: 'write',
   edit: 'edit',
+  apply_patch: 'edit',
   run_code: 'code',
   cordis_package_inspect: 'read',
   cordis_runtime_inspect: 'read',
@@ -72,6 +73,7 @@ const TOOL_VARIANTS: Record<string, ToolRowVariant> = {
 
 /** Tool-owned titles that refine a generic row variant without replacing it. */
 const TOOL_TITLE_KEYS: Record<string, ToolTitleKey> = {
+  apply_patch: 'tool.title.applyPatch',
   cordis_package_inspect: 'tool.title.inspect',
   cordis_runtime_inspect: 'tool.title.inspect',
   cordis_run: 'tool.title.runCordis',
@@ -285,10 +287,12 @@ export function toolRowModel(toolName: string, block: ToolCallBlock, cwd?: strin
   const titleKey = toolTitleKey(toolName)
   const done = 'kind' in block
   const argsRaw = done ? block.call?.argsRaw ?? '' : block.phase === 'start' ? block.argsRaw : null
+  const patchStopped = toolName === 'apply_patch' && done && typeof block.meta === 'object' && block.meta !== null
+    && !Array.isArray(block.meta) && (block.meta as Record<string, unknown>).stopped === true
   const state: ToolRowState = !done ? block.phase === 'preparing' ? 'preparing' : 'running'
     : block.error?.code === 'interrupted' ? 'stopped'
-      : block.isError ? 'error' : 'ok'
-  const base = argsRaw === null ? ''
+      : block.isError || patchStopped ? 'error' : 'ok'
+  const base = toolName === 'apply_patch' || argsRaw === null ? ''
     : argsRaw === '' ? block.callId
       : abbreviateHomePath(relativizeToCwd(deriveSummary(variant, argsRaw), cwd), home)
   const summary = [titleKey === 'tool.title.generic' ? toolName : '', base].filter(Boolean).join(' · ')

@@ -108,6 +108,7 @@ kind: "package-reference"
 | [`src/read-image.ts`](src/read-image.ts) | `read_image` 执行器：路由与媒体类型门禁、有界字节、附件保存 |
 | [`src/write.ts`](src/write.ts) | `write` 执行器：意图 waterfall、原子写入、观察 |
 | [`src/apply-patch.ts`](src/apply-patch.ts)、[`apply-patch-output.ts`](src/apply-patch-output.ts) | 按需注册、严格提交值与精简诊断 |
+| [`src/apply-patch-presentation.ts`](src/apply-patch-presentation.ts) | 纯调用预览与已知结果 diff |
 | [`src/edit.ts`](src/edit.ts) | `edit` 执行器：意图 waterfall、字面量编辑、观察 |
 | [`src/patch/index.ts`](src/patch/index.ts)、[`types.ts`](src/patch/types.ts) | 内部 `executePatch` 入口与可序列化的逐操作报告；不从包入口导出 |
 | [`src/patch/plan.ts`](src/patch/plan.ts) | 解析补丁并按 Session 工作目录解析路径；保留共享规范化目标的有序操作 |
