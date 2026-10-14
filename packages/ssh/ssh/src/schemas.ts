@@ -31,6 +31,32 @@ export const editSchema = z.object({ oldString: z.string(), newString: z.string(
 export const writeResultSchema = z.object({ operation: z.enum(['create', 'update']), version: z.string(), before: z.string().nullable(), after: z.string() }).strict()
 /** Atomic edit observation. */
 export const editResultSchema = z.object({ version: z.string(), before: z.string(), after: z.string() }).strict()
+/** Parsed patch hunk admitted at the remote JSON boundary. */
+export const hunkSchema = z.object({
+  lineNumber: z.number().int().positive(), context: z.string().optional(),
+  oldLines: z.array(z.string()), newLines: z.array(z.string()),
+  contextLineIndices: z.array(z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])),
+  isEndOfFile: z.boolean(),
+}).strict().transform(({ context, ...hunk }) => context === undefined ? hunk : { ...hunk, context })
+/** Source version guard used by patch, delete, and move. */
+export const versionGuardSchema = z.object({ version: z.string() }).strict()
+/** Optional move patch and independent source/destination guards. */
+export const moveOptionsSchema = z.object({
+  hunks: z.array(hunkSchema).optional(), expectedSource: versionGuardSchema.optional(),
+  expectedDestination: intentSchema.optional(),
+}).strict()
+/** Bounded, nullable content basis for a completed deletion. */
+export const deleteResultSchema = z.object({ before: z.string().nullable() }).strict()
+/** Move completion preserves a published destination even when source removal fails. */
+export const moveResultSchema = z.discriminatedUnion('sourceDeleted', [
+  z.object({ destination: writeResultSchema, sourceDeleted: z.literal(true) }).strict(),
+  z.object({ destination: writeResultSchema, sourceDeleted: z.literal(false), sourceFailure: z.object({
+    code: z.enum(['FS_NOT_FOUND', 'FS_NOT_DIRECTORY', 'FS_NOT_TEXT', 'FS_NOT_REGULAR_FILE',
+      'FS_TOO_LARGE', 'FS_PERMISSION_DENIED', 'FS_SANDBOX_DENIED', 'FS_IO_ERROR', 'FS_STALE_VERSION',
+      'FS_NOT_OBSERVED', 'FS_AMBIGUOUS_EDIT', 'FS_EDIT_NOT_FOUND', 'FS_ABORTED', 'FS_PATCH_MISMATCH', 'FS_SAME_TARGET']),
+    message: z.string(),
+  }).strict() }).strict(),
+])
 /** Explicit child environment; null encodes an environment tombstone. */
 export const environmentSchema = z.record(z.string(), z.string().nullable())
 const collection = z.object({

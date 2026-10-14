@@ -51,6 +51,8 @@ For PTC, configure both bootstrap fields and pass the verified `ctx.ssh.nodeExec
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
+The helper dispatches `fs.patch`, `fs.delete`, and `fs.move` through its sandboxed filesystem provider. Strict schemas validate hunk positions, line arrays, context index pairs, source/destination guards, and complete or partial outcomes. Hunk payloads share the connection frame limit. Protocol framing remains version 1; deployment must install the matching helper artifact and update `helperHash`.
+
 <details>
 <summary>Implementation internals — click to expand</summary>
 
