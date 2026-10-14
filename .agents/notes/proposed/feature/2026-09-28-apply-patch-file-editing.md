@@ -16,7 +16,7 @@ Review work is limited to collecting the tool's affected paths before mutation a
 
 ### Confirmed design choices
 
-The choices below are approved. The complete tool remains proposed; the pure parser and text matcher are implemented in [dsh-fs-patch](../../../../packages/fs/fs-patch/README.md), with Codex `rust-v0.158.0` as their syntax and matching reference. The package README owns supported behavior and exclusions; subsequent steps add guarded execution.
+The choices below are approved. The complete tool remains proposed; the pure parser and text matcher are implemented in [dsh-fs-patch](../../../../packages/fs/fs-patch/README.md), with Codex `rust-v0.158.0` as their syntax and matching reference, and guarded filesystem operations are implemented in [dsh-fs](../../../../packages/fs/fs/README.md) and its providers. Package READMEs own supported behavior and exclusions; subsequent steps add preflight and tool execution.
 
 | Topic | Confirmed choice | Implementation specification |
 |---|---|---|
