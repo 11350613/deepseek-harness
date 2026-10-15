@@ -60,7 +60,7 @@ it('returns exact native values and applied metadata for all four operation kind
       { path: path('destination'), before: null, after: 'new\n' }, { path: path('source'), before: 'old\n', after: null },
     ] },
   ], affectedPaths: ['edit', 'created', 'delete', 'destination', 'source'].map(path) })
-  expect(result.content).toEqual([{ type: 'text', text: `Success. Updated the following files:\nA ${path('created')}\nM ${path('edit')}\nM ${path('source')}\nD ${path('delete')}` }])
+  expect(result.content).toEqual([{ type: 'text', text: `Success. Updated the following files:\nA ${path('created')}\nM ${path('edit')}\nM ${path('destination')}\nD ${path('delete')}` }])
   expect(result.meta).toEqual({ stopped: false, diffs: [
     { path: path('edit'), oldText: 'old', newText: 'new' },
     { path: path('created'), oldText: null, newText: 'new\n' },

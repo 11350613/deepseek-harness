@@ -259,7 +259,7 @@ Read a file before editing it (the default fs-observation-policy requires it), u
 
 #### 模型看到的内容
 
-可选的 `apply_patch` schema 要求一个 `patch` 字符串，包含 `*** Begin Patch` / `*** End Patch`、Add/Update/Delete 文件头、可选 Move to，以及上下文/新增/删除 hunk 行。路径相对于 Session 工作目录。有围栏后端追加与 write/edit 相同的提权字段。按作用域显示的系统提示如下。成功移动显示 `M <source>`，成功行按 A/M/D 分组，与 Codex rust-v0.158.0 一致。空补丁显示 `Success. No operations in patch.`。停止的补丁只包含适用的 Completed、Failed、Outcome unknown 与 Not executed 小节；结果不确定时以执行器的重读建议结束。语法错误保留解析器消息。示例：
+可选的 `apply_patch` schema 要求一个 `patch` 字符串，包含 `*** Begin Patch` / `*** End Patch`、Add/Update/Delete 文件头、可选 Move to，以及上下文/新增/删除 hunk 行。路径相对于 Session 工作目录。有围栏后端追加与 write/edit 相同的提权字段。按作用域显示的系统提示如下。成功移动显示 `M <destination>`，成功行按 A/M/D 分组，与 Codex rust-v0.158.0 一致。空补丁显示 `Success. No operations in patch.`。停止的补丁只包含适用的 Completed、Failed、Outcome unknown 与 Not executed 小节；结果不确定时以执行器的重读建议结束。语法错误保留解析器消息。示例：
 
 ##### 系统提示
 

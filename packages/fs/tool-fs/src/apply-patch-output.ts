@@ -87,10 +87,10 @@ export function patchStopped(value: PatchToolValue): boolean {
 }
 
 function completedLines(operations: PatchToolValue['operations']): string[] {
-  // Codex groups A/M/D, and records a completed move as M at its source path.
+  // Codex groups A/M/D, and records a completed move as M at its destination path.
   return ['add', 'update', 'delete'].flatMap(kind => operations
     .filter(operation => operation.status === 'completed' && (operation.kind === 'move' ? 'update' : operation.kind) === kind)
-    .map(operation => `${kind === 'add' ? 'A' : kind === 'delete' ? 'D' : 'M'} ${operation.path}`))
+    .map(operation => `${kind === 'add' ? 'A' : kind === 'delete' ? 'D' : 'M'} ${operation.destination ?? operation.path}`))
 }
 
 /**

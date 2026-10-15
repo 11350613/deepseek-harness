@@ -259,7 +259,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 #### What the model sees
 
-The optional `apply_patch` schema requires one `patch` string containing `*** Begin Patch` / `*** End Patch`, Add/Update/Delete headers, optional Move to, and context/add/remove hunk lines. Paths are Session-relative. A confining backend adds the same escalation fields as write/edit. Its scope-aware system guidance is shown below. Successful moves use `M <source>` and success lines group A/M/D, matching Codex rust-v0.158.0. An empty patch renders `Success. No operations in patch.`. A stopped patch includes only applicable Completed, Failed, Outcome unknown and Not executed sections; unknown outcomes end with the executor’s re-read remedy. Syntax errors keep the parser message. Examples:
+The optional `apply_patch` schema requires one `patch` string containing `*** Begin Patch` / `*** End Patch`, Add/Update/Delete headers, optional Move to, and context/add/remove hunk lines. Paths are Session-relative. A confining backend adds the same escalation fields as write/edit. Its scope-aware system guidance is shown below. Successful moves use `M <destination>` and success lines group A/M/D, matching Codex rust-v0.158.0. An empty patch renders `Success. No operations in patch.`. A stopped patch includes only applicable Completed, Failed, Outcome unknown and Not executed sections; unknown outcomes end with the executor’s re-read remedy. Syntax errors keep the parser message. Examples:
 
 ##### System guidance
 
