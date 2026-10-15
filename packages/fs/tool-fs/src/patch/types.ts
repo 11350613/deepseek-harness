@@ -1,4 +1,4 @@
-/** Serializable patch outcomes and operation-local plans; not a persisted tool result yet. */
+/** Internal patch outcomes, failure diagnostics, and operation-local plans. */
 import type { FsErrorCode, FsTarget } from '@deepseek-ai/dsh-fs'
 import type { PatchHunk } from '@deepseek-ai/dsh-fs-patch'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
@@ -56,18 +56,10 @@ export type PatchOperationOutcome =
   | { status: 'skipped'; operation: PatchOperationRecord }
 
 /** Ordered report; preflight failures prevent all writes, commit failures stop later operations. */
-export interface PatchExecutionReport {
-  /** Stage in which the request completed or stopped. */
-  phase: 'syntax' | 'preflight' | 'commit'
-  /** Syntax failure before any operation plan exists. */
-  syntaxFailure?: PatchFailure
-  /** One entry per operation, in patch order. */
-  outcomes: PatchOperationOutcome[]
-  /** Paths in known changes, deduplicated in first-seen order. */
-  affectedPaths: string[]
-  /** Whether the execution signal stopped the request before completion. */
-  cancelled: boolean
-}
+export type PatchExecutionReport =
+  | { phase: 'syntax'; failure: PatchFailure; outcomes: []; affectedPaths: []; cancelled: false }
+  | { phase: 'preflight'; outcomes: PatchOperationOutcome[]; affectedPaths: []; cancelled: boolean }
+  | { phase: 'commit'; outcomes: PatchOperationOutcome[]; affectedPaths: string[]; cancelled: boolean }
 
 /** Resolved operation with raw source spelling retained for no-follow inspection. */
 export type PlannedOperation = {

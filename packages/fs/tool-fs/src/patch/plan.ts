@@ -105,7 +105,6 @@ export function patchFailure(
   sandbox: FsSandboxController, policy: SandboxExecutionPolicy | undefined, error: FsError, path: string,
 ): PatchFailure {
   const mapped = remediateFsError(sandbox.mapError(error, policy), path)
-  if (!(mapped instanceof FsError)) throw mapped
   return { code: mapped.code, message: mapped.message }
 }
 

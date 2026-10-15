@@ -3,7 +3,7 @@ import { FsError } from '@deepseek-ai/dsh-fs'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { computeHunkDiffs } from './diff.ts'
 import type { FileDiff, InferValue } from '@deepseek-ai/dsh-tools'
-import type { PatchExecutionReport, PatchFailure, PatchFailureCode, PatchOperationOutcome } from './patch/types.ts'
+import type { PatchExecutionReport, PatchFailureCode } from './patch/types.ts'
 
 /** Strict canonical output; full file texts feed rendering and are excluded from presentation metadata. */
 export const patchOutputSchema = {
@@ -56,17 +56,16 @@ function rejection(code: PatchFailureCode, message: string): HarnessError {
  */
 export function patchToolValue(report: PatchExecutionReport): PatchToolValue {
   if (report.phase === 'syntax') {
-    // The executor always supplies syntaxFailure for this phase.
-    const failure = report.syntaxFailure as PatchFailure
-    throw rejection(failure.code, failure.message)
+    throw rejection(report.failure.code, report.failure.message)
   }
   if (report.phase === 'preflight') {
     const failures = report.outcomes.filter(outcome => outcome.status === 'failed')
-    const lines = failures.map(({ operation, failure }) =>
-      `- operation ${operation.index + 1} (${operation.kind} ${operation.path}, patch line ${operation.patchLine}): ${failure.message}`)
-    // Preflight reports are returned only when at least one operation failed.
-    const first = failures[0] as Extract<PatchOperationOutcome, { status: 'failed' }>
-    throw rejection(first.failure.code, `Patch rejected before any change (${failures.length} problems):\n${lines.join('\n')}`)
+    const first = failures[0]
+    if (first !== undefined) {
+      const lines = failures.map(({ operation, failure }) =>
+        `- operation ${operation.index + 1} (${operation.kind} ${operation.path}, patch line ${operation.patchLine}): ${failure.message}`)
+      throw rejection(first.failure.code, `Patch rejected before any change (${failures.length} problems):\n${lines.join('\n')}`)
+    }
   }
   return { phase: 'commit', cancelled: report.cancelled, affectedPaths: report.affectedPaths,
     operations: report.outcomes.map(outcome => ({

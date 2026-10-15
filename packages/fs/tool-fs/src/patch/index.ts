@@ -25,7 +25,7 @@ export async function executePatch(
   let plan
   try { plan = await planPatch(ctx, sandbox, exec, request) } catch (error) {
     if (!(error instanceof PatchParseError)) throw error
-    return { phase: 'syntax', syntaxFailure: { code: 'PATCH_SYNTAX', message: error.message }, outcomes: [], affectedPaths: [], cancelled: false }
+    return { phase: 'syntax', failure: { code: 'PATCH_SYNTAX', message: error.message }, outcomes: [], affectedPaths: [], cancelled: false }
   }
   const outcomes = [
     ...plan.failures,

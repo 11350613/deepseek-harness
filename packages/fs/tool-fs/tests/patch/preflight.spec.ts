@@ -9,7 +9,7 @@ import { add, move, patch, remove, setup, update } from './harness.ts'
 it('reports syntax errors before resolving paths', async () => {
   const t = await setup()
   const resolve = vi.spyOn(t.fs, 'resolve')
-  expect(await t.run('invalid')).toEqual({ phase: 'syntax', syntaxFailure: {
+  expect(await t.run('invalid')).toEqual({ phase: 'syntax', failure: {
     code: 'PATCH_SYNTAX', message: "Invalid patch at line 1: Expected '*** Begin Patch'",
   }, outcomes: [], affectedPaths: [], cancelled: false })
   expect(resolve).not.toHaveBeenCalled()
@@ -196,17 +196,6 @@ it('rethrows a resolution defect instead of labelling it a patch syntax failure'
   await expect(t.run(patch(add('a')))).rejects.toBe(defect)
   spy.mockRestore()
   await expect(t.bytes('a')).rejects.toMatchObject({ code: 'ENOENT' })
-  expect(t.observations).toEqual([])
-  await expect(t.editIntent('a')).rejects.toMatchObject({ code: 'FS_NOT_OBSERVED' })
-})
-
-it('propagates an unexpected error mapper result', async () => {
-  const t = await setup()
-  await t.file('a', 'old\n', false)
-  const defect = new Error('mapper defect')
-  vi.spyOn(t.sandbox, 'mapError').mockReturnValue(defect)
-  await expect(t.run(patch(update('a')))).rejects.toBe(defect)
-  expect(await t.bytes('a')).toBe('old\n')
   expect(t.observations).toEqual([])
   await expect(t.editIntent('a')).rejects.toMatchObject({ code: 'FS_NOT_OBSERVED' })
 })

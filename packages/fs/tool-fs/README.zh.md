@@ -122,7 +122,7 @@ kind: "package-reference"
 
 四个工具共享同一种流程形态：用调用会话的 cwd 解析路径、运行适用的门禁、恰好执行一次提供方操作，并且只在成功后发出 `fs/observed`。`read` 与 `read_image` 为类型与大小路由付出一次 `stat`；`write` 与 `edit` 不执行 stat，因为防护来自意图槽位，提供方失败以类型化 `FsError` 结果呈现。各工具执行器位于 `src/read.ts`、`src/read-image.ts`、`src/write.ts` 与 `src/edit.ts`。
 
-内部补丁执行器接收原始补丁和已解析的沙箱策略。它建立有序计划，针对模拟状态预检全部操作，再通过 `writeText`、`patchText`、`deleteFile` 或一次 `moveFile` 调用提交。预检失败的操作不产生模拟效果；任何预检失败都会阻止全部写入。报告为每个操作保留 `completed`、`failed`、`unknown` 或 `skipped` 状态及已知的 LF 文本变化。语法失败发生在计划建立前。路径解析失败时，仅未解析的路径保留补丁原始写法；成功解析的路径使用提供方显示路径。编程错误使调用拒绝。`enableApplyPatch` 通过 `src/apply-patch.ts` 将执行器接入原生与 PTC 注册入口。
+内部补丁执行器接收原始补丁和已解析的沙箱策略。它建立有序计划，针对模拟状态预检全部操作，再通过 `writeText`、`patchText`、`deleteFile` 或一次 `moveFile` 调用提交。预检失败的操作不产生模拟效果；任何预检失败都会阻止全部写入。报告为每个操作保留 `completed`、`failed`、`unknown` 或 `skipped` 状态及已知的 LF 文本变化。语法报告必须包含失败诊断且没有操作结果；预检和提交报告包含有序操作结果。路径解析失败时，仅未解析的路径保留补丁原始写法；成功解析的路径使用提供方显示路径。编程错误使调用拒绝。`enableApplyPatch` 通过 `src/apply-patch.ts` 将执行器接入原生与 PTC 注册入口。
 
 ### 观察与并发
 
