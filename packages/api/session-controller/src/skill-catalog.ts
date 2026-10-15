@@ -97,9 +97,9 @@ export class SessionSkillCatalog extends TypertRemoteService {
     if (presets === undefined) return undefined
     try {
       return await presets.acquireScope(agentPreset)
-    } catch {
-      // An unknown or unusable recorded preset falls back to the global registry.
-      return undefined
+    } catch (error) {
+      if (error instanceof RemoteError && (error.code === 'agent-preset/not-found' || error.code === 'agent-preset/invalid')) return undefined
+      throw error
     }
   }
 }

@@ -488,16 +488,14 @@ export class SlotRegistry extends Service {
     // duplicate declaration, kind conflicts, cross-scope handle) throws
     // there before this layer commits anything.
     const dispose = (this._core as ErasedCore).register(erased, component)
-    if (store !== undefined) {
-      const scope = (this._core.specDynamic(options.name) as SlotSpec<SlotEntryDef>).scope
-      this._acquire(store, scope)
-    }
+    const releaseStore = store === undefined ? undefined
+      : this._acquire(store, (this._core.specDynamic(options.name) as SlotSpec<SlotEntryDef>).scope)
     let disposed = false
     return () => {
       if (disposed) return
       disposed = true
       dispose()
-      if (store !== undefined) this._release(store)
+      releaseStore?.()
     }
   }
 
@@ -510,9 +508,9 @@ export class SlotRegistry extends Service {
     const dispose = (this._core as ErasedFactoryCore).registerFactory(erased, component)
     const definition = this._core.factory(options.name)
     if (definition === undefined) throw new Error(`slot factory "${options.name}" disappeared during registration`)
-    if (definition.store !== undefined && typeof definition.store !== 'function') {
-      this._acquire(definition.store, definition.scope)
-    } else if (typeof definition.store === 'function') {
+    const releaseStore = definition.store !== undefined && typeof definition.store !== 'function'
+      ? this._acquire(definition.store, definition.scope) : undefined
+    if (typeof definition.store === 'function') {
       this._factoryStores.set(definition, {
         occurrences: new WeakMap(),
         mounted: new Map(),
@@ -524,9 +522,7 @@ export class SlotRegistry extends Service {
       disposed = true
       dispose()
       this._factoryStores.delete(definition)
-      if (definition.store !== undefined && typeof definition.store !== 'function') {
-        this._release(definition.store)
-      }
+      releaseStore?.()
     }
   }
 
@@ -692,26 +688,19 @@ export class SlotRegistry extends Service {
     }
   }
 
-  /** Bind (or re-reference) a handle on the axis; cross-scope conflicts already threw in the core. */
-  private _acquire(handle: EngineStoreHandle, scope: SlotScope): void {
-    const record = this._stores.get(handle)
+  /** Retain a handle and return the release of that exact record. */
+  private _acquire(handle: EngineStoreHandle, scope: SlotScope): () => void {
+    let record = this._stores.get(handle)
     if (record === undefined) {
-      this._stores.set(handle, { scope, refs: 1, instances: new Map() })
-      return
+      record = { scope, refs: 0, instances: new Map() }
+      this._stores.set(handle, record)
     }
     record.refs += 1
-  }
-
-  /** Drop one reference; the last holder's unload drops the record (instances go with it — engine stores need no explicit dispose). */
-  private _release(handle: EngineStoreHandle): void {
-    const record = this._stores.get(handle)
-    /* v8 ignore next -- defensive: release only runs from a disposer whose
-     * register acquired the same handle, so the record must exist; kept so a
-     * future call site cannot underflow the axis. */
-    if (record === undefined) return
-    record.refs -= 1
-    if (record.refs !== 0) return
-    this._stores.delete(handle)
+    const retained = record
+    return () => {
+      retained.refs -= 1
+      if (retained.refs === 0) this._stores.delete(handle)
+    }
   }
 }
 

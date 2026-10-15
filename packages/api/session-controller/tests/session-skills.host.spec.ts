@@ -1,3 +1,4 @@
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -139,7 +140,7 @@ describe('SessionSkillCatalog', () => {
     expect(ctx.agents.list()).toEqual([])
   })
 
-  it('falls back to the global registry when the recorded preset is unavailable', async () => {
+  it.each(['agent-preset/not-found', 'agent-preset/invalid'] as const)('falls back to the global registry for %s', async (code) => {
     const ctx = await context()
     const sessionId = SessionId('gone-preset')
     ctx.provide('sessionQuery', {
@@ -149,7 +150,7 @@ describe('SessionSkillCatalog', () => {
       })),
     } as never)
     ctx.provide('agentPresets', {
-      acquireScope: () => Promise.reject(new Error('unknown preset')),
+      acquireScope: () => Promise.reject(new RemoteError(code, 'unavailable preset', { agentPreset: 'gone', available: [], reason: 'unavailable' })),
     } as never)
     const list = vi.fn(() => Promise.resolve([]))
     ctx.provide('skills', { list } as never)
@@ -157,6 +158,26 @@ describe('SessionSkillCatalog', () => {
 
     await expect(catalog.list({ sessionId }, new AbortController().signal)).resolves.toEqual({ skills: [] })
     expect(list).toHaveBeenCalledWith({ cwd: '/cold/project', scope: undefined })
+  })
+
+  it.each([new Error('preset defect'), new RemoteError('gateway/internal', 'preset defect', {})])('propagates unexpected preset failures: %s', async (failure) => {
+    const ctx = await context()
+    const sessionId = SessionId('gone-preset')
+    ctx.provide('sessionQuery', {
+      observeSession: () => Promise.resolve(observation(sessionId, {
+        cwd: '/cold/project',
+        agentPreset: 'gone',
+      })),
+    } as never)
+    ctx.provide('agentPresets', {
+      acquireScope: () => Promise.reject(failure),
+    } as never)
+    const list = vi.fn(() => Promise.resolve([]))
+    ctx.provide('skills', { list } as never)
+    const catalog = new SessionSkillCatalog(ctx)
+
+    await expect(catalog.list({ sessionId }, new AbortController().signal)).rejects.toBe(failure)
+    expect(list).not.toHaveBeenCalled()
   })
 
   it.each([

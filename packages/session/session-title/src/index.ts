@@ -409,15 +409,12 @@ export class SessionTitleService extends Service {
     }
     const state = this.stateFor(session)
     this.supersede(state, 'user rename superseded automatic title generation')
-    session.append('session/title', {
+    const event = session.append('session/title', {
       title: normalized,
       messageSeqs: [],
       source: { kind: 'user' },
     })
-    const snapshot = this.get(session)
-    /* v8 ignore next -- unreachable: the append above just committed a session/title event. */
-    if (snapshot === undefined) throw new Error('renamed title failed to fold')
-    return snapshot
+    return titleSnapshotFromState({ ...event.data, eventSeq: event.seq, updatedAt: event.time })
   }
 
   /**

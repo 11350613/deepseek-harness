@@ -40,22 +40,7 @@ export interface ConsumedWork {
  * @returns whether the ending accounts for the input the turn took.
  */
 function accountsForClaim(reason: TurnEndReason): boolean {
-  switch (reason.kind) {
-    case 'completed':
-      return false
-    case 'blocked':
-    case 'aborted':
-    case 'interrupted':
-    case 'error':
-      return true
-    /* v8 ignore next 5 -- unreachable: `max-tokens` requires a step and short-circuits
-     * before this call; `forked` exists only in constructor seed history, while production
-     * callers fold an operation-owned suffix. `TurnEndReasonMap` is merge-extensible, so a
-     * backend-added variant cannot be listed; an unnameable ending over consumed input must
-     * not read as success. */
-    default:
-      return true
-  }
+  return reason.kind !== 'completed'
 }
 
 /**

@@ -33,6 +33,8 @@ Choose it when automation should own the interaction: an out-of-process subagent
 
 ### Minimal configuration
 
+Image capability discovery returns false for unknown providers or models; other metadata lookup failures propagate to initialization.
+
 Every session the server creates uses the provider and model configured here. Both fields are optional so another agent or request listener can supply them; the runnable demo composition sets both. Stdout carries only protocol traffic, so keep logging off it.
 
 ```yaml
