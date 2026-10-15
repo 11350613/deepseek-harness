@@ -3,7 +3,7 @@ import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
-import { captureFile, mutationPath, sameCapture, type Capture } from './capture.ts'
+import { captureFile, mutationPaths, sameCapture, type Capture } from './capture.ts'
 import { compareText } from './compare.ts'
 import {
   blobText, diffTrees, gitlinkPaths, ignoredPaths, locateGitWorkspace, snapshotTree, treeBlob, type GitRunner, type GitWorkspace,
@@ -147,24 +147,24 @@ export class TurnRecorder {
   }
 
   /**
-   * Queue the capture of the path a file tool is about to mutate, before the
+   * Queue captures of every path a file tool is about to mutate, before the
    * tool runs; only the turn's first mutation of a path captures it. Await
    * {@link settled} afterwards so the tool cannot overtake the capture.
    * @param name - wire tool name.
    * @param args - parsed call arguments.
    */
   capture(name: string, args: unknown): void {
-    const path = mutationPath(name, args)
-    if (path === undefined) return
     const state = this.state
-    void this.enqueue(async () => {
-      const paths = this.paths
-      if (paths === undefined) return
-      const absolute = await canonicalPath(resolve(paths.cwd, path))
-      if (state.captures.has(absolute)) return
-      const capture = await captureFile(absolute, join(await this.scratchDir(), 'captures'), this.env.maxFileBytes)
-      if (capture !== undefined) state.captures.set(absolute, capture)
-    })
+    for (const path of mutationPaths(name, args)) {
+      void this.enqueue(async () => {
+        const paths = this.paths
+        if (paths === undefined) return
+        const absolute = await canonicalPath(resolve(paths.cwd, path))
+        if (state.captures.has(absolute)) return
+        const capture = await captureFile(absolute, join(await this.scratchDir(), 'captures'), this.env.maxFileBytes)
+        if (capture !== undefined) state.captures.set(absolute, capture)
+      })
+    }
   }
 
   /**

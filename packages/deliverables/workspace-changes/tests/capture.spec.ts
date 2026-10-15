@@ -1,8 +1,9 @@
 /** Whole-file captures and the mutation paths that trigger them. */
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import { captureFile, mutationPath, sameCapture } from '../src/capture.ts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { captureFile, mutationPaths, sameCapture } from '../src/capture.ts'
+import * as Patch from '@deepseek-ai/dsh-fs-patch'
 import { scratchDir } from './support.ts'
 
 const cleanups: Array<() => Promise<unknown>> = []
@@ -44,23 +45,38 @@ describe('captureFile', () => {
   })
 })
 
-describe('mutationPath', () => {
+describe('mutationPaths', () => {
   it('names the path of write, edit, and mutating editor calls', () => {
-    expect(mutationPath('write', { file_path: 'a.txt', content: 'x' })).toBe('a.txt')
-    expect(mutationPath('edit', { file_path: 'a.txt', old_string: 'x', new_string: 'y' })).toBe('a.txt')
-    expect(mutationPath('str_replace_editor', { command: 'create', path: 'b.txt', file_text: 'b' })).toBe('b.txt')
-    expect(mutationPath('str_replace_editor', { command: 'str_replace', path: 'b.txt', old_str: 'b' })).toBe('b.txt')
-    expect(mutationPath('str_replace_editor', { command: 'insert', path: 'b.txt', insert_line: 1, new_str: 'i' })).toBe('b.txt')
+    expect(mutationPaths('write', { file_path: 'a.txt', content: 'x' })).toEqual(['a.txt'])
+    expect(mutationPaths('edit', { file_path: 'a.txt', old_string: 'x', new_string: 'y' })).toEqual(['a.txt'])
+    expect(mutationPaths('str_replace_editor', { command: 'create', path: 'b.txt', file_text: 'b' })).toEqual(['b.txt'])
+    expect(mutationPaths('str_replace_editor', { command: 'str_replace', path: 'b.txt', old_str: 'b' })).toEqual(['b.txt'])
+    expect(mutationPaths('str_replace_editor', { command: 'insert', path: 'b.txt', insert_line: 1, new_str: 'i' })).toEqual(['b.txt'])
   })
 
   it('yields nothing for reads, unknown tools, and incomplete arguments', () => {
-    expect(mutationPath('write', undefined)).toBeUndefined()
-    expect(mutationPath('write', [])).toBeUndefined()
-    expect(mutationPath('read', { file_path: 'a.txt' })).toBeUndefined()
-    expect(mutationPath('write', { file_path: ' ', content: 'x' })).toBeUndefined()
-    expect(mutationPath('write', { file_path: 'a.txt' })).toBeUndefined()
-    expect(mutationPath('edit', { file_path: 'a.txt', old_string: 'x' })).toBeUndefined()
-    expect(mutationPath('str_replace_editor', { command: 'view', path: 'b.txt' })).toBeUndefined()
-    expect(mutationPath('str_replace_editor', { command: 'create', path: '' })).toBeUndefined()
+    expect(mutationPaths('write', undefined)).toEqual([])
+    expect(mutationPaths('write', [])).toEqual([])
+    expect(mutationPaths('read', { file_path: 'a.txt' })).toEqual([])
+    expect(mutationPaths('write', { file_path: ' ', content: 'x' })).toEqual([])
+    expect(mutationPaths('write', { file_path: 'a.txt' })).toEqual([])
+    expect(mutationPaths('edit', { file_path: 'a.txt', old_string: 'x' })).toEqual([])
+    expect(mutationPaths('str_replace_editor', { command: 'view', path: 'b.txt' })).toEqual([])
+    expect(mutationPaths('str_replace_editor', { command: 'create', path: '' })).toEqual([])
   })
+})
+
+it('collects ordered patch paths with both move endpoints and no repeated spelling', () => {
+  const patch = ['*** Begin Patch', '*** Add File: new', '+a', '*** Update File: source',
+    '*** Move to: target', '@@', '-old', '+new', '*** Delete File: gone',
+    '*** Update File: source', '@@', '-old', '+new', '*** End Patch'].join('\n')
+  expect(mutationPaths('apply_patch', { patch })).toEqual(['new', 'source', 'target', 'gone'])
+  expect(mutationPaths('apply_patch', { patch: 'invalid' })).toEqual([])
+  expect(mutationPaths('apply_patch', {})).toEqual([])
+})
+
+it('propagates parser defects without classifying them as syntax refusals', () => {
+  const defect = new Error('parser defect')
+  const spy = vi.spyOn(Patch, 'parsePatch').mockImplementation(() => { throw defect })
+  try { expect(() => mutationPaths('apply_patch', { patch: 'text' })).toThrow(defect) } finally { spy.mockRestore() }
 })

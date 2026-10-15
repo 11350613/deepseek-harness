@@ -126,6 +126,8 @@ The internal patch executor accepts a raw patch and an already resolved sandbox 
 
 ### Observation and concurrency
 
+When mounted, `workspace-changes` completes Review captures in `tools/pre-execute` before file mutations; these reads do not establish model observation.
+
 `fs/observed` fires after the operation succeeded via a plain `ctx.emit`; a listener is contractually a synchronous, side-effect-only recorder, so async or fallible observation does not belong on this event. `read` opts into concurrent scheduling because its only mutation is the synchronous version recorder; recorder races fail closed when a later `write` or `edit` re-checks the version under its target lock, and both mutation tools remain exclusive.
 
 Patch preflight reads never emit `fs/observed`. The first operation on a target dispatches its intent; later preflight operations use the expected state after preceding successes. Each commit dispatches its intents again to obtain current observation guards. Add/update records present, delete records absent, and move records its destination plus source absence only after successful removal. A partial move is failed with a destination-only change and preserves the source observation. The source baseline comes from `moveFile` under its lock, without an extra executor read.

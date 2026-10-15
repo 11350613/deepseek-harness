@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, open, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { collectMutationPaths, parsePatch, PatchParseError } from '@deepseek-ai/dsh-fs-patch'
 
 /** Bytes git inspects for a NUL byte before treating content as binary. */
 const BINARY_PROBE_BYTES = 8000
@@ -83,30 +84,36 @@ export function sameCapture(a: Capture, b: Capture): boolean {
   return a.kind === 'file' && b.kind === 'file' && a.file === b.file
 }
 
-/** A non-blank string, or undefined. */
-function text(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() !== '' ? value : undefined
+/** Zero or one non-blank path. */
+function pathList(value: unknown): string[] {
+  return typeof value === 'string' && value.trim() !== '' ? [value] : []
 }
 
 /**
- * The path a first-party file-tool call is about to mutate: `write`, `edit`,
- * and the mutating `str_replace_editor` commands. Other tools, reads, and
- * incomplete arguments yield undefined.
+ * Paths a file-tool call can mutate, including both endpoints of patch moves.
+ * Reads, incomplete arguments, and invalid patch syntax yield no paths.
  * @param name - wire tool name.
  * @param args - parsed call arguments.
- * @returns the model-facing path, or undefined.
+ * @returns model-facing paths in first-seen order.
+ * @throws unexpected parser defects; the tool owns syntax refusals.
  */
-export function mutationPath(name: string, args: unknown): string | undefined {
-  if (typeof args !== 'object' || args === null || Array.isArray(args)) return undefined
+export function mutationPaths(name: string, args: unknown): string[] {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return []
   const record = args as Record<string, unknown>
   switch (name) {
     case 'write':
-      return typeof record.content === 'string' ? text(record.file_path) : undefined
+      return typeof record.content === 'string' ? pathList(record.file_path) : []
     case 'edit':
-      return typeof record.old_string === 'string' && typeof record.new_string === 'string' ? text(record.file_path) : undefined
+      return typeof record.old_string === 'string' && typeof record.new_string === 'string' ? pathList(record.file_path) : []
     case 'str_replace_editor':
-      return record.command === 'create' || record.command === 'str_replace' || record.command === 'insert' ? text(record.path) : undefined
+      return record.command === 'create' || record.command === 'str_replace' || record.command === 'insert' ? pathList(record.path) : []
+    case 'apply_patch':
+      if (typeof record.patch !== 'string') return []
+      try { return collectMutationPaths(parsePatch(record.patch)) } catch (error) {
+        if (error instanceof PatchParseError) return []
+        throw error
+      }
     default:
-      return undefined
+      return []
   }
 }
