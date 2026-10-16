@@ -328,7 +328,10 @@ export class BasicCompactionEngine extends CompactionEngine {
 
     for (let attempt = 0; attempt <= spec.compactionRetries; attempt += 1) {
       const range = selectCompactableRange(agent.session, measurement, spec.retainTokens)
-      if (range === null) return null
+      if (range === null) {
+        if (attempt === 0) return null
+        break
+      }
       const result = await this.compactRegion(range.start, range.end, agent, signal)
       measurement = meter.measure(agent.session)
       if (measurement.totalTokens < spec.thresholdTokens) return result

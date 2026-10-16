@@ -99,7 +99,8 @@ export class SessionSkillCatalog extends TypertRemoteService {
       return await presets.acquireScope(agentPreset)
     } catch (error) {
       if (error instanceof RemoteError && (error.code === 'agent-preset/not-found' || error.code === 'agent-preset/invalid')) return undefined
-      throw error
+      this.ctx.logger.warn(`skill catalog could not acquire preset ${String(agentPreset)}; using global skills: ${String(error)}`)
+      return undefined
     }
   }
 }

@@ -160,7 +160,7 @@ describe('SessionSkillCatalog', () => {
     expect(list).toHaveBeenCalledWith({ cwd: '/cold/project', scope: undefined })
   })
 
-  it.each([new Error('preset defect'), new RemoteError('gateway/internal', 'preset defect', {})])('propagates unexpected preset failures: %s', async (failure) => {
+  it.each([new Error('preset defect'), new RemoteError('gateway/internal', 'preset defect', {})])('warns and falls back to global skills for unexpected preset failures: %s', async (failure) => {
     const ctx = await context()
     const sessionId = SessionId('gone-preset')
     ctx.provide('sessionQuery', {
@@ -176,8 +176,11 @@ describe('SessionSkillCatalog', () => {
     ctx.provide('skills', { list } as never)
     const catalog = new SessionSkillCatalog(ctx)
 
-    await expect(catalog.list({ sessionId }, new AbortController().signal)).rejects.toBe(failure)
-    expect(list).not.toHaveBeenCalled()
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    await expect(catalog.list({ sessionId }, new AbortController().signal)).resolves.toEqual({ skills: [] })
+    expect(list).toHaveBeenCalledWith({ cwd: '/cold/project', scope: undefined })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('preset gone'))
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('preset defect'))
   })
 
   it.each([
