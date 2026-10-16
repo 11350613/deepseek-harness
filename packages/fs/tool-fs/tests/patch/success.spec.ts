@@ -124,8 +124,8 @@ it.skipIf(process.platform === 'win32')('updates through a symbolic link and sha
   await symlink('a', resolve(t.workspace, 'link'))
   const link = t.record('update', 'link')
   expect(await t.run(patch(update('link')))).toEqual({ phase: 'commit', outcomes: [
-    { status: 'completed', operation: link, changes: [{ path: link.path, before: 'old\n', after: 'new\n' }] },
-  ], affectedPaths: [link.path], cancelled: false })
+    { status: 'completed', operation: link, changes: [{ path: resolve(t.workspace, 'a'), before: 'old\n', after: 'new\n' }] },
+  ], affectedPaths: [resolve(t.workspace, 'a')], cancelled: false })
   expect(await t.bytes('link')).toBe('new\n')
   expect(await t.bytes('a')).toBe('new\n')
   expect(await t.editIntent('link')).toEqual({ version: await t.version('a') })

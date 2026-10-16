@@ -54,7 +54,7 @@ We implement and verify the steps in order. The parser supplies the shared recor
 
 Review uses whole-file captures before the first mutation and at turn end; tool-call hunks and patch text are not substitutes for these bytes. Test without a Git repository and with Git unavailable so Git coverage cannot conceal missing tool-path capture. A create followed by deletion, or an edit fully reverted in the same turn, has no net change and need not produce a row.
 
-The [existing Review decision](../../implemented/feature/2026-09-15-changed-file-diff-preview.md) owns size/count/time limits, capture-error behavior, session lifetime, and supported locations. This feature inherits them. Acceptance covers supported Host files while their Session is available; it does not promise persistent or SSH Review. Adding operations to the SSH filesystem provider keeps the filesystem API complete and does not imply remote Review support.
+The [existing Review decision](../../../../packages/deliverables/workspace-changes/README.md) owns size/count/time limits, capture-error behavior, session lifetime, and supported locations. This feature inherits them. Acceptance covers supported Host files while their Session is available; it does not promise persistent or SSH Review. Adding operations to the SSH filesystem provider keeps the filesystem API complete and does not imply remote Review support.
 
 ## Alternatives considered
 
@@ -85,4 +85,4 @@ Preflight can succeed before a later version conflict, cancellation, or storage 
 
 Path extraction can drift from execution or omit a move endpoint. Sharing the parsed operations and testing the complete non-Git path is required before enabling the tool in a profile with Review.
 
-This proposal preserves the rationale of the [filesystem split](../../implemented/simplification/2026-06-26-fsspec-style-fs-seam.md), [observation event policy](../../implemented/architecture/2026-06-26-file-context-as-event-gate.md), [filesystem sandbox](../../implemented/feature/2026-07-14-cross-family-fs-sandbox.md), and [turn changed-files card](../../implemented/feature/2026-09-11-turn-changed-files-card.md). It adds an editing capability without superseding those decisions.
+This proposal preserves the rationale of the [filesystem split](../../../../packages/fs/fs/README.md), [observation event policy](../../../../packages/fs/fs-observation-policy/README.md), [filesystem sandbox](../../../../packages/fs/fs-sandbox/README.md), and [turn changed-files card](../../../../packages/deliverables/workspace-changes/README.md). It adds an editing capability without superseding those decisions.

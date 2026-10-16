@@ -54,7 +54,7 @@ Review 工作仅限于在修改前采集工具涉及的路径，以及添加必�
 
 Review 使用首次修改前与轮次结束时的完整文件采集；工具调用的 hunk 和补丁文本不能代替这些字节。测试应同时覆盖无 Git 仓库及 Git 不可用的环境，避免 Git 覆盖掩盖工具路径漏采集。文件在同一轮次中先创建后删除，或修改后完全还原，没有净变化，可以不产生文件行。
 
-[现有 Review 决策](../../implemented/feature/2026-09-15-changed-file-diff-preview.zh.md)负责大小、数量、时间限制、采集错误行为、会话生命周期及支持位置。本功能沿用这些规则。验收覆盖 Session 可用期间支持范围内的 Host 文件，不承诺持久化或 SSH Review。补齐 SSH 文件系统提供方的操作是为了保持文件系统 API 完整，不代表支持远程 Review。
+[现有 Review 决策](../../../../packages/deliverables/workspace-changes/README.zh.md)负责大小、数量、时间限制、采集错误行为、会话生命周期及支持位置。本功能沿用这些规则。验收覆盖 Session 可用期间支持范围内的 Host 文件，不承诺持久化或 SSH Review。补齐 SSH 文件系统提供方的操作是为了保持文件系统 API 完整，不代表支持远程 Review。
 
 ## 考虑过的替代方案
 
@@ -85,4 +85,4 @@ Review 使用首次修改前与轮次结束时的完整文件采集；工具调�
 
 路径提取可能偏离执行行为或遗漏移动的一端。在支持 Review 的 profile 中启用工具前，必须共享解析结果并验证完整的无 Git 路径。
 
-本提案保留[文件系统拆分](../../implemented/simplification/2026-06-26-fsspec-style-fs-seam.zh.md)、[观察事件策略](../../implemented/architecture/2026-06-26-file-context-as-event-gate.zh.md)、[文件系统沙箱](../../implemented/feature/2026-07-14-cross-family-fs-sandbox.zh.md)和[轮次变更文件卡片](../../implemented/feature/2026-09-11-turn-changed-files-card.zh.md)的决策依据。它新增编辑能力，不替代上述决策。
+本提案保留[文件系统拆分](../../../../packages/fs/fs/README.zh.md)、[观察事件策略](../../../../packages/fs/fs-observation-policy/README.zh.md)、[文件系统沙箱](../../../../packages/fs/fs-sandbox/README.zh.md)和[轮次变更文件卡片](../../../../packages/deliverables/workspace-changes/README.zh.md)的决策依据。它新增编辑能力，不替代上述决策。

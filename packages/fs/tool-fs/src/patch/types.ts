@@ -27,7 +27,7 @@ export interface PatchOperationRecord {
 
 /** LF text before and after one effect; null means absence or an unavailable provider basis. */
 export interface PatchFileChange {
-  /** Resolved display path that changed. */
+  /** Canonical absolute process path that changed. */
   path: string
   /** Previous text, or null for absence or an unavailable basis. */
   before: string | null

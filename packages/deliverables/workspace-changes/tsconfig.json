@@ -30,7 +30,7 @@
       "path": "../../util/home-paths"
     },
     {
-      "path": "../../fs/fs-patch"
+      "path": "../../fs/fs"
     }
   ]
 }

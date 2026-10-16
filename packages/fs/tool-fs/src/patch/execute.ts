@@ -59,7 +59,7 @@ export async function commitPatch(
           started = true
           const result = await ctx.fs.writeText(target, operation.content, intent, exec.signal, policy)
           ctx.emit('fs/observed', target, { kind: 'present', version: result.version }, exec)
-          outcome = { status: 'completed', operation: record, changes: [{ path: target.displayPath, before: result.before, after: result.after }] }
+          outcome = { status: 'completed', operation: record, changes: [{ path: ctx.fs.processPath(target), before: result.before, after: result.after }] }
           break
         }
         case 'update': {
@@ -67,7 +67,7 @@ export async function commitPatch(
           started = true
           const result = await ctx.fs.patchText(target, operation.hunks, intent, exec.signal, policy)
           ctx.emit('fs/observed', target, { kind: 'present', version: result.version }, exec)
-          outcome = { status: 'completed', operation: record, changes: [{ path: target.displayPath, before: result.before, after: result.after }] }
+          outcome = { status: 'completed', operation: record, changes: [{ path: ctx.fs.processPath(target), before: result.before, after: result.after }] }
           break
         }
         case 'delete': {
@@ -75,7 +75,7 @@ export async function commitPatch(
           started = true
           const result = await ctx.fs.deleteFile(target, intent, exec.signal, policy)
           ctx.emit('fs/observed', target, { kind: 'absent' }, exec)
-          outcome = { status: 'completed', operation: record, changes: [{ path: target.displayPath, before: result.before, after: null }] }
+          outcome = { status: 'completed', operation: record, changes: [{ path: ctx.fs.processPath(target), before: result.before, after: null }] }
           break
         }
         case 'move': {
@@ -88,11 +88,12 @@ export async function commitPatch(
             ...(expectedSource === undefined ? {} : { expectedSource }),
             ...(expectedDestination === undefined ? {} : { expectedDestination }),
           }, exec.signal, policy)
-          const changes = [{ path: operation.destination.displayPath, before: result.destination.before, after: result.destination.after }]
+          const changes = [{ path: ctx.fs.processPath(operation.destination),
+            before: result.destination.before, after: result.destination.after }]
           ctx.emit('fs/observed', operation.destination, { kind: 'present', version: result.destination.version }, exec)
           if (result.sourceDeleted) {
             ctx.emit('fs/observed', target, { kind: 'absent' }, exec)
-            outcome = { status: 'completed', operation: record, changes: [...changes, { path: target.displayPath, before: result.sourceBefore, after: null }] }
+            outcome = { status: 'completed', operation: record, changes: [...changes, { path: ctx.fs.processPath(target), before: result.sourceBefore, after: null }] }
           } else {
             const error = new FsError(result.sourceFailure.message, result.sourceFailure.code)
             outcome = { status: 'failed', operation: record, failure: patchFailure(sandbox, policy, error, target.displayPath), changes }

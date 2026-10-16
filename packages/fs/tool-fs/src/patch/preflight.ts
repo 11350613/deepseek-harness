@@ -91,7 +91,7 @@ class Preflight {
       throw new FsError(`cannot move "${operation.target.displayPath}" to itself`, 'FS_SAME_TARGET')
     }
     if (operation.kind === 'delete' || operation.kind === 'move') {
-      const info = await this.ctx.fs.lstat(operation.rawPath, sessionResolveOptions(this.exec, this.policy?.workspaceRoot))
+      const info = await this.ctx.fs.lstat(operation.rawPath, await sessionResolveOptions(this.ctx, this.exec))
       if (info?.type === 'symlink') return { code: 'PATCH_SYMLINK_SOURCE',
         message: `cannot ${operation.kind} "${operation.target.displayPath}": path is a symbolic link — operate on its target path instead` }
     }

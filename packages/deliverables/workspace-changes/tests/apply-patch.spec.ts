@@ -3,6 +3,7 @@ import { readFile, realpath, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import * as FsPolicy from '@deepseek-ai/dsh-fs-observation-policy'
@@ -43,6 +44,7 @@ async function boot(environment: string) {
       return resolve(name, ...args)
     })
   }
+  provideWorkingDirectoryFixture(ctx, cwd)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime, { mode: 'native' })
   await ctx.plugin(LocalFileSystem, { cwd })
@@ -64,7 +66,7 @@ async function boot(environment: string) {
     }, { surfaceOp: 'append' })
     const source = session.append('tool/call', { turn: 1, step: 1, callId, name, arguments: serialized })
     const result = await ctx.tools.execute({ signal, callId, rootCallId: callId, name, arguments: args,
-      // The real runtime and file tools consume only the Session from this Agent.
+      // The fixture provides current-directory resolution for this Session.
       agent: { session } as never })
     session.append('tool/result', { turn: 1, step: 1,
       message: createToolResultMessage({ callId, content: result.content, isError: result.isError }),
@@ -139,14 +141,14 @@ describe.each(['non-git', 'git-unavailable'])('apply_patch Review in %s', (envir
     await expectDiff(t, 0, 'old\n', await t.bytes('a'))
   })
 
-  it('captures an unread file without granting observation or recording a rejected edit', async () => {
+  it('rejects an unread file without capture, observation, or a Review row', async () => {
     const t = await boot(environment)
     await t.seed('a')
     const capture = vi.spyOn(captures, 'captureFile')
     startTurn(t.session, 1)
     const result = await t.apply(patch(update('a')))
     expect(result).toMatchObject({ isError: true, error: { info: { code: 'FS_NOT_OBSERVED' } } })
-    expect(capture).toHaveBeenCalledWith(join(t.cwd, 'a'), expect.any(String), expect.any(Number))
+    expect(capture).not.toHaveBeenCalled()
     expect(t.observations()).toBe(0)
     expect(await t.finish()).toEqual([])
     expect(await t.bytes('a')).toBe('old\n')

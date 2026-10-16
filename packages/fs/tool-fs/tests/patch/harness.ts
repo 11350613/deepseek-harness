@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { FsVersion } from '@deepseek-ai/dsh-fs'
 import type { FsObservation } from '@deepseek-ai/dsh-fs'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
@@ -28,7 +29,7 @@ export const remove = (path: string) => `*** Delete File: ${path}`
 export const move = (source: string, destination: string, before = 'old', after = 'new') =>
   `*** Update File: ${source}\n*** Move to: ${destination}\n@@\n-${before}\n+${after}`
 
-export async function setup(options: { policy?: boolean; mode?: SandboxMode; provider?: typeof LocalFileSystem; enableApplyPatch?: boolean; toolMode?: 'native' | 'both' } = {}) {
+export async function setup(options: { policy?: boolean; mode?: SandboxMode; provider?: typeof LocalFileSystem; enableApplyPatch?: boolean; toolMode?: 'native' | 'ptc' } = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-patch-executor-')))
   onTestFinished(() => rm(root, { recursive: true, force: true }))
   const workspace = join(root, 'workspace')
@@ -38,6 +39,7 @@ export async function setup(options: { policy?: boolean; mode?: SandboxMode; pro
   const ctx = new Context()
   onTestFinished(() => ctx.fiber.dispose())
   onTestFinished(() => { vi.restoreAllMocks() })
+  provideWorkingDirectoryFixture(ctx, workspace)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime, { mode: options.toolMode ?? 'native' })
   if (options.mode !== undefined) {

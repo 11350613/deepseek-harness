@@ -1,9 +1,8 @@
-/** Whole-file captures and the mutation paths that trigger them. */
+/** Whole-file capture storage and content comparison. */
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { captureFile, mutationPaths, sameCapture } from '../src/capture.ts'
-import * as Patch from '@deepseek-ai/dsh-fs-patch'
+import { afterEach, describe, expect, it } from 'vitest'
+import { captureFile, sameCapture } from '../src/capture.ts'
 import { scratchDir } from './support.ts'
 
 const cleanups: Array<() => Promise<unknown>> = []
@@ -43,40 +42,4 @@ describe('captureFile', () => {
     expect(sameCapture({ kind: 'oversized' }, { kind: 'oversized' })).toBe(false)
     expect(sameCapture({ kind: 'oversized' }, a)).toBe(false)
   })
-})
-
-describe('mutationPaths', () => {
-  it('names the path of write, edit, and mutating editor calls', () => {
-    expect(mutationPaths('write', { file_path: 'a.txt', content: 'x' })).toEqual(['a.txt'])
-    expect(mutationPaths('edit', { file_path: 'a.txt', old_string: 'x', new_string: 'y' })).toEqual(['a.txt'])
-    expect(mutationPaths('str_replace_editor', { command: 'create', path: 'b.txt', file_text: 'b' })).toEqual(['b.txt'])
-    expect(mutationPaths('str_replace_editor', { command: 'str_replace', path: 'b.txt', old_str: 'b' })).toEqual(['b.txt'])
-    expect(mutationPaths('str_replace_editor', { command: 'insert', path: 'b.txt', insert_line: 1, new_str: 'i' })).toEqual(['b.txt'])
-  })
-
-  it('yields nothing for reads, unknown tools, and incomplete arguments', () => {
-    expect(mutationPaths('write', undefined)).toEqual([])
-    expect(mutationPaths('write', [])).toEqual([])
-    expect(mutationPaths('read', { file_path: 'a.txt' })).toEqual([])
-    expect(mutationPaths('write', { file_path: ' ', content: 'x' })).toEqual([])
-    expect(mutationPaths('write', { file_path: 'a.txt' })).toEqual([])
-    expect(mutationPaths('edit', { file_path: 'a.txt', old_string: 'x' })).toEqual([])
-    expect(mutationPaths('str_replace_editor', { command: 'view', path: 'b.txt' })).toEqual([])
-    expect(mutationPaths('str_replace_editor', { command: 'create', path: '' })).toEqual([])
-  })
-})
-
-it('collects ordered patch paths with both move endpoints and no repeated spelling', () => {
-  const patch = ['*** Begin Patch', '*** Add File: new', '+a', '*** Update File: source',
-    '*** Move to: target', '@@', '-old', '+new', '*** Delete File: gone',
-    '*** Update File: source', '@@', '-old', '+new', '*** End Patch'].join('\n')
-  expect(mutationPaths('apply_patch', { patch })).toEqual(['new', 'source', 'target', 'gone'])
-  expect(mutationPaths('apply_patch', { patch: 'invalid' })).toEqual([])
-  expect(mutationPaths('apply_patch', {})).toEqual([])
-})
-
-it('propagates parser defects without classifying them as syntax refusals', () => {
-  const defect = new Error('parser defect')
-  const spy = vi.spyOn(Patch, 'parsePatch').mockImplementation(() => { throw defect })
-  try { expect(() => mutationPaths('apply_patch', { patch: 'text' })).toThrow(defect) } finally { spy.mockRestore() }
 })

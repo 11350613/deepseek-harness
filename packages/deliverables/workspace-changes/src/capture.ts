@@ -7,7 +7,6 @@
 import { createHash } from 'node:crypto'
 import { mkdir, open, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { collectMutationPaths, parsePatch, PatchParseError } from '@deepseek-ai/dsh-fs-patch'
 
 /** Bytes git inspects for a NUL byte before treating content as binary. */
 const BINARY_PROBE_BYTES = 8000
@@ -82,38 +81,4 @@ export async function captureFile(absolute: string, directory: string, maxBytes:
 export function sameCapture(a: Capture, b: Capture): boolean {
   if (a.kind === 'absent' || b.kind === 'absent') return a.kind === b.kind
   return a.kind === 'file' && b.kind === 'file' && a.file === b.file
-}
-
-/** Zero or one non-blank path. */
-function pathList(value: unknown): string[] {
-  return typeof value === 'string' && value.trim() !== '' ? [value] : []
-}
-
-/**
- * Paths a file-tool call can mutate, including both endpoints of patch moves.
- * Reads, incomplete arguments, and invalid patch syntax yield no paths.
- * @param name - wire tool name.
- * @param args - parsed call arguments.
- * @returns model-facing paths in first-seen order.
- * @throws unexpected parser defects; the tool owns syntax refusals.
- */
-export function mutationPaths(name: string, args: unknown): string[] {
-  if (typeof args !== 'object' || args === null || Array.isArray(args)) return []
-  const record = args as Record<string, unknown>
-  switch (name) {
-    case 'write':
-      return typeof record.content === 'string' ? pathList(record.file_path) : []
-    case 'edit':
-      return typeof record.old_string === 'string' && typeof record.new_string === 'string' ? pathList(record.file_path) : []
-    case 'str_replace_editor':
-      return record.command === 'create' || record.command === 'str_replace' || record.command === 'insert' ? pathList(record.path) : []
-    case 'apply_patch':
-      if (typeof record.patch !== 'string') return []
-      try { return collectMutationPaths(parsePatch(record.patch)) } catch (error) {
-        if (error instanceof PatchParseError) return []
-        throw error
-      }
-    default:
-      return []
-  }
 }

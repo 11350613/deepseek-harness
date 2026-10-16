@@ -169,19 +169,19 @@ class PatchPtcRuntime extends PtcRuntime {
   }
 }
 
-it('dispatches native and PTC patch calls through one registration with identical values', async () => {
-  const t = await setup({ enableApplyPatch: true, toolMode: 'both', policy: false })
-  await t.ctx.plugin(PatchPtcRuntime)
-  const runtime = t.ctx.ptcRuntime as PatchPtcRuntime
-  runtime.patch = patch(update('a'))
+it('dispatches native and PTC patch calls with identical values', async () => {
+  const t = await setup({ enableApplyPatch: true, policy: false })
+  const p = await setup({ enableApplyPatch: true, toolMode: 'ptc', policy: false })
+  await p.ctx.plugin(PatchPtcRuntime)
+  const runtime = p.ctx.ptcRuntime as PatchPtcRuntime
+  runtime.patch = patch(update(resolve(t.workspace, 'a')))
   await t.file('a', 'old\n')
   const native = await call(t, runtime.patch)
   if (native.isError) throw new Error('expected native success')
   await t.file('a', 'old\n')
-  const ptc = await t.ctx.tools.execute({ ...t.exec, agent: { session: { header: { cwd: t.workspace }, append() {} } } as never,
+  const ptc = await p.ctx.tools.execute({ ...p.exec, agent: { ctx: p.ctx, session: { header: { cwd: t.workspace }, append() {} } } as never,
     name: 'run_code', arguments: { code: 'return await tools.apply_patch({patch})', description: 'Apply the fixture patch' } })
-  expect(ptc.isError).toBe(false)
-  if (ptc.isError) throw new Error('expected PTC success')
+  if (ptc.isError) throw new Error(JSON.stringify(ptc))
   expect(ptc.value).toEqual({ logs: [], result: native.value })
   expect(await t.bytes('a')).toBe('new\n')
 })
