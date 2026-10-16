@@ -125,7 +125,7 @@ kind: "package-reference"
 - 字面量编辑、补丁与移动要求 UTF-8 文本；删除也接受二进制普通文件，此时可返回 `before: null`。整文件写入接受文本，也可替换原有二进制文件。
 - 移动不是跨路径事务。返回 `sourceDeleted: false` 表示目标已发布、源仍存在；调用方必须报告这两个事实。
 - 已解析目标会跟随符号链接。拒绝符号链接源的调用方必须在 `resolve` 前使用 `lstat`；复制和递归目录操作不在此 API 范围内。
-- 外部 `FileSystem` 提供方必须实现抽象方法 `patchText`、`deleteFile` 和 `moveFile`。[服务定义](src/index.ts)说明其签名与义务。
+- 外部 `FileSystem` 提供方遵循[受保护修改迁移指南](../../../docs/upgrade-guide/v0.2.1-alpha.4/guarded-filesystem-mutations/guide.zh.md)。
 - **没有 I/O deadline**：该 seam 不启动超时；取消只是每个原语上尽力而为的可选 `AbortSignal`（见[fs 能力族立场](../README.zh.md)）。
 - **先解析后操作使远程后端每次工具调用需要两次往返**：折叠或缓存解析由这种后端自行决定。
 

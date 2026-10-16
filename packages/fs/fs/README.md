@@ -125,7 +125,7 @@ These limits define when the contract is a poor fit or needs special operational
 - Literal edits, patches, and moves require UTF-8 text; deletion also accepts binary regular files and may return `before: null`. Whole-file writes accept text and may replace a prior binary file.
 - Moves are not cross-path transactions. A resolved `sourceDeleted: false` result means the destination is published and the source remains; callers must report both facts.
 - Resolved targets follow symlinks. Callers that reject symlink sources must use `lstat` before `resolve`; copying and recursive directory operations are outside this API.
-- External `FileSystem` providers must implement the abstract `patchText`, `deleteFile`, and `moveFile` methods. Their signatures and obligations are defined in [the service](src/index.ts).
+- External `FileSystem` providers follow the [guarded-mutation migration guide](../../../docs/upgrade-guide/v0.2.1-alpha.4/guarded-filesystem-mutations/guide.md).
 - **No I/O deadline** — the seam arms no timeout; cancellation is a best-effort optional `AbortSignal` per primitive ([fs family stance](../README.md)).
 - **Resolve-then-operate costs a remote backend two round-trips per tool call** — folding or caching resolution is left to such a backend.
 

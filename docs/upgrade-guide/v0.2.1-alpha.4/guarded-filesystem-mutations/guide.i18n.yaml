@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-alpha.4/guarded-filesystem-mutations/guide.md
+/:
+  en: d2b160c7f3d0ba78
+  zh: aa0b2cd228bdbcda
+/guarded-filesystem-patch-delete-and-move-operations:
+  en: 25c6a54f9edc6017
+  zh: 2fc1a21e58dc8a77
+/guarded-filesystem-patch-delete-and-move-operations/change:
+  en: 4097c2739ef0544a
+  zh: 183c03a877932903
+/guarded-filesystem-patch-delete-and-move-operations/migration:
+  en: 074b6cbc5112b2a0
+  zh: a8949d5399032894
