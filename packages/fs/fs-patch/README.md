@@ -95,7 +95,7 @@ The batch parser builds syntax records without a Session or provider dependency.
 ## Further Exploration
 
 - [Filesystem package group](../README.md) — providers, policies, and file tools.
-- [Apply patch proposal](../../../.agents/notes/proposed/feature/2026-09-28-apply-patch-file-editing.md) — implementation sequence and Review scope.
+- [Apply patch proposal](../../../.agents/notes/implemented/feature/2026-09-28-apply-patch-file-editing.md) — implementation sequence and Review scope.
 
 ## Known Limitations and Deferred Work
 

@@ -95,7 +95,7 @@ if (operation?.kind === 'update') {
 ## 进一步探索
 
 - [文件系统包组](../README.zh.md)——提供方、策略和文件工具。
-- [Apply patch 提案](../../../.agents/notes/proposed/feature/2026-09-28-apply-patch-file-editing.zh.md)——实现顺序与 Review 范围。
+- [Apply patch 提案](../../../.agents/notes/implemented/feature/2026-09-28-apply-patch-file-editing.zh.md)——实现顺序与 Review 范围。
 
 ## 已知限制与后续工作
 
