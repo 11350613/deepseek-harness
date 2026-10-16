@@ -14,7 +14,7 @@ it('previews every operation using raw paths and both move endpoints', async () 
     { path: 'empty', oldText: null, newText: 'insert' },
   ], locations: ['a', 'b', 'c', 'd', 'e', 'empty'].map(path => ({ path })) }
   expect(presentPatchCall(text)).toEqual(expected)
-  const t = await setup({ enableApplyPatch: true })
+  const t = await setup()
   expect(t.ctx.tools.get('apply_patch')?.presentCall?.({ patch: text })).toEqual(expected)
   expect(presentPatchCall('invalid')).toBeUndefined()
 })
@@ -33,7 +33,7 @@ it('falls back on failed or missing metadata and titles known stopped diffs', as
   expect(presentPatchResult(result)).toEqual({ card: 'diff', title: 'Apply patch', diffs })
   const stopped = { ...result, meta: { diffs, stopped: true } }
   expect(presentPatchResult(stopped)).toEqual({ card: 'diff', title: 'Apply patch (stopped)', diffs })
-  const t = await setup({ enableApplyPatch: true })
+  const t = await setup()
   expect(t.ctx.tools.get('apply_patch')?.presentResult?.({ patch: patch() }, stopped))
     .toEqual({ card: 'diff', title: 'Apply patch (stopped)', diffs })
 })

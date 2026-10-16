@@ -48,6 +48,7 @@
         readImage: true
         write: false
         edit: false
+        enableApplyPatch: false
 
     - id: working-directory
       name: '@deepseek-ai/dsh-working-directory'

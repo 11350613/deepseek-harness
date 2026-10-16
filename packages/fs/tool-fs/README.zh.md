@@ -49,13 +49,13 @@ kind: "package-reference"
 | `read_image` | `file_path` | 读取并持久保存 PNG/JPEG/WebP/GIF 源图；无扩展名路径（包括规范化附件对象路径）按文件签名识别格式；规范化可在下一次模型请求前缩小图片，因此模型无需先创建缩略图 |
 | `write` | `file_path`、`content` | 创建或完整替换文件；有策略插件时，覆盖要求先在未变版本上执行 `read`，创建不需要 |
 | `edit` | `file_path`、`old_string`、`new_string`、`replace_all?` | 字面量替换，除非 `replace_all` 为 true 否则要求唯一匹配；有策略插件时，要求先执行 `read` 且文件未变 |
-| `apply_patch` | `patch`，以及可用时的沙箱提权字段 | 按需启用新增/更新/删除/移动，整份预检后顺序执行并保留已知部分效果 |
+| `apply_patch` | `patch`，以及可用时的沙箱提权字段 | 新增/更新/删除/移动，整份预检后顺序执行并保留已知部分效果 |
 
 字段名使用 snake_case，与 Claude Code 和现有 harness 工具 schema 一致。`write` 和 `edit` 的路径描述要求模型先输出 `file_path`，再输出内容或替换字符串；这用于引导流式展示，不强制 JSON 成员顺序。成功返回紧凑信封——读取窗口、图像引用或 `Created file`/`Updated file` 确认——`write`/`edit` 还会派生可回放的 diff 卡片元数据供 UI 展示。
 
 ### 配置
 
-所有键均为可选。`read`、`readImage`、`write` 和 `edit` 开关默认为 `true`；将开关设为 `false` 可省略对应工具及其指导文本。允许关闭全部四个工具。启用 `readImage` 仍需要附件存储和支持图片输入的模型。关闭 `read` 时仍会校验读取上限。
+所有键均为可选。`read`、`readImage`、`write`、`edit` 和 `enableApplyPatch` 开关默认为 `true`；将开关设为 `false` 可省略对应工具及其指导文本。允许关闭全部五个工具。最小预设显式关闭文本工具。启用 `readImage` 仍需要附件存储和支持图片输入的模型。关闭 `read` 时仍会校验读取上限。
 
 | 键 | 默认值 | 含义 |
 |---|---|---|
@@ -63,18 +63,18 @@ kind: "package-reference"
 | `readImage` | `true` | 附件存储挂载时注册 `read_image` |
 | `write` | `true` | 注册 `write` 及其指导文本 |
 | `edit` | `true` | 注册 `edit` 及其指导文本 |
-| `enableApplyPatch` | `false` | 评测期开关；开启时注册 `apply_patch` 及其提示，默认 profile 不启用 |
+| `enableApplyPatch` | `true` | 注册 `apply_patch` 及其提示 |
 | `readLimit` | `2000` | 一次 `read` 调用返回的默认和最大行数 |
 | `readMaxLineLength` | `2000` | 每行截断前保留的字符数 |
 | `readMaxBytes` | `51200` | 一次 `read` 调用所选行的字节上限；溢出时以「已达上限」footer 结束窗口 |
 | `readStreamMinSize` | `10485760` | 大于等于该大小或大小未知的文件采用流式读取，而不是整体加载到内存 |
 
-在 home 级 `cordis.patch.yml` 或 `--patch` overlay 中启用评测工具：
+在 home 级 `cordis.patch.yml` 或 `--patch` overlay 中关闭补丁工具：
 
 ```yaml
 - id: tool-fs
   config:
-    enableApplyPatch: true
+    enableApplyPatch: false
 ```
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-tool-fs)是每个受支持字段及其 JSDoc 的穷尽式真源。
@@ -270,7 +270,7 @@ Read a file before editing it (the default fs-observation-policy requires it), u
 
 #### 模型看到的内容
 
-可选的 `apply_patch` schema 要求一个 `patch` 字符串，包含 `*** Begin Patch` / `*** End Patch`、Add/Update/Delete 文件头、可选 Move to，以及上下文/新增/删除 hunk 行。路径相对于 Session 工作目录。有围栏后端追加与 write/edit 相同的提权字段。按作用域显示的系统提示如下。成功移动显示 `M <destination>`，成功行按 A/M/D 分组，与 Codex rust-v0.158.0 一致。空补丁显示 `Success. No operations in patch.`。停止的补丁只包含适用的 Completed、Failed、Outcome unknown 与 Not executed 小节；结果不确定时以执行器的重读建议结束。语法错误保留解析器消息。示例：
+`apply_patch` schema 要求一个 `patch` 字符串，包含 `*** Begin Patch` / `*** End Patch`、Add/Update/Delete 文件头、可选 Move to，以及上下文/新增/删除 hunk 行。路径相对于 Session 工作目录。有围栏后端追加与 write/edit 相同的提权字段。按作用域显示的系统提示如下。成功移动显示 `M <destination>`，成功行按 A/M/D 分组，与 Codex rust-v0.158.0 一致。空补丁显示 `Success. No operations in patch.`。停止的补丁只包含适用的 Completed、Failed、Outcome unknown 与 Not executed 小节；结果不确定时以执行器的重读建议结束。语法错误保留解析器消息。示例：
 
 ##### 系统提示
 
@@ -301,7 +301,7 @@ Patch rejected before any change (1 problems):
 
 #### Token 影响
 
-启用后首轮请求增加一份工具 schema 与三句提示。提交输出随操作数量与诊断增长，不随整文件大小增长；规范值中的 before/after 不进入原生模型内容。
+默认工具集在首轮请求包含一份补丁工具 schema 与三句提示。提交输出随操作数量与诊断增长，不随整文件大小增长；规范值中的 before/after 不进入原生模型内容。
 
 #### KV Cache 影响
 

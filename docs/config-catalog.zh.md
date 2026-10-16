@@ -3765,7 +3765,7 @@ export interface Config {
 ```ts config-catalog
 /** Plugin config (all optional — `Config` supplies the defaults). */
 export interface Config {
-  /** Evaluation switch for apply_patch; default profiles leave it disabled. */
+  /** Register `apply_patch` and its guidance. Defaults to true. */
   enableApplyPatch?: boolean
   /** Register `read` and its guidance. Defaults to true. */
   read?: boolean

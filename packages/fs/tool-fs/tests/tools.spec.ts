@@ -153,30 +153,31 @@ describe('current directory resolution', () => {
 
 describe('registration', () => {
   it.each([
-    { config: { read: false }, tools: ['edit', 'write'], sections: ['tool:edit', 'tool:write'] },
-    { config: { write: false }, tools: ['edit', 'read'], sections: ['tool:edit', 'tool:read'] },
-    { config: { edit: false }, tools: ['read', 'write'], sections: ['tool:read', 'tool:write'] },
-    { config: { read: false, readImage: false, write: false, edit: false }, tools: [], sections: [] },
+    { config: { read: false }, tools: ['apply_patch', 'edit', 'write'], sections: ['tool:apply_patch', 'tool:edit', 'tool:write'] },
+    { config: { write: false }, tools: ['apply_patch', 'edit', 'read'], sections: ['tool:apply_patch', 'tool:edit', 'tool:read'] },
+    { config: { edit: false }, tools: ['apply_patch', 'read', 'write'], sections: ['tool:apply_patch', 'tool:read', 'tool:write'] },
+    { config: { enableApplyPatch: false }, tools: ['edit', 'read', 'write'], sections: ['tool:edit', 'tool:read', 'tool:write'] },
+    { config: { read: false, readImage: false, write: false, edit: false, enableApplyPatch: false }, tools: [], sections: [] },
   ])('omits disabled tools and their guidance: $config', async ({ config, tools, sections }) => {
     const { ctx } = await setup(config)
     try {
       expect(ctx.tools.schemas().map(tool => tool.name).sort()).toEqual(tools)
       expect((await ctx.systemPrompt.assemble()).sections.map(section => section.name)
         .filter(name => name.startsWith('tool:')).sort()).toEqual(sections)
-      const excluded = ['read', 'write', 'edit'].find(name => !tools.some(tool => tool === name))!
+      const excluded = ['read', 'write', 'edit', 'apply_patch'].find(name => !tools.some(tool => tool === name))!
       expect((await call(ctx, excluded, { file_path: 'a.txt' })).isError).toBe(true)
     } finally {
       await ctx.fiber.dispose()
     }
   })
 
-  it.each([{ read: 'false' }, { readImage: 1 }, { write: [] }, { edit: {} }])('rejects non-boolean switches at configuration parsing: %j', async (config) => {
+  it.each([{ read: 'false' }, { readImage: 1 }, { write: [] }, { edit: {} }, { enableApplyPatch: 'true' }])('rejects non-boolean switches at configuration parsing: %j', async (config) => {
     expect((await ToolFs.Config['~standard'].validate(config)).issues).toBeDefined()
   })
 
-  it('registers read, write, and edit', async () => {
+  it('registers read, write, edit, and apply_patch by default', async () => {
     const { ctx } = await setup()
-    expect(ctx.tools.schemas().map(s => s.name).sort()).toEqual(['edit', 'read', 'write'])
+    expect(ctx.tools.schemas().map(s => s.name).sort()).toEqual(['apply_patch', 'edit', 'read', 'write'])
   })
 
   it.each([
@@ -232,9 +233,9 @@ describe('registration', () => {
     const fiber = await ctx.plugin(ToolFs)
     // Each tool contributes BOTH a schema and a prompt section; disposal must
     // withdraw both, not just the schemas.
-    expect(ctx.tools.schemas()).toHaveLength(3)
+    expect(ctx.tools.schemas()).toHaveLength(4)
     const sectionNames = (a: { sections: { name: string }[] }) => a.sections.map(s => s.name).sort()
-    expect(sectionNames(await ctx.systemPrompt.assemble())).toEqual(['deployment:persona-prefix', 'deployment:persona-suffix', 'harness:identity', 'tool:edit', 'tool:read', 'tool:write'])
+    expect(sectionNames(await ctx.systemPrompt.assemble())).toEqual(['deployment:persona-prefix', 'deployment:persona-suffix', 'harness:identity', 'tool:apply_patch', 'tool:edit', 'tool:read', 'tool:write'])
     await fiber.dispose()
     expect(ctx.tools.schemas()).toHaveLength(0)
     // Only the system-prompt plugin's own built-in sections remain.
@@ -1077,7 +1078,7 @@ const originalGuidance = {
 
 describe('scope-aware filesystem guidance', () => {
   it.each(Array.from({ length: 8 }, (_, mask) => mask))('preserves exact text for visible tools (mask %i)', async (mask) => {
-    const { ctx } = await setup()
+    const { ctx } = await setup({ enableApplyPatch: false })
     const { key, scope } = await guidanceScope(ctx)
     const names = ['read', 'write', 'edit'] as const
     const allow = names.filter((_, index) => (mask & (1 << index)) !== 0)
@@ -1100,7 +1101,7 @@ describe('scope-aware filesystem guidance', () => {
   })
 
   it('honors deny filters and the existing exemption for own-scope tools', async () => {
-    const { ctx } = await setup()
+    const { ctx } = await setup({ enableApplyPatch: false })
     const { key, scope } = await guidanceScope(ctx)
     const write = ctx.tools.get('write')!
     scope.ctx.tools.restrict({ deny: ['write', 'edit'] })

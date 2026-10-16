@@ -1,5 +1,5 @@
 /**
- * Model-facing read, read_image, write, and edit tools over `ctx.fs`. This package owns schemas, validation,
+ * Model-facing read, read_image, write, edit, and apply_patch tools over `ctx.fs`. This package owns schemas, validation,
  * read windows, formatting, and observation events, never a concrete provider. An optional
  * event policy supplies mutation guards; without one the tools use unconditional provider calls.
  * @module @deepseek-ai/dsh-tool-fs
@@ -25,7 +25,7 @@ export const inject = ['tools', 'fs', 'systemPrompt', 'workingDirectory']
 
 /** Plugin config (all optional — `Config` supplies the defaults). */
 export interface Config {
-  /** Evaluation switch for apply_patch; default profiles leave it disabled. */
+  /** Register `apply_patch` and its guidance. Defaults to true. */
   enableApplyPatch?: boolean
   /** Register `read` and its guidance. Defaults to true. */
   read?: boolean
@@ -46,7 +46,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  enableApplyPatch: z.boolean().default(false),
+  enableApplyPatch: z.boolean().default(true),
   read: z.boolean().default(true),
   readImage: z.boolean().default(true),
   write: z.boolean().default(true),
@@ -91,7 +91,7 @@ export function apply(ctx: Context, config: Config): void {
       applyReadImageTool(imageCtx)
     })
   }
-  // One escalation API shared by both mutating tools: advertisement gating,
+  // One escalation API shared by the mutating tools: advertisement gating,
   // per-call policy resolution, and denial-marker mapping, all keyed off whether
   // the mounted ctx.fs confines (ctx.fs.sandboxMode).
   if (resolved.write || resolved.edit || resolved.enableApplyPatch) {

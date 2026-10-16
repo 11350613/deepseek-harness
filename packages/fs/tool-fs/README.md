@@ -49,13 +49,13 @@ The policy plugin is optional: without it the tools run against the bare provide
 | `read_image` | `file_path` | Reads and persists a PNG/JPEG/WebP/GIF source; an extension-less path (normalized attachment object paths included) is identified from its file signature; normalization can downscale it before the next model request, so the model need not create a thumbnail first |
 | `write` | `file_path`, `content` | Creates or fully replaces a file; with the policy plugin, overwriting requires a prior `read` at the unchanged version, creating does not |
 | `edit` | `file_path`, `old_string`, `new_string`, `replace_all?` | Literal replacement requiring a unique match unless `replace_all` is true; with the policy plugin, requires a prior `read` and an unchanged file |
-| `apply_patch` | `patch`, sandbox escalation fields when available | Opt-in add/update/delete/move with whole-patch admission and known partial effects |
+| `apply_patch` | `patch`, sandbox escalation fields when available | Add/update/delete/move with whole-patch admission and known partial effects |
 
 Field names are snake_case to match Claude Code and existing harness tool schemas. The `write` and `edit` path descriptions ask the model to emit `file_path` before the content or replacement strings; this guides streaming presentation but does not enforce JSON member order. Successes return compact envelopes — a read window, an image reference, or a `Created file`/`Updated file` confirmation — and `write`/`edit` derive replayable diff-card metadata for UI presentation.
 
 ### Configuration
 
-All keys are optional. The `read`, `readImage`, `write`, and `edit` switches default to `true`; set a switch to `false` to omit that tool and its guidance. All four may be disabled. Enabling `readImage` still requires an attachment store and an image-capable model. Read caps remain validated when `read` is disabled.
+All keys are optional. The `read`, `readImage`, `write`, `edit`, and `enableApplyPatch` switches default to `true`; set a switch to `false` to omit that tool and its guidance. All five may be disabled. Minimal presets disable text tools explicitly. Enabling `readImage` still requires an attachment store and an image-capable model. Read caps remain validated when `read` is disabled.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -63,18 +63,18 @@ All keys are optional. The `read`, `readImage`, `write`, and `edit` switches def
 | `readImage` | `true` | Register `read_image` while an attachment store is mounted |
 | `write` | `true` | Register `write` and its guidance |
 | `edit` | `true` | Register `edit` and its guidance |
-| `enableApplyPatch` | `false` | Evaluation switch; register `apply_patch` and its guidance when true; default profiles leave it disabled |
+| `enableApplyPatch` | `true` | Register `apply_patch` and its guidance |
 | `readLimit` | `2000` | Default and maximum lines returned by one `read` call |
 | `readMaxLineLength` | `2000` | Characters kept per line before truncation |
 | `readMaxBytes` | `51200` | Byte cap on one `read` call's selected lines; overflow ends the window with a capped footer |
 | `readStreamMinSize` | `10485760` | Files at or above this size (or of unknown size) stream instead of loading whole into memory |
 
-Enable the evaluation tool in home-level `cordis.patch.yml` or a `--patch` overlay:
+Disable the patch tool in home-level `cordis.patch.yml` or a `--patch` overlay:
 
 ```yaml
 - id: tool-fs
   config:
-    enableApplyPatch: true
+    enableApplyPatch: false
 ```
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-tool-fs) is the exhaustive source for every accepted field and its JSDoc.
@@ -270,7 +270,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 #### What the model sees
 
-The optional `apply_patch` schema requires one `patch` string containing `*** Begin Patch` / `*** End Patch`, Add/Update/Delete headers, optional Move to, and context/add/remove hunk lines. Paths are Session-relative. A confining backend adds the same escalation fields as write/edit. Its scope-aware system guidance is shown below. Successful moves use `M <destination>` and success lines group A/M/D, matching Codex rust-v0.158.0. An empty patch renders `Success. No operations in patch.`. A stopped patch includes only applicable Completed, Failed, Outcome unknown and Not executed sections; unknown outcomes end with the executor’s re-read remedy. Syntax errors keep the parser message. Examples:
+The `apply_patch` schema requires one `patch` string containing `*** Begin Patch` / `*** End Patch`, Add/Update/Delete headers, optional Move to, and context/add/remove hunk lines. Paths are Session-relative. A confining backend adds the same escalation fields as write/edit. Its scope-aware system guidance is shown below. Successful moves use `M <destination>` and success lines group A/M/D, matching Codex rust-v0.158.0. An empty patch renders `Success. No operations in patch.`. A stopped patch includes only applicable Completed, Failed, Outcome unknown and Not executed sections; unknown outcomes end with the executor’s re-read remedy. Syntax errors keep the parser message. Examples:
 
 ##### System guidance
 
@@ -301,7 +301,7 @@ Patch rejected before any change (1 problems):
 
 #### Token effect
 
-The opt-in adds one tool schema and three guidance sentences to the first request. Commit output scales with operation count and diagnostics, not full-file size; canonical before/after values do not enter Native model content.
+The default tool set includes one patch tool schema and three guidance sentences to the first request. Commit output scales with operation count and diagnostics, not full-file size; canonical before/after values do not enter Native model content.
 
 #### KV Cache effect
 

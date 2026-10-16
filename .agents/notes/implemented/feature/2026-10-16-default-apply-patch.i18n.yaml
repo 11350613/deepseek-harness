@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-16-default-apply-patch.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-16-default-apply-patch.md
+/agent-note-default-apply-patch-availability:
+  en: b2ced9277c80779e
+  zh: 9322d51aceeb60af
+/agent-note-default-apply-patch-availability/problem:
+  en: 306cd5111592054b
+  zh: 6eb160fe2c203ef4
+/agent-note-default-apply-patch-availability/decision:
+  en: 16c45444fd57f3d9
+  zh: c4dd315e107339a5
+/agent-note-default-apply-patch-availability/alternatives-considered:
+  en: 9f0d54b891b53a91
+  zh: bbd996b37b894736
+/agent-note-default-apply-patch-availability/consequences:
+  en: 70451da3d003b88a
+  zh: e8e6697e4b66ced5

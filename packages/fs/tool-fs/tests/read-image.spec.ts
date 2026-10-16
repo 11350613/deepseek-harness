@@ -514,7 +514,7 @@ describe('argument and service preconditions', () => {
     expect(text(nonImage)).toContain('the .txt extension does not declare a supported image format')
   })
 
-  it.each([{}, { toolFs: { read: false, write: false, edit: false } }] satisfies SetupOptions[])
+  it.each([{}, { toolFs: { read: false, write: false, edit: false, enableApplyPatch: false } }] satisfies SetupOptions[])
   ('refuses when no attachment service is mounted: %j', async (config) => {
     await writeFile(join(dir, 'red.png'), PNG_1X1)
     const ctx = await setup({ ...config, attachments: false })
@@ -762,7 +762,7 @@ describe('image admission failures', () => {
 
 describe('registration surface', () => {
   it('registers only read_image without text guidance', async () => {
-    const ctx = await setup({ toolFs: { read: false, write: false, edit: false } })
+    const ctx = await setup({ toolFs: { read: false, write: false, edit: false, enableApplyPatch: false } })
     try {
       expect(ctx.tools.schemas().map(tool => tool.name)).toEqual(['read_image'])
       expect((await ctx.systemPrompt.assemble()).sections.some(section => section.name.startsWith('tool:'))).toBe(false)
@@ -777,7 +777,7 @@ describe('registration surface', () => {
 
   it('omits read_image while an attachment store is mounted when readImage is false', async () => {
     const ctx = await setup({ toolFs: { readImage: false } })
-    expect(ctx.tools.schemas().map(tool => tool.name).sort()).toEqual(['edit', 'read', 'write'])
+    expect(ctx.tools.schemas().map(tool => tool.name).sort()).toEqual(['apply_patch', 'edit', 'read', 'write'])
     expect(ctx.tools.get('read_image')).toBeUndefined()
     expect((await readImage(ctx, { file_path: 'red.png' }, agentOn('vision-model'))).isError).toBe(true)
   })
@@ -790,7 +790,7 @@ describe('registration surface', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(LocalFileSystem, { cwd: dir })
       const attachment = await ctx.plugin(LocalAttachmentStore, { dshHome: home })
-      const plugin = await ctx.plugin(ToolFs, { read: false, write: false, edit: false })
+      const plugin = await ctx.plugin(ToolFs, { read: false, write: false, edit: false, enableApplyPatch: false })
       const names = () => ctx.tools.schemas().map(tool => tool.name).sort()
       expect(names()).toEqual(['read_image'])
       await attachment.dispose()
@@ -814,16 +814,16 @@ describe('registration surface', () => {
     const attachmentsFiber = await ctx.plugin(LocalAttachmentStore, { dshHome: home })
     const toolFsFiber = await ctx.plugin(ToolFs)
     const names = () => ctx.tools.schemas().map(schema => schema.name).sort()
-    expect(names()).toEqual(['edit', 'read', 'read_image', 'write'])
+    expect(names()).toEqual(['apply_patch', 'edit', 'read', 'read_image', 'write'])
 
     // Disposing only the attachment store tears down the scoped inject fiber:
     // read_image withdraws while the unconditional tools stay registered.
     await attachmentsFiber.dispose()
-    expect(names()).toEqual(['edit', 'read', 'write'])
+    expect(names()).toEqual(['apply_patch', 'edit', 'read', 'write'])
 
     // Remounting the store restores the conditional registration.
     const remounted = await ctx.plugin(LocalAttachmentStore, { dshHome: home })
-    expect(names()).toEqual(['edit', 'read', 'read_image', 'write'])
+    expect(names()).toEqual(['apply_patch', 'edit', 'read', 'read_image', 'write'])
 
     // Disposing the whole plugin withdraws every tool, read_image included.
     await toolFsFiber.dispose()

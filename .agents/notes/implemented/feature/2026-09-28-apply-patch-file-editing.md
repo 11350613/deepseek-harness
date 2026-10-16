@@ -20,7 +20,7 @@ Commit reports return `isError: false` so completed diff metadata survives a sto
 
 [Review capture](../../../../packages/deliverables/workspace-changes/README.md) uses filesystem intent listeners, not argument parsing. `tools/pre-execute` associates the execution with its turn recorder; prepended write, edit, and delete listeners first await the policy decision, then await capture before provider mutation. Moves capture both endpoints. Each turn retains its first admitted baseline and compares actual final bytes, so repeated edits yield one net diff and reverted changes disappear. Denied intents create no capture or observation. Existing size, count, time, location, and Session-lifetime limits remain; a commit failure does not discard earlier real changes.
 
-`tool-fs.enableApplyPatch` defaults to `false`. An explicit overlay registers its schema, guidance, native/PTC execution, and tool presentation while retaining existing file tools. Registration uses plugin effects, and the agent loop is unchanged.
+`tool-fs.enableApplyPatch` defaults to `true` under the [default-activation decision](2026-10-16-default-apply-patch.md). The tool registers its schema, guidance, native/PTC execution, and tool presentation while retaining existing file tools; explicit `false` omits it. Registration uses plugin effects, and the agent loop is unchanged.
 
 ## Alternatives considered
 
@@ -42,4 +42,4 @@ Parser and matcher fixtures cover the pinned syntax, whitespace, repeated contex
 
 ## Deferred
 
-Default activation awaits the controlled editing-task evaluation in step eight: compare final-file correctness, task success, prompt and completion tokens, model steps, tool calls, retries, latency, and Review coverage on identical initial states. SSH Review, closing-prose file references for `apply_patch`, and Codex `PreserveLineEndings` remain outside this implementation.
+The controlled editing-task evaluation in step eight remains pending: compare final-file correctness, task success, prompt and completion tokens, model steps, tool calls, retries, latency, and Review coverage on identical initial states. SSH Review, closing-prose file references for `apply_patch`, and Codex `PreserveLineEndings` remain outside this implementation.

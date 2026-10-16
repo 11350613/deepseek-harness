@@ -14,20 +14,19 @@ const guidance = 'Prefer apply_patch over separate edit calls for changes across
   + 'Read files before updating or deleting them when the observation policy is enabled. '
   + 'Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.'
 
-async function enabled() { return setup({ enableApplyPatch: true }) }
 type Fixture = Awaited<ReturnType<typeof setup>>
 function call(t: Fixture, text: string) {
   return t.ctx.tools.execute({ ...t.exec, arguments: { patch: text } })
 }
 
-it('leaves patch registration and guidance absent by default', async () => {
-  const t = await setup()
+it('omits patch registration and guidance when explicitly disabled', async () => {
+  const t = await setup({ enableApplyPatch: false })
   expect(t.ctx.tools.get('apply_patch')).toBeUndefined()
   expect((await t.ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:apply_patch')).toBeUndefined()
 })
 
-it('registers scope-aware guidance and removes tool and section on disposal', async () => {
-  const t = await enabled()
+it('registers patch guidance by default and removes tool and section on disposal', async () => {
+  const t = await setup()
   expect(t.ctx.tools.get('apply_patch')?.description).toBe('Create, update, delete, or move UTF-8 text files with one Codex-style patch; '
     + 'prefer it over multiple edit calls when a change spans several files or separated regions.')
   const key = {}
@@ -45,7 +44,7 @@ it('registers scope-aware guidance and removes tool and section on disposal', as
 })
 
 it('returns exact native values and applied metadata for all four operation kinds', async () => {
-  const t = await enabled()
+  const t = await setup()
   await t.file('edit', 'old\n')
   await t.file('delete', 'gone\n')
   await t.file('source', 'old\n')
@@ -75,14 +74,14 @@ it('returns exact native values and applied metadata for all four operation kind
 })
 
 it('returns the empty patch confirmation', async () => {
-  const t = await enabled()
+  const t = await setup()
   const result = await call(t, patch())
   expect(result).toMatchObject({ isError: false, value: { phase: 'commit', cancelled: false, operations: [], affectedPaths: [] },
     content: [{ type: 'text', text: 'Success. No operations in patch.' }], meta: { diffs: [], stopped: false } })
 })
 
 it('throws typed syntax and aggregated unread-file refusals without diffs', async () => {
-  const t = await enabled()
+  const t = await setup()
   const syntax = await call(t, 'invalid')
   expect(syntax.isError).toBe(true)
   expect(syntax.error?.info).toEqual({ name: 'PatchToolError', code: 'PATCH_SYNTAX' })
@@ -100,7 +99,7 @@ it('throws typed syntax and aggregated unread-file refusals without diffs', asyn
 })
 
 it.skipIf(process.platform === 'win32')('preserves the symbolic-link refusal code', async () => {
-  const t = await enabled()
+  const t = await setup()
   await t.file('a', 'old\n')
   await symlink('a', resolve(t.workspace, 'link'))
   const result = await call(t, patch(remove('link')))
@@ -108,7 +107,7 @@ it.skipIf(process.platform === 'win32')('preserves the symbolic-link refusal cod
 })
 
 it('keeps a partial move as a value with its destination diff and exact stop text', async () => {
-  const t = await enabled()
+  const t = await setup()
   await t.file('a', 'old\n')
   vi.spyOn(t.fs, 'moveFile').mockImplementation(async (source, destination, options, signal) => {
     // Preserve the actual destination write while deterministically retaining the source.
@@ -132,7 +131,7 @@ it('keeps a partial move as a value with its destination diff and exact stop tex
 })
 
 it('reports uncertain writes with no invented diff and the reread remedy', async () => {
-  const t = await enabled()
+  const t = await setup()
   const write = t.fs.writeText.bind(t.fs)
   vi.spyOn(t.fs, 'writeText').mockImplementation(async (...args) => {
     await write(...args)
@@ -147,9 +146,9 @@ it('reports uncertain writes with no invented diff and the reread remedy', async
 })
 
 it('advertises escalation only for a confining backend and throws the sandbox refusal', async () => {
-  const bare = await enabled()
+  const bare = await setup()
   expect(bare.ctx.tools.get('apply_patch')?.parameters).not.toHaveProperty('properties.sandbox_permissions')
-  const t = await setup({ enableApplyPatch: true, mode: 'read-only' })
+  const t = await setup({ mode: 'read-only' })
   expect(t.ctx.tools.get('apply_patch')?.parameters).toHaveProperty('properties.sandbox_permissions')
   const result = await t.ctx.tools.execute({ signal: t.exec.signal, callId: t.exec.callId, name: 'apply_patch',
     arguments: { patch: patch(add(resolve(t.workspace, 'a'))) } })
@@ -170,8 +169,8 @@ class PatchPtcRuntime extends PtcRuntime {
 }
 
 it('dispatches native and PTC patch calls with identical values', async () => {
-  const t = await setup({ enableApplyPatch: true, policy: false })
-  const p = await setup({ enableApplyPatch: true, toolMode: 'ptc', policy: false })
+  const t = await setup({ policy: false })
+  const p = await setup({ toolMode: 'ptc', policy: false })
   await p.ctx.plugin(PatchPtcRuntime)
   const runtime = p.ctx.ptcRuntime as PatchPtcRuntime
   runtime.patch = patch(update(resolve(t.workspace, 'a')))
@@ -188,7 +187,7 @@ it('dispatches native and PTC patch calls with identical values', async () => {
 
 
 it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('retains completed diffs after a real write permission failure', async () => {
-  const t = await enabled()
+  const t = await setup()
   const locked = resolve(t.workspace, 'locked')
   await mkdir(locked, { mode: 0o555 })
   try {

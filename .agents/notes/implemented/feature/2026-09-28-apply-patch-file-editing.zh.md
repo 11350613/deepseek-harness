@@ -20,7 +20,7 @@ Status: implemented
 
 [Review 采集](../../../../packages/deliverables/workspace-changes/README.zh.md)使用文件系统 intent 监听器，不解析参数。`tools/pre-execute` 将执行关联到轮次记录器；前置的 write、edit 和 delete 监听器先等待策略决策，再等待捕获完成，然后提供方才修改文件。移动捕获两端。每轮保留首次准入时的基线，比较实际最终字节，因此重复编辑形成一份净 diff，还原的变化不再显示。被拒绝的 intent 不产生副本或观察。现有大小、数量、时间、位置和 Session 生命周期限制保持适用；提交失败不会丢弃先前真实变化。
 
-`tool-fs.enableApplyPatch` 默认为 `false`。显式 overlay 注册 schema、指导文本、native/PTC 执行与调用展示，同时保留已有文件工具。注册使用插件 effect，不修改 agent loop（智能体循环）。
+根据[默认启用决定](2026-10-16-default-apply-patch.zh.md)，`tool-fs.enableApplyPatch` 默认为 `true`。工具注册 schema、指导文本、native/PTC 执行与调用展示，同时保留已有文件工具；显式设为 `false` 可省略它。注册使用插件 effect，不修改 agent loop（智能体循环）。
 
 ## 考虑过的替代方案
 
@@ -42,4 +42,4 @@ Status: implemented
 
 ## 延期工作
 
-默认启用等待第八步受控编辑任务评测：在相同初始状态下比较最终文件正确性、任务成功率、提示词及完成 token、模型步数、工具调用、重试、延迟和 Review 覆盖。SSH Review、`apply_patch` 的收尾文案文件引用，以及 Codex `PreserveLineEndings` 不在本次实现内。
+第八步受控编辑任务评测仍待开展：在相同初始状态下比较最终文件正确性、任务成功率、提示词及完成 token、模型步数、工具调用、重试、延迟和 Review 覆盖。SSH Review、`apply_patch` 的收尾文案文件引用，以及 Codex `PreserveLineEndings` 不在本次实现内。

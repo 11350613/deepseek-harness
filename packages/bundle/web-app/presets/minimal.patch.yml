@@ -21,6 +21,7 @@
               readImage: true
               write: false
               edit: false
+              enableApplyPatch: false
           - id: compaction
             name: cordis:group
             group: true
