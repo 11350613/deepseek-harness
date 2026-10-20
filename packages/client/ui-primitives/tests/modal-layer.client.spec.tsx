@@ -42,6 +42,29 @@ it('restores the opener after a closing dialog updates its retained controls', (
   expect(document.activeElement).toBe(opener)
 })
 
+it('preserves the owner return focus when a dialog unmounts', () => {
+  function Details() {
+    const [open, setOpen] = useState(false)
+    const more = useRef<HTMLButtonElement>(null)
+    return <>
+      <section aria-label="Details" tabIndex={-1}>
+        <button ref={more} onClick={() => { setOpen(true) }}>More</button>
+      </section>
+      <Modal open={open} title="Confirm" closeLabel="Cancel" onClose={() => {
+        setOpen(false)
+        more.current?.focus()
+      }} />
+    </>
+  }
+  render(<Details />)
+  screen.getByRole('region', { name: 'Details' }).focus()
+  const more = screen.getByRole('button', { name: 'More' })
+  fireEvent.click(more)
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(document.activeElement).toBe(more)
+})
+
 it('closes only the top modal through application commands and restores each opener', () => {
   render(<Nested />)
   const settings = screen.getByRole('button', { name: 'Settings' }); settings.focus(); fireEvent.click(settings)

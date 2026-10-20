@@ -50,11 +50,12 @@ export function useModalLayer(dialog: RefObject<HTMLElement | null>, open: boole
   useLayoutEffect(() => {
     const target = pendingRestore.current
     pendingRestore.current = undefined
-    // React can restore focus to a retained control after layout-effect cleanup.
-    if (!open && target?.isConnected && !target.closest('[inert], [hidden]') && !isBehindModal(target)) {
+    const element = dialog.current
+    // Restore only focus left inside the retained dialog, preserving the owner's chosen target.
+    if (!open && element?.contains(element.ownerDocument.activeElement)
+      && target?.isConnected && !target.closest('[inert], [hidden]') && !isBehindModal(target)) {
       focusWithoutRing(target, { preventScroll: true })
     }
-    const element = dialog.current
     if (!open || element === null) return
     const document = element.ownerDocument
     const composition = observeComposition(document)
