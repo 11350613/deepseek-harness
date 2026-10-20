@@ -108,7 +108,7 @@ describe('web e2e: plugin manager', () => {
     try {
       // Pin the extremes; at intermediate widths, the rendered font and locale
       // determine whether the two intrinsic items fit beside each other.
-      const PINNED_PLACEMENT: Record<number, 'beside' | 'below'> = { 1680: 'beside', 1024: 'beside', 390: 'below', 430: 'below' }
+      const PINNED_PLACEMENT: Record<number, 'beside' | 'below'> = { 1680: 'beside', 1024: 'beside', 320: 'below' }
       for (const language of ['en', 'zh'] as const) {
         const context = await browser.newContext({
           viewport: { width: 1680, height: 1000 }, locale: language === 'en' ? 'en-US' : ZH_BROWSER_LOCALE,
@@ -183,7 +183,7 @@ describe('web e2e: plugin manager', () => {
           const validLayout = (layout: Awaited<ReturnType<typeof measure>>) =>
             layout.singleLine && layout.contained && layout.infoFollowsText && layout.focused
             && layout.placement === (layout.fitsBeside ? 'beside' : 'below')
-          for (const width of [1680, 768, 520, 440, 390, 430, 1024]) {
+          for (const width of [1680, 768, 520, 440, 390, 430, 320, 1024]) {
             await probe.setViewportSize({ width, height: 1000 })
             await expect.poll(async () => {
               const layout = await measure()
@@ -191,10 +191,10 @@ describe('web e2e: plugin manager', () => {
             }, { message: `${language} ${width}px plugin header geometry` }).toBe(true)
             const { placement } = await measure()
             const pinned = PINNED_PLACEMENT[width]
-            if (pinned !== undefined) expect(placement).toBe(pinned)
+            if (pinned !== undefined) expect(placement, `${language} ${width}px: ${JSON.stringify(await measure())}`).toBe(pinned)
             facts.push(`${language} ${width}px: actions ${pinned === undefined ? 'beside or below (according to intrinsic fit)' : placement} the heading, single-line; contained; information follows subtitle; focus retained`)
           }
-          await probe.setViewportSize({ width: 390, height: 1000 })
+          await probe.setViewportSize({ width: 320, height: 1000 })
           const previousWrap = await header.evaluate((element) => {
             const style = element.style
             const previous = { value: style.getPropertyValue('flex-wrap'), priority: style.getPropertyPriority('flex-wrap') }
@@ -226,7 +226,7 @@ describe('web e2e: plugin manager', () => {
       }
       await compareOrRefreshGolden(
         join(SNAPSHOT_DIR, 'header-responsive.expected.md'),
-        `# Plugin header responsive layout\n\n${facts.join('\n')}\n\nA forced no-wrap layout at 390px fails the same measured layout check in both locales; restoring wrap passes.\nAdd menu dismisses on Escape and returns focus in both locales.`,
+        `# Plugin header responsive layout\n\n${facts.join('\n')}\n\nA forced no-wrap layout at 320px fails the same measured layout check in both locales; restoring wrap passes.\nAdd menu dismisses on Escape and returns focus in both locales.`,
         MODE,
       )
     } finally {
