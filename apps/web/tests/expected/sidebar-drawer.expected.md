@@ -8,7 +8,7 @@ breakpoint motion: collapsed rail hides immediately and returns compact without 
 global panels: browser top inset 48px; macOS keeps its existing clearance
 tooltips: sidebar and workspace controls escape the drawer and fit the viewport
 search input: 16px on touch; 13px with a fine pointer
-simulated keyboard: homepage, drawer and Settings retain 844px layout height without following the 360px visual viewport or adding safe-area padding to Settings
+simulated keyboard: homepage and drawer retain 844px layout height without following the 360px visual viewport; Settings stays within the viewport
 keyboard close: layout height stays 844px; sidebar search retained; Settings close remains reachable
 safe areas: drawer backing and mask cover 844px; content retains 56px top and 34px bottom insets
 rotation: 844x390 then 390x844 restores shell height and sidebar breakpoint
