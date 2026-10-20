@@ -21,6 +21,61 @@ async function assertCompactRail(sidebar: Locator): Promise<void> {
   })).toEqual({ fits: true, animations: [] })
 }
 
+it.each(['light', 'dark'] as const)('keeps the macOS drawer opaque and disables covered window drag regions in %s mode', async (colorScheme) => {
+  const scaffold = await launchWebScaffold({
+    extraOverlayPath: fileURLToPath(new URL('./pin-browse-picker.overlay.yml', import.meta.url)),
+  })
+  try {
+    const browser = await chromium.launch()
+    try {
+      const page = await browser.newPage({ viewport: { width: 520, height: 680 }, colorScheme, locale: 'en-US' })
+      await page.goto(scaffold.authenticatedUrl)
+      const opener = page.getByRole('button', { name: 'Open sidebar', exact: true })
+      await opener.waitFor()
+      await page.evaluate(() => { document.documentElement.dataset.platform = 'darwin' })
+      await opener.click()
+      const drawer = page.getByRole('dialog', { name: 'Navigation', exact: true })
+      await drawer.waitFor()
+      const column = page.locator('[data-slot="sidebar"]').locator('..')
+      const background = await column.evaluate((el) => {
+        const style = getComputedStyle(el)
+        return { color: style.backgroundColor, image: style.backgroundImage }
+      })
+      expect(background.image).toBe('none')
+      expect(background.color).toMatch(/^rgb\(/)
+      expect(await drawer.getByRole('button', { name: 'New session', exact: true }).last().evaluate((el) => {
+        const actual = getComputedStyle(el).backgroundColor
+        const root = document.documentElement
+        const platform = root.dataset.platform
+        delete root.dataset.platform
+        try {
+          return actual === getComputedStyle(el).backgroundColor
+        } finally {
+          root.dataset.platform = platform
+        }
+      })).toBe(true)
+      const inactiveDragRows = page.locator('[inert] [data-window-drag]')
+      expect(await inactiveDragRows.count()).toBeGreaterThan(0)
+      expect(await inactiveDragRows.evaluateAll(rows => rows.every(row => getComputedStyle(row).getPropertyValue('app-region') === 'no-drag')))
+        .toBe(true)
+      const collapse = drawer.getByRole('button', { name: 'Collapse sidebar', exact: true })
+      await collapse.click()
+      await drawer.waitFor({ state: 'hidden' })
+      await page.setViewportSize({ width: 1200, height: 800 })
+      const sidebar = page.locator('[data-slot="sidebar"]').locator('..')
+      await expect.poll(() => sidebar.evaluate(el => getComputedStyle(el).backgroundImage)).not.toBe('none')
+      const activeDragRows = page.locator('[data-window-drag]:not([inert] [data-window-drag])')
+      expect(await activeDragRows.count()).toBeGreaterThan(0)
+      expect(await activeDragRows.evaluateAll(rows => rows.every(row => getComputedStyle(row).getPropertyValue('app-region') === 'drag')))
+        .toBe(true)
+    } finally {
+      await browser.close()
+    }
+  } finally {
+    await scaffold.close()
+  }
+})
+
 it('hides a collapsed rail immediately when it becomes a drawer', async () => {
   const scaffold = await launchWebScaffold({
     extraOverlayPath: fileURLToPath(new URL('./pin-browse-picker.overlay.yml', import.meta.url)),

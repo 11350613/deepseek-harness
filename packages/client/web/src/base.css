@@ -56,6 +56,11 @@ html[data-platform='darwin'] [data-window-drag] {
   -webkit-app-region: drag;
 }
 
+/* Inactive chrome must not cover a foreground drawer's controls with native drag geometry. */
+html[data-platform='darwin'] [inert] [data-window-drag] {
+  -webkit-app-region: no-drag;
+}
+
 /* One-frame app-region pulse that forces Electron to recollect the window's drag
    rects (electron#32341): a change to a computed app-region value is what dirties
    them. The shell's window drag watcher (window-drag/recall.ts) sets this
