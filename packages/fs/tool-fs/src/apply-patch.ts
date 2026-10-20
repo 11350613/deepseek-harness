@@ -1,4 +1,4 @@
-/** Opt-in Codex-style multi-file patch tool over the guarded patch executor. */
+/** Codex-style multi-file patch tool over the guarded patch executor. */
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { executePatch } from './patch/index.ts'

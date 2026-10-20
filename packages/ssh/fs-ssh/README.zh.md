@@ -29,7 +29,7 @@ kind: "package-reference"
 
 `resolve()` 在远端主机上规范化路径。`processPath()` 与 `fileUrl()` 在同一个远端命名空间中标识文件，并不授予主机侧访问能力。文件 URL 对字面的百分号、反斜杠和换行进行编码，保留原文件名。`processPathFromHostPath()` 返回 `undefined`，因此需要已安装可执行文件或引导程序的消费方必须显式提供远端产物。
 
-读取保留共享文件系统错误码。五个变更操作都会向辅助进程发送逐次调用策略。`patchText`、`deleteFile` 和 `moveFile` 使用 `fs.patch`、`fs.delete` 和 `fs.move`；其防护和结果遵循本地提供方，包括目标已发布但源删除失败的结果。响应经过严格校验。取消或传输丢失可能使远端结果未知；请求不会重放，已提交效果不会回滚。
+读取保留共享文件系统错误码。五个变更操作都会向辅助进程发送已解析的逐次调用策略；`patchText`、`deleteFile` 和 `moveFile` 使用 `fs.patch`、`fs.delete` 和 `fs.move`，防护和结果与本地提供方一致。传输丢失报告为 I/O 失败；变更可能已经提交，且不会自动重试。
 
 -----
 

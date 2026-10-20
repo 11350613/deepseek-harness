@@ -27,8 +27,6 @@ kind: "package-reference"
 
 当组合需要由真实宿主文件系统支撑的 `ctx.fs`、且可以接受进程本地实现时，挂载此后端。常用路径是显式的：加载后端、给出基准目录，然后面向模型的工具（`dsh-tool-fs`）或你自己的插件即可读取、写入和编辑文件。
 
-原子写入失败保留文件系统错误码：父目录或临时目录创建被拒绝时为 `FS_PERMISSION_DENIED`，其他 Node I/O 失败为 `FS_IO_ERROR`。非 I/O 的意外缺陷仍原样抛出。
-
 ### 何时选择
 
 在单个进程中进行普通宿主文件访问时，请选择 `fs-local`。会话的写入与编辑必须限制在工作区与临时根目录内时，选择 [`fs-sandbox`](../fs-sandbox/README.zh.md)——它扩展此后端，只增加模式围栏。`config.cwd` 只是解析默认值，不是约束边界：绝对路径与 `..` 都可以逃逸它。
@@ -54,13 +52,11 @@ kind: "package-reference"
 
 完整或流式读取普通 UTF-8 文件、读取有界字节，并列出一层目录。写入、字面量编辑、补丁和删除按目标串行化。移动按字典序锁定两端。`patchText` 在调用 `applyHunks` 前检查版本；`deleteFile` 只删除普通文件。源缺失使用 `FS_STALE_VERSION`，hunk 不匹配使用 `FS_PATCH_MISMATCH`，移动两端相同使用 `FS_SAME_TARGET`。
 
-补丁与移动的文本在内存中规范化为 LF，写回时还原源文件的行尾风格。结果文本使用 LF。删除基线和被覆盖目标的基线遵循 `diffBasisMaxBytes`；不可用或过大的基线为 null。移动在暂存目标前检查取消，随后完成提交且不再检查取消。源删除失败返回已发布目标及 `sourceDeleted: false`，不会回滚或隐去该写入。
+补丁与移动的文本在内存中规范化为 LF，写回时还原源文件的行尾风格；结果文本使用 LF。删除基线和被覆盖目标的基线遵循 `diffBasisMaxBytes`。移动在暂存目标前检查取消，随后完成两个效果；源删除失败返回已发布目标及 `sourceDeleted: false`。原子写入失败时，目录或临时目录创建被拒绝映射为 `FS_PERMISSION_DENIED`，其他 Node I/O 错误映射为 `FS_IO_ERROR`。
 
-读取、列出与变更操作的失败是携带稳定错误码的类型化 `FsError`——`FS_NOT_FOUND`、`FS_NOT_TEXT`（二进制内容）、`FS_STALE_VERSION`（自观察以来已变化）、`FS_EDIT_NOT_FOUND` 或 `FS_AMBIGUOUS_EDIT`（无唯一字面量匹配）等——因此调用方依据错误码分支，绝不解析消息文本。编辑遇到缺失目标时，无论是否提供版本防护，都报告 `FS_STALE_VERSION`。 移动仅在源删除抛出类型化 `FsError` 时返回 `sourceFailure`；意外的编程错误使调用拒绝。
+读取、列出与变更操作的失败是携带稳定错误码的类型化 `FsError`——`FS_NOT_FOUND`、`FS_NOT_TEXT`（二进制内容）、`FS_STALE_VERSION`（自观察以来已变化）、`FS_EDIT_NOT_FOUND` 或 `FS_AMBIGUOUS_EDIT`（无唯一字面量匹配）等——因此调用方依据错误码分支，绝不解析消息文本。编辑遇到缺失目标时，无论是否提供版本防护，都报告 `FS_STALE_VERSION`。
 
 Chokidar 通过 OS 事件观察单个文件或目录的直接子项，不使用轮询或递归监听。文件使用筛选到目标的父目录监听，因此就绪时也能接收起初缺失文件的创建事件。父目录保持存在时，文件监听覆盖原地写入、原子替换、删除和同路径重建。
-
-移动结果的 `sourceBefore` 是提供方在两端锁内取得的 LF 源文本；完整与部分移动均返回它，调用方据此记录源基线。
 
 -----
 

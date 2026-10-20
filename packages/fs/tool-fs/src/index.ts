@@ -25,8 +25,6 @@ export const inject = ['tools', 'fs', 'systemPrompt', 'workingDirectory']
 
 /** Plugin config (all optional — `Config` supplies the defaults). */
 export interface Config {
-  /** Register `apply_patch` and its guidance. Defaults to true. */
-  enableApplyPatch?: boolean
   /** Register `read` and its guidance. Defaults to true. */
   read?: boolean
   /** Register `read_image` while an attachment store is mounted. Defaults to true. */
@@ -35,6 +33,8 @@ export interface Config {
   write?: boolean
   /** Register `edit` and its guidance. Defaults to true. */
   edit?: boolean
+  /** Register `apply_patch` and its guidance. Defaults to true. */
+  applyPatch?: boolean
   /** Default and maximum number of lines returned by one `read` call. */
   readLimit?: number
   /** Maximum characters returned for a single line before truncation. */
@@ -46,11 +46,11 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  enableApplyPatch: z.boolean().default(true),
   read: z.boolean().default(true),
   readImage: z.boolean().default(true),
   write: z.boolean().default(true),
   edit: z.boolean().default(true),
+  applyPatch: z.boolean().default(true),
   readLimit: z.number().default(READ_LIMIT),
   readMaxLineLength: z.number().default(READ_MAX_LINE_LENGTH),
   readMaxBytes: z.number().default(READ_MAX_BYTES),
@@ -94,10 +94,10 @@ export function apply(ctx: Context, config: Config): void {
   // One escalation API shared by the mutating tools: advertisement gating,
   // per-call policy resolution, and denial-marker mapping, all keyed off whether
   // the mounted ctx.fs confines (ctx.fs.sandboxMode).
-  if (resolved.write || resolved.edit || resolved.enableApplyPatch) {
+  if (resolved.write || resolved.edit || resolved.applyPatch) {
     const sandbox = new FsSandboxController(ctx)
     if (resolved.write) applyWriteTool(ctx, sandbox)
     if (resolved.edit) applyEditTool(ctx, sandbox)
-    if (resolved.enableApplyPatch) applyApplyPatchTool(ctx, sandbox)
+    if (resolved.applyPatch) applyApplyPatchTool(ctx, sandbox)
   }
 }

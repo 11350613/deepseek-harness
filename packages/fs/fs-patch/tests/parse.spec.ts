@@ -1,14 +1,14 @@
 /** Parser compatibility cases adapted from OpenAI Codex rust-v0.158.0 (Apache-2.0; see ../LICENSE). */
 
 import { describe, expect, it } from 'vitest'
-import { collectMutationPaths, parsePatch, PatchParseError } from '../src/index.ts'
+import { parsePatch, PatchParseError } from '../src/index.ts'
 
 function patch(...lines: string[]): string {
   return ['*** Begin Patch', ...lines, '*** End Patch'].join('\n')
 }
 
 describe('parsePatch', () => {
-  it('preserves file order, repeated paths, move endpoints, and explicit context indices', () => {
+  it('preserves file order, repeated paths, and move endpoints', () => {
     const input = patch(
       '*** Add File: dir/a.txt', '+hello', '+',
       '*** Update File: dir/a.txt', '*** Move to: dir/b.txt',
@@ -25,11 +25,10 @@ describe('parsePatch', () => {
         hunks: [
           {
             lineNumber: 7, context: 'hello', oldLines: ['hello', 'same', 'same'],
-            newLines: ['hi', 'there', 'same', 'same'], contextLineIndices: [[1, 2]], isEndOfFile: false,
+            newLines: ['hi', 'there', 'same', 'same'], isEndOfFile: false,
           },
           {
-            lineNumber: 14, oldLines: ['last'], newLines: ['last', 'tail'],
-            contextLineIndices: [[0, 0]], isEndOfFile: true,
+            lineNumber: 14, oldLines: ['last'], newLines: ['last', 'tail'], isEndOfFile: true,
           },
         ],
       },
@@ -37,8 +36,6 @@ describe('parsePatch', () => {
       { kind: 'add', path: 'dir/a.txt', lineNumber: 19, content: '' },
     ])
     expect(JSON.parse(JSON.stringify(operations))).toEqual(operations)
-    expect(collectMutationPaths(operations)).toEqual(['dir/a.txt', 'dir/b.txt', '/tmp/obsolete'])
-    expect(operations).toHaveLength(4)
   })
 
   it('accepts an empty patch and empty creation', () => {
@@ -70,12 +67,10 @@ describe('parsePatch', () => {
         kind: 'update', path: 'a', lineNumber: 2,
         hunks: [
           {
-            lineNumber: 3, oldLines: ['a\t ', '', '\t'], newLines: ['b  ', '', '\t'],
-            contextLineIndices: [[1, 1], [2, 2]], isEndOfFile: false,
+            lineNumber: 3, oldLines: ['a\t ', '', '\t'], newLines: ['b  ', '', '\t'], isEndOfFile: false,
           },
           {
-            lineNumber: 7, context: 'anchor', oldLines: [], newLines: ['c'],
-            contextLineIndices: [], isEndOfFile: false,
+            lineNumber: 7, context: 'anchor', oldLines: [], newLines: ['c'], isEndOfFile: false,
           },
         ],
       },
@@ -108,8 +103,7 @@ describe('parsePatch', () => {
       {
         kind: 'update', path: 'a', lineNumber: 2, moveTo: 'b',
         hunks: [{
-          lineNumber: 4, context: 'anchor\uFEFF', oldLines: [], newLines: [content],
-          contextLineIndices: [], isEndOfFile: false,
+          lineNumber: 4, context: 'anchor\uFEFF', oldLines: [], newLines: [content], isEndOfFile: false,
         }],
       },
     ])
@@ -125,8 +119,7 @@ describe('parsePatch', () => {
       {
         kind: 'update', path: 'b', lineNumber: 4,
         hunks: [{
-          lineNumber: 5, oldLines: [content], newLines: [`${content}y`],
-          contextLineIndices: [], isEndOfFile: false,
+          lineNumber: 5, oldLines: [content], newLines: [`${content}y`], isEndOfFile: false,
         }],
       },
     ])
@@ -208,24 +201,5 @@ describe('parsePatch', () => {
     expect(() => parsePatch(`\n \n<<'EOF'\n${patch('*** Update File: a', '@@')}\nEOF`)).toThrow(
       expect.objectContaining({ lineNumber: 7 }),
     )
-  })
-})
-
-describe('collectMutationPaths', () => {
-  it('returns an empty list for no operations', () => {
-    expect(collectMutationPaths([])).toEqual([])
-  })
-
-  it('deduplicates exact spellings without resolving aliases or changing operations', () => {
-    const operations = parsePatch(patch(
-      '*** Update File: a', '*** Move to: b', '+x',
-      '*** Update File: b', '*** Move to: b', '+y',
-      '*** Update File: ./a', '+z',
-      '*** Delete File: a', '*** Add File: ../a',
-      '*** Add File: C:\\dir\\a', '*** Delete File: /a',
-    ))
-    const before = JSON.stringify(operations)
-    expect(collectMutationPaths(operations)).toEqual(['a', 'b', './a', '../a', 'C:\\dir\\a', '/a'])
-    expect(JSON.stringify(operations)).toBe(before)
   })
 })

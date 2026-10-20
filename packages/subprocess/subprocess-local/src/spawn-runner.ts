@@ -306,7 +306,7 @@ class WindowsJobRunner {
         }, 0)
         return
       }
-      const api = this.api = this.internals.loadWin32ProcessBindings()
+      this.api = this.internals.loadWin32ProcessBindings()
       const spawned = this.internals.spawnCurrentTokenJobProcess(this.api, {
         command: command as string,
         applicationName,
@@ -320,7 +320,7 @@ class WindowsJobRunner {
       for (const fileDescriptor of request.control === 'pipe' ? [4, 5, 6, SUBPROCESS_CONTROL_FD] : [4, 5, 6]) {
         this.internals.closeFileDescriptor(fileDescriptor)
       }
-      this.pollTimer = setInterval(() => { this.poll(api) }, 10)
+      this.pollTimer = setInterval(() => { this.poll() }, 10)
     } catch (error) {
       if (this.jobHandle === undefined && error instanceof Win32Error && error.api === 'CreateProcessW') {
         await this.publishTerminalResult({
@@ -352,19 +352,21 @@ class WindowsJobRunner {
     this.internals.terminateJob(this.api, job, 1)
   }
 
-  private poll(api: CurrentTokenProcessBindings): void {
+  private poll(): void {
     if (this.finished) return
+    /* v8 ignore next -- poll is installed only after start() stores the bindings; retained as a defensive invariant guard. */
+    if (this.api === undefined) return
     try {
       if (this.processHandle !== undefined) {
-        const exitCode = this.internals.pollProcessExit(api, this.processHandle)
+        const exitCode = this.internals.pollProcessExit(this.api, this.processHandle)
         if (exitCode !== undefined) {
-          this.internals.closeHandleChecked(api, this.processHandle, 'ordinary direct process')
+          this.internals.closeHandleChecked(this.api, this.processHandle, 'ordinary direct process')
           this.processHandle = undefined
           void this.publishTerminalResult({ type: 'target-exit', exitCode })
         }
       }
-      if (this.jobHandle !== undefined && this.internals.isJobEmpty(api, this.jobHandle)) {
-        this.internals.closeHandleChecked(api, this.jobHandle, 'ordinary process Job')
+      if (this.jobHandle !== undefined && this.internals.isJobEmpty(this.api, this.jobHandle)) {
+        this.internals.closeHandleChecked(this.api, this.jobHandle, 'ordinary process Job')
         this.jobHandle = undefined
         if (this.resultDelivered) this.finish(0)
       }

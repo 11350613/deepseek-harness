@@ -37,7 +37,6 @@ export const editResultSchema = z.object({ version: z.string(), before: z.string
 export const hunkSchema = z.object({
   lineNumber: z.number().int().positive(), context: z.string().optional(),
   oldLines: z.array(z.string()), newLines: z.array(z.string()),
-  contextLineIndices: z.array(z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])),
   isEndOfFile: z.boolean(),
 }).strict().transform(({ context, ...hunk }) => context === undefined ? hunk : { ...hunk, context })
 /** Source version guard used by patch, delete, and move. */

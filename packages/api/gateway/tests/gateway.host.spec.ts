@@ -61,7 +61,7 @@ class GoalService extends Service {
   lastSignal: AbortSignal | undefined
   lastPeer: PeerScope | undefined
   nextResult: unknown = undefined
-  businessError: unknown
+  businessError: Error | undefined
 
   constructor(ctx: Context) {
     super(ctx, 'goals')
@@ -1121,7 +1121,7 @@ describe('TypertGatewayService', () => {
       expect(result.error.message).toContain('plain-object args field')
     }
 
-    service.businessError = 'non-error failure'
+    service.businessError = 'non-error failure' as unknown as Error
     await expect(handler(
       'goals/fail',
       { args: { request: null } },

@@ -31,4 +31,4 @@
 # Keep the recorded tool set shared by the fixed-budget compaction scenarios.
 - id: tool-fs
   config:
-    enableApplyPatch: false
+    applyPatch: false

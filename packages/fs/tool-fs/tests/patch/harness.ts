@@ -29,7 +29,7 @@ export const remove = (path: string) => `*** Delete File: ${path}`
 export const move = (source: string, destination: string, before = 'old', after = 'new') =>
   `*** Update File: ${source}\n*** Move to: ${destination}\n@@\n-${before}\n+${after}`
 
-export async function setup(options: { policy?: boolean; mode?: SandboxMode; provider?: typeof LocalFileSystem; enableApplyPatch?: boolean; toolMode?: 'native' | 'ptc' } = {}) {
+export async function setup(options: { policy?: boolean; mode?: SandboxMode; provider?: typeof LocalFileSystem; applyPatch?: boolean; toolMode?: 'native' | 'ptc' } = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-patch-executor-')))
   onTestFinished(() => rm(root, { recursive: true, force: true }))
   const workspace = join(root, 'workspace')
@@ -48,7 +48,7 @@ export async function setup(options: { policy?: boolean; mode?: SandboxMode; pro
     await ctx.plugin(SandboxedFileSystem, { cwd: providerRoot })
   } else await ctx.plugin(options.provider ?? LocalFileSystem, { cwd: providerRoot })
   if (options.policy !== false) await ctx.plugin(FsPolicy)
-  const toolFiber = await ctx.plugin(ToolFs, options.enableApplyPatch === undefined ? {} : { enableApplyPatch: options.enableApplyPatch })
+  const toolFiber = await ctx.plugin(ToolFs, options.applyPatch === undefined ? {} : { applyPatch: options.applyPatch })
   const fs = ctx.fs as LocalFileSystem
   const controller = new AbortController()
   const exec: ToolExecution = {

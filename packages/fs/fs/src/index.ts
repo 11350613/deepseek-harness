@@ -309,16 +309,17 @@ export abstract class FileSystem extends Service {
   ): Promise<FsEditOutcome>
 
   /**
-   * Apply hunks under the version guard and mutation lock. Missing targets and
-   * stale versions report FS_STALE_VERSION; unmatched hunks report FS_PATCH_MISMATCH.
-   * Callers obtain expected through fs/edit-intent and record present(version)
-   * through fs/observed on success. Internal preflight reads are not model observations.
-   * @param target - resolved regular UTF-8 file to update.
-   * @param hunks - ordered parsed hunks applied to LF-normalized content.
-   * @param expected - observed version; omit to patch the current content unconditionally.
-   * @param signal - aborts before atomic publication.
-   * @param sandboxPolicy - per-call confinement; omit to use the provider default.
-   * @returns the published version and LF-normalized before/after text.
+   * Atomically apply parsed hunks to the LF-normalized text and restore the
+   * stored line-ending style. A missing or stale target reports
+   * `FS_STALE_VERSION`; an unmatched hunk reports `FS_PATCH_MISMATCH`.
+   * @param target - the resolved regular file to patch.
+   * @param hunks - ordered hunks from `parsePatch`.
+   * @param expected - the version guard; omit for an unconditional patch.
+   * @param signal - aborts before atomic publication takes effect.
+   * @param sandboxPolicy - the per-call mode and workspace root this patch runs
+   *   under; a sandboxing backend fences the patch by it, the bare backend
+   *   ignores it. Omit to leave the backend its own default.
+   * @returns the outcome, including the version the patch produced.
    */
   abstract patchText(
     target: FsTarget,
@@ -329,15 +330,16 @@ export abstract class FileSystem extends Service {
   ): Promise<FsEditOutcome>
 
   /**
-   * Remove a resolved regular file. Missing/stale targets report FS_STALE_VERSION;
-   * other types report FS_NOT_REGULAR_FILE. Obtain expected through fs/delete-intent
-   * and record absent through fs/observed after successful removal.
-   * Resolution follows symlinks: callers rejecting symlink sources must lstat before resolve.
-   * @param target - resolved file to remove, including the real target of a symlink.
-   * @param expected - observed version; omit for unconditional removal of the current file.
-   * @param signal - aborts before removal; successful removal is not rolled back.
-   * @param sandboxPolicy - per-call confinement; omit to use the provider default.
-   * @returns the bounded LF-normalized removed content, or null when no basis is available.
+   * Remove a regular file. A missing or stale target reports `FS_STALE_VERSION`;
+   * a directory or other non-file reports `FS_NOT_REGULAR_FILE`. Resolution has
+   * already followed symlinks, so the target is the real file.
+   * @param target - the resolved file to remove.
+   * @param expected - the version guard; omit for an unconditional removal.
+   * @param signal - aborts before removal.
+   * @param sandboxPolicy - the per-call mode and workspace root this removal
+   *   runs under; a sandboxing backend fences it, the bare backend ignores it.
+   *   Omit to leave the backend its own default.
+   * @returns the bounded LF-normalized removed text, or null when no basis is available.
    */
   abstract deleteFile(
     target: FsTarget,
@@ -347,22 +349,20 @@ export abstract class FileSystem extends Service {
   ): Promise<FsDeleteOutcome>
 
   /**
-   * Publish source text at a destination, optionally patching it, then remove the source.
-   * Both paths remain locked in canonical order. FS_SAME_TARGET rejects identical keys;
-   * source guards match patchText, destination guards match writeText. No cross-path
-   * transaction is promised: destination publication with the source retained is a final outcome.
-   * Obtain source/destination guards through fs/edit-intent and fs/write-intent. On
-   * resolution, record destination present(destination.version); record source absent
-   * only when sourceDeleted is true. Providers do not emit these observations.
-   * Resolution follows symlinks: callers rejecting symlink sources must lstat before resolve.
-   * @param source - resolved regular UTF-8 source; its line-ending style and mode are preserved.
-   * @param destination - resolved destination in the same provider, distinct from source.
-   * @param options - optional hunks and source/destination guards; omitted fields mean
-   *   no text patch and unconditional source/destination mutations respectively.
-   * @param signal - checked before destination staging; once staging starts, cancellation
-   *   does not interrupt the local commit. Remote cancellation can leave the outcome unknown.
-   * @param sandboxPolicy - confinement for both paths; omit to use the provider default.
-   * @returns locked LF sourceBefore, destination outcome, and source-removal status; failures before publication reject.
+   * Publish the source text, optionally patched, at the destination, then remove
+   * the source. Both targets stay locked in canonical order. Identical targets
+   * report `FS_SAME_TARGET`; the source guard follows `patchText` and the
+   * destination guard follows `writeText`. The two effects are separate: a
+   * published destination with a retained source is a final outcome reported
+   * through `sourceDeleted: false`.
+   * @param source - the resolved regular source; its line-ending style and mode carry over.
+   * @param destination - the resolved destination within the same provider.
+   * @param options - optional hunks and the source/destination guards; an omitted guard is unconditional.
+   * @param signal - checked before destination staging; the commit then completes both effects.
+   * @param sandboxPolicy - the per-call mode and workspace root both paths run
+   *   under; a sandboxing backend fences them, the bare backend ignores it.
+   *   Omit to leave the backend its own default.
+   * @returns the locked LF source text, the destination outcome, and the source-removal status.
    */
   abstract moveFile(
     source: FsTarget,
@@ -375,7 +375,6 @@ export abstract class FileSystem extends Service {
     signal?: AbortSignal,
     sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsMoveOutcome>
-
 }
 
 export default FileSystem

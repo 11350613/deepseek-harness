@@ -197,13 +197,31 @@ function cronFieldValues(raw: string, spec: CronFieldSpec): number[] | undefined
 }
 
 /**
+ * Failure reading a value the cron parser's own matching already proved present.
+ */
+/* v8 ignore next -- constructed only by the unreachable bounds guard below. */
+class CronInvariantError extends Error {
+  /**
+   * Construct an invariant failure.
+   * @param message - violated invariant.
+   */
+  constructor(message: string) {
+    super(message)
+    this.name = 'CronInvariantError'
+  }
+}
+
+/**
  * Read one array element the caller's own length guard already bounds.
  * @param values - array whose length the caller checked.
  * @param index - index inside that length.
  * @returns the element at that index.
  */
 function cronElementAt<T>(values: readonly T[], index: number): T {
-  return values[index] as T
+  const value = values[index]
+  /* v8 ignore next -- every caller reads an index inside an array length it already proved. */
+  if (value === undefined) throw new CronInvariantError('cron description read an index outside its array')
+  return value
 }
 
 /**

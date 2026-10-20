@@ -27,8 +27,6 @@ Use `dsh-fs-local` to read, list, watch, write, edit, patch, delete, and move fi
 
 Mount this backend when a composition needs `ctx.fs` backed by the real host filesystem and accepts a process-local implementation. The common path is explicit: load the backend, give it a base directory, and the model-facing tools (`dsh-tool-fs`) or your own plugins can read, write, and edit files.
 
-Atomic write failures preserve filesystem error codes: denied parent or staging creation is `FS_PERMISSION_DENIED`; other Node I/O failures are `FS_IO_ERROR`. Unexpected non-I/O defects still reject unchanged.
-
 ### When to choose it
 
 Choose `fs-local` for ordinary host-file access in a single process. Choose [`fs-sandbox`](../fs-sandbox/README.md) when a session's writes and edits must be confined to its workspace and temp roots — it extends this backend and adds only the mode fence. `config.cwd` is a resolution default, not a containment boundary: absolute paths and `..` escape it.
@@ -54,13 +52,11 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 Read regular UTF-8 files whole or as streams, read bounded bytes, and list one directory level. Writes, literal edits, patches, and deletions serialize per target. Moves lock both targets in lexical order. `patchText` checks the version before calling `applyHunks`; `deleteFile` removes only a regular file. Missing sources use `FS_STALE_VERSION`, unmatched hunks use `FS_PATCH_MISMATCH`, and identical move targets use `FS_SAME_TARGET`.
 
-Patch and move text is LF-normalized internally and restored using the source line-ending style. Outcome text uses LF. Delete bases and overwritten destination bases follow `diffBasisMaxBytes`; unavailable or oversized bases are null. Move checks cancellation before staging the destination, then completes without further cancellation checks. A source-removal failure returns the published destination with `sourceDeleted: false`; it does not roll back or hide that write.
+Patch and move text is LF-normalized internally and restored using the source line-ending style; outcome text uses LF. Delete bases and overwritten destination bases follow `diffBasisMaxBytes`. A move checks cancellation before staging the destination, then completes both effects; a source-removal failure returns the published destination with `sourceDeleted: false`. Atomic write failures map denied directory or staging creation to `FS_PERMISSION_DENIED` and other Node I/O errors to `FS_IO_ERROR`.
 
-Read, listing, and mutation failures are typed `FsError`s with stable codes — `FS_NOT_FOUND`, `FS_NOT_TEXT` (binary content), `FS_STALE_VERSION` (changed since observation), `FS_EDIT_NOT_FOUND` or `FS_AMBIGUOUS_EDIT` (no unique literal match), and others — so callers branch on the code, never on message text. A missing target on an edit reports `FS_STALE_VERSION` whether or not the version guard is supplied. A move returns `sourceFailure` only for a typed `FsError` from source removal; unexpected programming errors reject the call.
+Read, listing, and mutation failures are typed `FsError`s with stable codes — `FS_NOT_FOUND`, `FS_NOT_TEXT` (binary content), `FS_STALE_VERSION` (changed since observation), `FS_EDIT_NOT_FOUND` or `FS_AMBIGUOUS_EDIT` (no unique literal match), and others — so callers branch on the code, never on message text. A missing target on an edit reports `FS_STALE_VERSION` whether or not the version guard is supplied.
 
 Chokidar observes one file or a directory's direct entries through OS events, without polling or recursive watching. Files use a filtered parent-directory watch, so readiness also covers creation of an initially missing file. File watches cover in-place writes, atomic replacement, deletion, and same-path recreation while the parent directory remains.
-
-Move results include `sourceBefore`, the LF source text captured while both paths are locked. Complete and partial moves return it so consumers can record the source basis.
 
 -----
 

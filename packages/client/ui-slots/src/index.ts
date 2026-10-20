@@ -1598,7 +1598,9 @@ export class SlotCore {
   private releaseChildren(children: Readonly<Record<string, SlotSpec<SlotEntryDef>>> | undefined): void {
     if (children === undefined) return
     for (const childKey of Object.keys(children)) {
-      const childRec = this.record(childKey)
+      const childRec = this.records.get(childKey)
+      /* v8 ignore next -- defensive: declaring always creates the record */
+      if (!childRec) continue
       const doomed = childRec.entries
       childRec.spec = undefined
       childRec.declaredBy = undefined

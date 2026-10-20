@@ -251,7 +251,7 @@ describe('patch, delete, and move fences', () => {
     await writeFile(outsidePath, 'outside\n')
     const source = await target(sourcePath)
     const out = await target(outsidePath)
-    const patch = [{ lineNumber: 3, oldLines: ['source'], newLines: ['patched'], contextLineIndices: [], isEndOfFile: false }]
+    const patch = [{ lineNumber: 3, oldLines: ['source'], newLines: ['patched'], isEndOfFile: false }]
     if (mode === 'read-only') {
       await expect(fs.patchText(source, patch)).rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
       await expect(fs.deleteFile(source)).rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })

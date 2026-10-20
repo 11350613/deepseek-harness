@@ -241,6 +241,8 @@ async function runGroup(
     for (const call of group.slice(started)) appendSkippedToolCall(session, turn, step, call.block)
     return { consumed: group.length, aborted: true, concluded }
   }
+  /* v8 ignore next -- unreachable: a non-aborted group commits every started call */
+  if (committed !== started) throw new Error('tool-call scheduler: uncommitted settled calls')
   return { consumed: started, aborted: false, concluded }
 }
 

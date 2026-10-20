@@ -10,17 +10,17 @@ Status: implemented
 
 ## 决策
 
-`apply_patch` 接收一份 Codex 风格补丁，支持新增、更新、删除和移动，以及多个文件和 hunk。[dsh-fs-patch 纯库](../../../../packages/fs/fs-patch/README.zh.md)遵循 Codex `rust-v0.158.0` 的解析、顺序匹配、空白容忍和 `NormalizeToLf` 重建。匹配器只接收 LF 文本；尚未实现 Codex `PreserveLineEndings`。固定版本参考与兼容性 fixture（测试前置数据）将语法和匹配行为同 Harness 观察及沙箱策略区分开来。
+`apply_patch` 接收一份 Codex 风格补丁，支持新增、更新、删除和移动，以及多个文件和 hunk。[dsh-fs-patch 纯库](../../../../packages/fs/fs-patch/README.zh.md)遵循 Codex `rust-v0.158.0` 的解析、顺序匹配、空白容忍和 `NormalizeToLf` 重建。匹配器只接收 LF 文本，因此不实现 Codex `PreserveLineEndings`。
 
-[文件系统服务](../../../../packages/fs/fs/README.zh.md)提供 `patchText`、`deleteFile` 和 `moveFile`；本地、沙箱和 SSH 提供方均实现它们。`fs/delete-intent` 与 `fs/edit-intent` 要求相同的存在观察，移动目标使用 `fs/write-intent`。内部读取不授予模型观察。版本防护和沙箱约束仍由提供方负责。不存在跨路径事务：移动先发布目标，再删除源；`sourceDeleted` 区分已完成的移动与目标已发布但源未能删除的情况。
+[文件系统服务](../../../../packages/fs/fs/README.zh.md)提供 `patchText`、`deleteFile` 和 `moveFile`；本地、沙箱和 SSH 提供方均实现它们。`fs/delete-intent` 与 `fs/edit-intent` 要求相同的存在观察，移动目标使用 `fs/write-intent`。版本防护和沙箱约束仍由提供方负责。移动先发布目标，再删除源；`sourceDeleted` 区分已完成的移动与目标已发布但源未能删除的情况。
 
-[工具执行器](../../../../packages/fs/tool-fs/README.zh.md)在整份补丁预检时解析路径并模拟预期状态，包括重复路径和移动，不写入文件。预检拒绝时没有提交。提交时为每条操作重新获取观察防护，在首次失败或取消时停止，不回滚。I/O 或取消失败导致效果不确定时，独立的 `stat` 比较检查所有受影响目标是否仍保持先前版本；状态变化或比较失败会产生 `unknown`，要求重试前重新读取。报告保留已完成、失败、未知和跳过的操作，包括部分发布的移动。
+[工具执行器](../../../../packages/fs/tool-fs/README.zh.md)在整份补丁预检时解析路径并模拟预期状态，包括重复路径和移动，不写入文件；预检拒绝时没有提交。提交时为每条操作重新获取观察防护，在首次失败或取消时停止，不回滚。I/O 或取消失败后，`stat` 比较检查所有受影响目标是否仍保持先前版本；状态变化或比较失败会产生 `unknown`，要求重试前重新读取。报告保留已完成、失败、未知和跳过的操作，包括部分发布的移动。
 
-提交报告返回 `isError: false`，让已完成的 diff 元数据在补丁中止后仍被保留；操作状态和 stopped 标记继续暴露失败。语法和预检拒绝产生工具错误。成功移动的摘要使用 `M <destination>`。已应用 diff 的路径采用规范绝对 `processPath`，供客户端导航使用；操作记录保留显示路径，解析失败则保留补丁原始路径。
+提交报告返回 `isError: false`，让已完成的 diff 元数据在补丁中止后仍被保留；操作状态和 stopped 标记暴露失败。语法和预检拒绝产生工具错误。成功移动的摘要使用 `M <destination>`。已应用 diff 的路径采用规范绝对 `processPath`，供客户端导航使用；操作记录保留显示路径，未解析的路径保留补丁原始写法。
 
-[Review 采集](../../../../packages/deliverables/workspace-changes/README.zh.md)使用文件系统 intent 监听器，不解析参数。`tools/pre-execute` 将执行关联到轮次记录器；前置的 write、edit 和 delete 监听器先等待策略决策，再等待捕获完成，然后提供方才修改文件。移动捕获两端。每轮保留首次准入时的基线，比较实际最终字节，因此重复编辑形成一份净 diff，还原的变化不再显示。被拒绝的 intent 不产生副本或观察。现有大小、数量、时间、位置和 Session 生命周期限制保持适用；提交失败不会丢弃先前真实变化。
+[Review 采集](../../../../packages/deliverables/workspace-changes/README.zh.md)使用文件系统 intent 监听器，不解析参数。`tools/pre-execute` 将执行关联到轮次记录器；前置的 write、edit 和 delete 监听器先等待策略决策，再等待捕获完成，然后提供方才修改文件。移动捕获两端。每轮保留首次基线，比较实际最终字节，因此重复编辑形成一份净 diff，还原的变化不再显示。现有大小、数量、时间、位置和 Session 生命周期限制保持适用。
 
-根据[默认启用决定](2026-10-16-default-apply-patch.zh.md)，`tool-fs.enableApplyPatch` 默认为 `true`。工具注册 schema、指导文本、native/PTC 执行与调用展示，同时保留已有文件工具；显式设为 `false` 可省略它。注册使用插件 effect，不修改 agent loop（智能体循环）。
+`tool-fs.applyPatch` 默认为 `true`，普通编程会话与 read、write、edit 一同获得该工具；显式设为 `false` 可省略工具及其指导文本，有意排除文本文件工具的最小 SDK 和 Web 预设将其设为 `false`。工具通过插件 effect 注册 schema、指导文本、native/PTC 执行与调用展示；不修改 agent loop（智能体循环）。
 
 ## 考虑过的替代方案
 
@@ -30,11 +30,13 @@ Status: implemented
 
 **将整份补丁做成事务。** 跨文件回滚增加恢复状态，还可能覆盖并发外部修改。预检和顺序提交可以提早拒绝已知失败，并公开部分结果，而不承诺回滚。
 
-**加入工具时同时扩展 Review。** 重命名展示、持久存储、SSH 采集和捕获失败策略是独立产品决策。既有整文件采集和展示覆盖本次接入。
+**加入工具时同时扩展 Review。** 重命名展示、持久存储、SSH 采集和捕获失败策略是独立产品决策；既有整文件采集和展示覆盖本次接入。
+
+**以受控评测作为默认启用的前提。** 这会在普通会话与工具之间保留一层启用 overlay；显式关闭开关已经支持对比评测和不需要该工具的部署。
 
 ## 后果
 
-一次调用可以表达相关编辑，但工具调用次数减少并不证明任务效果更好或总 token 成本更低。预检不能阻止之后的冲突、取消或存储失败；调用方必须在重试前检查操作状态和实际文件。上游宽松匹配保持固定版本并受到测试约束，不会被悄悄收紧。提供方实现和外部子类必须支持三个新增操作，部分移动要求处理两端状态。
+一次调用可以表达相关编辑。默认模型请求包含额外的工具 schema 及其指导文本，因此录制请求的预期会变化。预检不能阻止之后的冲突、取消或存储失败；调用方在重试前检查操作状态。上游宽松匹配保持固定版本并受到测试约束，不会被收紧。提供方实现和外部子类必须支持三个新增操作，部分移动要求处理两端状态。
 
 ## 测试
 
@@ -42,4 +44,4 @@ Status: implemented
 
 ## 延期工作
 
-第八步受控编辑任务评测仍待开展：在相同初始状态下比较最终文件正确性、任务成功率、提示词及完成 token、模型步数、工具调用、重试、延迟和 Review 覆盖。SSH Review、`apply_patch` 的收尾文案文件引用，以及 Codex `PreserveLineEndings` 不在本次实现内。
+受控编辑任务评测：在相同初始状态下与 `edit` 比较最终文件正确性、任务成功率、token、工具调用、重试、延迟和 Review 覆盖。SSH Review、`apply_patch` 的收尾文案文件引用，以及 Codex `PreserveLineEndings`。

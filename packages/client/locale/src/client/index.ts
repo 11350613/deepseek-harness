@@ -419,8 +419,11 @@ export class LocaleRuntime {
     }
     for (const [locale, entries] of pairs) locales.set(localeKey(locale), entries)
     this.publish(this.snapshot.active, false)
-    const owner = locales
     return () => {
+      const owner = this.dicts.get(ns)
+      /* v8 ignore next -- defensive: a namespace's locales map is created on
+       * first register and never removed, so the disposer always finds it. */
+      if (!owner) return
       let removed = false
       for (const [locale, entries] of pairs) {
         const key = localeKey(locale)

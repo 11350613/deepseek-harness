@@ -17,7 +17,7 @@ import type { PatchExecutionRequest, PatchFailure, PatchOperationRecord, PatchPl
  * @param sandbox - filesystem diagnostic mapper.
  * @param exec - session cwd and execution signal.
  * @param request - raw patch and resolved per-call policy.
- * @returns resolved operations sharing one target per canonical key, plus resolution failures.
+ * @returns resolved operations sharing one target per canonical key, plus resolution refusals.
  */
 export async function planPatch(
   ctx: Context, sandbox: FsSandboxController, exec: ToolExecution, request: PatchExecutionRequest,
@@ -31,7 +31,7 @@ export async function planPatch(
     targets.set(target.targetKey, target)
     return target
   }
-  const result: PatchPlan = { operations: [], failures: [] }
+  const result: PatchPlan = { operations: [], refusals: [] }
   for (const [index, operation] of parsed.entries()) {
     const moveTo = operation.kind === 'update' ? operation.moveTo : undefined
     const record: PatchOperationRecord = {
@@ -61,8 +61,7 @@ export async function planPatch(
       }
     } catch (error) {
       if (!(error instanceof FsError)) throw error
-      result.failures.push({ status: 'failed', operation: record,
-        failure: patchFailure(sandbox, request.sandboxPolicy, error, failurePath), changes: [] })
+      result.refusals.push({ operation: record, failure: patchFailure(sandbox, request.sandboxPolicy, error, failurePath) })
     }
   }
   return result

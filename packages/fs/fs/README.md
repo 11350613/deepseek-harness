@@ -33,13 +33,9 @@ Pick [`fs-local`](../fs-local/README.md) for ordinary host files or [`fs-sandbox
 
 ### What the service lets you do
 
-Through `ctx.fs`, resolve paths, read text or bounded bytes, list direct children, and perform guarded mutations. `patchText` applies parsed hunks under the same lock as its version check. `deleteFile` removes a regular file. `moveFile` locks both targets, optionally patches the source text, publishes the destination, then removes the source. Guards are optional: omission uses the current state unconditionally. Failures carry stable `FsError` codes; branch on the code instead of parsing messages.
-
-`FS_ERROR_CODES` is the runtime list shared by `FsErrorCode` and transport validators. Import it when constructing an error-code schema.
+Through `ctx.fs`, resolve paths, read text or bounded bytes, list direct children, and perform guarded mutations. `patchText` applies parsed hunks under the same lock as its version check. `deleteFile` removes a regular file. `moveFile` locks both targets, optionally patches the source text, publishes the destination, then removes the source. Guards are optional: omission mutates the current state unconditionally. Failures carry stable `FsError` codes from the runtime `FS_ERROR_CODES` list, which transport validators reuse.
 
 `watch(target, changed, signal)` reports invalidations for one file or a directory's direct entries. It resolves once observation is ready with an asynchronous close function that the caller must await. The signal cancels initialization; unsupported providers reject without polling.
-
-Move results include `sourceBefore`, the LF source text captured while both paths are locked. Complete and partial moves return it so consumers can record the source basis.
 
 -----
 
@@ -73,7 +69,7 @@ Every operation uses a target from `resolve(path, { cwd })`; aliases share an op
 
 ### The `fs/*` policy events
 
-The package declares four events shared by consumers and observation policy. Intent waterfalls have one decision owner; observation recording is synchronous and carries an opaque actor. Callers dispatch the applicable intent before a mutation and record only completed effects afterwards. Internal preflight reads do not count as model observations.
+The package declares four events shared by consumers and observation policy. Intent waterfalls have one decision owner; observation recording is synchronous and carries an opaque actor. Callers dispatch the applicable intent before a mutation and record completed effects afterwards.
 
 | Event | Use |
 |---|---|
@@ -122,10 +118,9 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 These limits define when the contract is a poor fit or needs special operational care. They are current package constraints, not a general filesystem comparison or a task backlog.
 
-- Literal edits, patches, and moves require UTF-8 text; deletion also accepts binary regular files and may return `before: null`. Whole-file writes accept text and may replace a prior binary file.
-- Moves are not cross-path transactions. A resolved `sourceDeleted: false` result means the destination is published and the source remains; callers must report both facts.
-- Resolved targets follow symlinks. Callers that reject symlink sources must use `lstat` before `resolve`; copying and recursive directory operations are outside this API.
-- External `FileSystem` providers follow the [guarded-mutation migration guide](../../../docs/upgrade-guide/v0.2.1-alpha.4/guarded-filesystem-mutations/guide.md).
+- Literal edits, patches, and moves require UTF-8 text; deletion also accepts binary regular files and returns `before: null` for them.
+- Moves are two effects, not a transaction: `sourceDeleted: false` means the destination is published and the source remains.
+- Resolved targets follow symlinks; callers that reject symlink sources use `lstat` before `resolve`. Copying and recursive directory operations are outside this API.
 - **No I/O deadline** — the seam arms no timeout; cancellation is a best-effort optional `AbortSignal` per primitive ([fs family stance](../README.md)).
 - **Resolve-then-operate costs a remote backend two round-trips per tool call** — folding or caching resolution is left to such a backend.
 

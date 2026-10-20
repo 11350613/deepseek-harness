@@ -156,8 +156,8 @@ describe('registration', () => {
     { config: { read: false }, tools: ['apply_patch', 'edit', 'write'], sections: ['tool:apply_patch', 'tool:edit', 'tool:write'] },
     { config: { write: false }, tools: ['apply_patch', 'edit', 'read'], sections: ['tool:apply_patch', 'tool:edit', 'tool:read'] },
     { config: { edit: false }, tools: ['apply_patch', 'read', 'write'], sections: ['tool:apply_patch', 'tool:read', 'tool:write'] },
-    { config: { enableApplyPatch: false }, tools: ['edit', 'read', 'write'], sections: ['tool:edit', 'tool:read', 'tool:write'] },
-    { config: { read: false, readImage: false, write: false, edit: false, enableApplyPatch: false }, tools: [], sections: [] },
+    { config: { applyPatch: false }, tools: ['edit', 'read', 'write'], sections: ['tool:edit', 'tool:read', 'tool:write'] },
+    { config: { read: false, readImage: false, write: false, edit: false, applyPatch: false }, tools: [], sections: [] },
   ])('omits disabled tools and their guidance: $config', async ({ config, tools, sections }) => {
     const { ctx } = await setup(config)
     try {
@@ -171,7 +171,7 @@ describe('registration', () => {
     }
   })
 
-  it.each([{ read: 'false' }, { readImage: 1 }, { write: [] }, { edit: {} }, { enableApplyPatch: 'true' }])('rejects non-boolean switches at configuration parsing: %j', async (config) => {
+  it.each([{ read: 'false' }, { readImage: 1 }, { write: [] }, { edit: {} }, { applyPatch: 'true' }])('rejects non-boolean switches at configuration parsing: %j', async (config) => {
     expect((await ToolFs.Config['~standard'].validate(config)).issues).toBeDefined()
   })
 
@@ -1078,7 +1078,7 @@ const originalGuidance = {
 
 describe('scope-aware filesystem guidance', () => {
   it.each(Array.from({ length: 8 }, (_, mask) => mask))('preserves exact text for visible tools (mask %i)', async (mask) => {
-    const { ctx } = await setup({ enableApplyPatch: false })
+    const { ctx } = await setup({ applyPatch: false })
     const { key, scope } = await guidanceScope(ctx)
     const names = ['read', 'write', 'edit'] as const
     const allow = names.filter((_, index) => (mask & (1 << index)) !== 0)
@@ -1101,7 +1101,7 @@ describe('scope-aware filesystem guidance', () => {
   })
 
   it('honors deny filters and the existing exemption for own-scope tools', async () => {
-    const { ctx } = await setup({ enableApplyPatch: false })
+    const { ctx } = await setup({ applyPatch: false })
     const { key, scope } = await guidanceScope(ctx)
     const write = ctx.tools.get('write')!
     scope.ctx.tools.restrict({ deny: ['write', 'edit'] })

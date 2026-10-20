@@ -172,7 +172,6 @@ it('propagates programmer defects from mutation and preserves observed state', a
   expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
 })
 
-
 it('reports the locked move source after an external edit following preflight', async () => {
   const t = await setup({ policy: false })
   await t.file('a', 'old\n')
@@ -182,11 +181,10 @@ it('reports the locked move source after an external edit following preflight', 
     return originalMove(...args)
   })
   const reads = vi.spyOn(t.fs, 'readText')
-  const result = await t.run(patch(move('a', 'b')))
-  expect(result.outcomes).toEqual([{ status: 'completed', operation: t.record('move', 'a', 0, 2, 'b'), changes: [
+  expect(await t.run(patch(move('a', 'b')))).toMatchObject({ phase: 'commit', outcomes: [{ status: 'completed', operation: t.record('move', 'a', 0, 2, 'b'), changes: [
     { path: resolve(t.workspace, 'b'), before: null, after: 'new\nexternal\n' },
     { path: resolve(t.workspace, 'a'), before: 'old\nexternal\n', after: null },
-  ] }])
+  ] }] })
   expect(reads).toHaveBeenCalledTimes(1)
   expect(await t.bytes('b')).toBe('new\nexternal\n')
 })

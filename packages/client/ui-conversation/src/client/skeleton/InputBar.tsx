@@ -337,7 +337,8 @@ export const InputBar = memo(function InputBar({
       return
     }
     if (keyboard === undefined) return // absent machine: the button is disabled
-    keyboard.submit(primarySubmitMode, 'click')
+    /* v8 ignore next -- defensive: the primary button is disabled for empty, disabled, and pending-upload states. */
+    if (!empty && !disabled && !machineBusy && !uploadsPending) keyboard.submit(primarySubmitMode, 'click')
   }
 
   // Claim ghost hint: rendered by CSS as generated content after the last

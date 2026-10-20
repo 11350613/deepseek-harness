@@ -395,7 +395,7 @@ describe('runner launch inputs', () => {
     }
     expect(resolveWindowsExecutable('bash', 'C:\\target', {
       Path: 'relative;"C:\\semi;colon";"C:\\tools\\git\\bin";C:\\later',
-    }, exists, {})).toBe('C:\\tools\\git\\bin\\bash.exe')
+    }, exists)).toBe('C:\\tools\\git\\bin\\bash.exe')
     expect(probed).toEqual([
       'C:\\target\\bash.com',
       'C:\\target\\bash.exe',
@@ -408,7 +408,7 @@ describe('runner launch inputs', () => {
     ])
 
     expect(resolveWindowsExecutable('local.exe', 'C:\\target', {}, candidate =>
-      candidate === 'C:\\target\\local.exe', {})).toBe('C:\\target\\local.exe')
+      candidate === 'C:\\target\\local.exe')).toBe('C:\\target\\local.exe')
     expect(resolveWindowsExecutable('tool', 'C:\\target', {
       PATH: 'C:\\bin',
     }, candidate => candidate === 'C:\\bin\\tool.com', {
@@ -416,28 +416,28 @@ describe('runner launch inputs', () => {
     })).toBe('C:\\bin\\tool.com')
     expect(resolveWindowsExecutable('tool', 'C:\\target', {
       PATH: 'D:relative',
-    }, candidate => candidate === 'D:relative\\tool.exe', {})).toBe('D:relative\\tool.exe')
+    }, candidate => candidate === 'D:relative\\tool.exe')).toBe('D:relative\\tool.exe')
     expect(resolveWindowsExecutable('tool.', 'C:\\target', {}, candidate =>
-      candidate === 'C:\\target\\tool.exe', {})).toBe('C:\\target\\tool.exe')
-    expect(resolveWindowsExecutable('.\\missing', 'C:\\target', {}, () => false, {}))
+      candidate === 'C:\\target\\tool.exe')).toBe('C:\\target\\tool.exe')
+    expect(resolveWindowsExecutable('.\\missing', 'C:\\target', {}, () => false))
       .toBeUndefined()
 
     expect(resolveWindowsExecutable('tool', 'C:\\target', {
       PATH: ';;C:\\bin',
-    }, candidate => candidate === 'C:\\bin\\tool.exe', {})).toBe('C:\\bin\\tool.exe')
+    }, candidate => candidate === 'C:\\bin\\tool.exe')).toBe('C:\\bin\\tool.exe')
     expect(resolveWindowsExecutable('tool', 'C:\\target', {
       PATH: '"";C:\\bin',
-    }, candidate => candidate === 'C:\\bin\\tool.exe', {})).toBe('C:\\bin\\tool.exe')
+    }, candidate => candidate === 'C:\\bin\\tool.exe')).toBe('C:\\bin\\tool.exe')
     expect(resolveWindowsExecutable('tool', 'C:\\target', {
       PATH: '"unterminated',
-    }, candidate => candidate === 'C:\\target\\unterminated\\tool.exe', {}))
+    }, candidate => candidate === 'C:\\target\\unterminated\\tool.exe'))
       .toBe('C:\\target\\unterminated\\tool.exe')
     expect(resolveWindowsExecutable('\\\\server\\share\\tool', 'C:\\target', {}, candidate =>
-      candidate === '\\\\server\\share\\tool.exe', {})).toBe('\\\\server\\share\\tool.exe')
+      candidate === '\\\\server\\share\\tool.exe')).toBe('\\\\server\\share\\tool.exe')
     expect(resolveWindowsExecutable('\\tools\\tool', 'C:\\target', {}, candidate =>
-      candidate === 'C:\\tools\\tool.exe', {})).toBe('C:\\tools\\tool.exe')
+      candidate === 'C:\\tools\\tool.exe')).toBe('C:\\tools\\tool.exe')
     expect(resolveWindowsExecutable('C:tools\\tool', 'C:\\target', {}, candidate =>
-      candidate === 'C:\\target\\tools\\tool.exe', {})).toBe('C:\\target\\tools\\tool.exe')
+      candidate === 'C:\\target\\tools\\tool.exe')).toBe('C:\\target\\tools\\tool.exe')
 
     const noSearchEnvironment = { NoDefaultCurrentDirectoryInExePath: '1' }
     expect(resolveWindowsExecutable('missing', 'C:\\target', {}, () => false, noSearchEnvironment))

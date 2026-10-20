@@ -9,8 +9,8 @@
   en: fc8f28deebe5fa6b
   zh: 738c6ad45034da88
 /deepseek-ai-dsh-tool-fs/summary:
-  en: 3294a0c897099b57
-  zh: e04fcb03a1def45b
+  en: c324e1f6369b38b9
+  zh: 5e4fd0d5f64b0746
 /deepseek-ai-dsh-tool-fs/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -24,14 +24,14 @@
   en: 0e0cb1337b2a8466
   zh: 99be61e9f7124182
 /deepseek-ai-dsh-tool-fs/use-this-package/configuration:
-  en: 98979987316862c6
-  zh: 3bda0bcda2862eff
+  en: c4817cc85c49154f
+  zh: 52ef75e02f244a15
 /deepseek-ai-dsh-tool-fs/use-this-package/policy-and-sandbox-behavior:
   en: 53d4ac2db089ef39
   zh: 214ea051ed56f500
 /deepseek-ai-dsh-tool-fs/use-this-package/failures-and-recovery:
-  en: e80b0f62e95b4379
-  zh: 4f3cfa15d20d80b7
+  en: 448f8afbbf3a90d1
+  zh: e87db5c1868cc94e
 /deepseek-ai-dsh-tool-fs/understand-the-implementation:
   en: e30f7038c28e93f8
   zh: a3868dbd90367b13
@@ -39,14 +39,14 @@
   en: 1f4d7213aa3d0d60
   zh: aa6573f96c8b5220
 /deepseek-ai-dsh-tool-fs/understand-the-implementation/source-map:
-  en: 50fc5ec596af7755
-  zh: d3b2ea5a73b329a9
+  en: 7cda5167ece32686
+  zh: 30a00318f70bf5d5
 /deepseek-ai-dsh-tool-fs/understand-the-implementation/per-tool-flow:
-  en: 868fe62516f8c412
-  zh: 6026edeb33542eb9
+  en: 9e75dd547b41ce02
+  zh: 62184c725aaf862c
 /deepseek-ai-dsh-tool-fs/understand-the-implementation/observation-and-concurrency:
-  en: 1184cf39ebb68529
-  zh: 4a15bf9e3a9dd1e9
+  en: 6a54598ec69f6f20
+  zh: 27d31d22ee926622
 /deepseek-ai-dsh-tool-fs/further-exploration:
   en: 485bc55482f576bc
   zh: fc5fa55b41098bd0
@@ -138,8 +138,8 @@
   en: e24083366d909456
   zh: 003e7533d417bfe5
 /deepseek-ai-dsh-tool-fs/model-experience/apply-patch/what-the-model-sees:
-  en: b808c52fd766ef36
-  zh: 6f8df91309989fa0
+  en: 4370cdafba12b67e
+  zh: 684e3237f081c1f1
 /deepseek-ai-dsh-tool-fs/model-experience/apply-patch/what-the-model-sees/system-guidance:
   en: 3e353846d8e13cdf
   zh: 3d93eaadc65898b3
@@ -147,14 +147,14 @@
   en: 37d9e89be68e7725
   zh: fd09eca8f63c7c58
 /deepseek-ai-dsh-tool-fs/model-experience/apply-patch/token-effect:
-  en: f8345fdddccd10ec
-  zh: 252b5d4cb20a723b
+  en: 886e012dd66f2548
+  zh: a22ea38a243f82db
 /deepseek-ai-dsh-tool-fs/model-experience/apply-patch/kv-cache-effect:
-  en: f50c2c9526598702
-  zh: bf5011dc7c4b1fd6
+  en: d3a98306460d7f9f
+  zh: 59836b4f59b8214a
 /deepseek-ai-dsh-tool-fs/known-limitations-and-deferred-work:
-  en: b7c956a5f22ed9e3
-  zh: bd68af719e4bf154
+  en: 61600821252cf29c
+  zh: 65af2a8ca0515906
 /deepseek-ai-dsh-tool-fs/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

@@ -10,7 +10,7 @@ import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { FsSandboxController } from '../sandbox.ts'
 import { sessionResolveOptions } from '../session-cwd.ts'
 import { destinationIntent, mutationTargets, patchFailure, sourceIntent } from './plan.ts'
-import type { PatchFailure, PatchOperationOutcome, PlannedOperation } from './types.ts'
+import type { PatchFailure, PatchRefusal, PlannedOperation } from './types.ts'
 
 interface SimulatedFile {
   exists: boolean
@@ -134,28 +134,27 @@ class Preflight {
 }
 
 /**
- * Collect all independent preflight failures while simulating only successful operations.
+ * Collect every independent preflight refusal while simulating only admitted operations.
  * @param ctx - filesystem service owner; reads never emit observations.
  * @param sandbox - model-facing denial mapper.
  * @param exec - observation actor and cancellation signal.
  * @param policy - resolved confinement policy.
  * @param operations - complete resolved operation plan.
- * @returns failed/skipped entries; any failure forbids the entire commit phase.
+ * @returns refused operations in patch order; any refusal forbids the commit phase.
  */
 export async function preflightPatch(
   ctx: Context, sandbox: FsSandboxController, exec: ToolExecution, policy: SandboxExecutionPolicy | undefined,
   operations: readonly PlannedOperation[],
-): Promise<PatchOperationOutcome[]> {
+): Promise<PatchRefusal[]> {
   const preflight = new Preflight(ctx, exec, policy)
-  const outcomes: PatchOperationOutcome[] = []
+  const refusals: PatchRefusal[] = []
   for (const operation of operations) {
     let failure: PatchFailure | undefined
     try { failure = await preflight.check(operation) } catch (error) {
       if (!(error instanceof FsError)) throw error
       failure = patchFailure(sandbox, policy, error, preflight.failurePath)
     }
-    outcomes.push(failure === undefined ? { status: 'skipped', operation: operation.record }
-      : { status: 'failed', operation: operation.record, failure, changes: [] })
+    if (failure !== undefined) refusals.push({ operation: operation.record, failure })
   }
-  return outcomes
+  return refusals
 }

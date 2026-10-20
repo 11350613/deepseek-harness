@@ -210,7 +210,7 @@ it.each([false, true])('forwards patch/delete/move with explicit policy %s and p
   const selected = explicit ? policy : undefined
   const resolved = explicit ? policy : { mode: 'read-only', workspaceRoot: '/remote/work' }
   const expected = { version: FsVersion('v1') }
-  const hunks = [{ lineNumber: 3, context: 'anchor', oldLines: ['old'], newLines: ['new'], contextLineIndices: [], isEndOfFile: false }]
+  const hunks = [{ lineNumber: 3, context: 'anchor', oldLines: ['old'], newLines: ['new'], isEndOfFile: false }]
   const edited = { version: 'v2', before: 'old', after: 'new' }
   const deleted = { before: 'old' }
   const destination = { targetKey: FsTargetKey('/remote/work/new.txt'), displayPath: 'new.txt' }

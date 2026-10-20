@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { FS_ERROR_CODES, FileSystem, FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
   FsEditOutcome,
@@ -221,11 +221,4 @@ it('exposes guarded patch, delete, and move on the provider interface', async ()
     expect(new FsError('mismatch', 'FS_PATCH_MISMATCH').code).toBe('FS_PATCH_MISMATCH')
     expect(new FsError('same target', 'FS_SAME_TARGET').code).toBe('FS_SAME_TARGET')
   } finally { await fiber.dispose() }
-})
-
-it('exports the shared filesystem error-code vocabulary', () => {
-  expect(FS_ERROR_CODES).toHaveLength(15)
-  expect(new Set(FS_ERROR_CODES).size).toBe(FS_ERROR_CODES.length)
-  expect(FS_ERROR_CODES).toContain('FS_PATCH_MISMATCH')
-  expect(FS_ERROR_CODES).toContain('FS_SAME_TARGET')
 })

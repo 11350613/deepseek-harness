@@ -119,7 +119,7 @@ describe.skipIf(process.platform === 'win32')('guarded patch helper dispatch', (
       const target = await test.client.request('fs.resolve', { path: 'a' }, targetSchema)
       const destination = await test.client.request('fs.resolve', { path: 'b' }, targetSchema)
       const info = await test.client.request('fs.stat', { target }, infoSchema)
-      const hunks = [{ lineNumber: 3, oldLines: ['old'], newLines: ['new'], contextLineIndices: [], isEndOfFile: false }]
+      const hunks = [{ lineNumber: 3, oldLines: ['old'], newLines: ['new'], isEndOfFile: false }]
       const patched = await test.client.request('fs.patch', { target, hunks, expected: guarded ? { version: info.version } : undefined, policy: policy(test.root) }, editResultSchema)
       expect(patched).toMatchObject({ before: 'old\n', after: 'new\n' })
       expect(await readFile(`${test.root}/a`, 'utf8')).toBe('new\r\n')
@@ -152,10 +152,9 @@ describe.skipIf(process.platform === 'win32')('guarded patch helper dispatch', (
 
 it.each([
   { lineNumber: 0 }, { lineNumber: 1.5 }, { context: 1 }, { oldLines: [1] }, { newLines: [false] },
-  { contextLineIndices: [[-1, 0]] }, { contextLineIndices: [[0, 0.5]] }, { contextLineIndices: [[0]] },
   { isEndOfFile: 'true' }, { extra: true },
 ])('rejects invalid hunk fields %j', (fields) => {
-  const valid = { lineNumber: 3, oldLines: ['old'], newLines: ['new'], contextLineIndices: [[0, 0]], isEndOfFile: false }
+  const valid = { lineNumber: 3, oldLines: ['old'], newLines: ['new'], isEndOfFile: false }
   expect(hunkSchema.safeParse({ ...valid, ...fields }).success).toBe(false)
   expect(moveOptionsSchema.safeParse({ hunks: [{ ...valid, ...fields }] }).success).toBe(false)
 })

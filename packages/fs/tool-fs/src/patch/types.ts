@@ -48,6 +48,12 @@ export interface PatchFailure {
   hunkLine?: number
 }
 
+/** One operation refused before any write. */
+export interface PatchRefusal {
+  operation: PatchOperationRecord
+  failure: PatchFailure
+}
+
 /** Each operation retains completed effects even when a move fails halfway. */
 export type PatchOperationOutcome =
   | { status: 'completed'; operation: PatchOperationRecord; changes: PatchFileChange[] }
@@ -55,10 +61,10 @@ export type PatchOperationOutcome =
   | { status: 'unknown'; operation: PatchOperationRecord; failure: PatchFailure }
   | { status: 'skipped'; operation: PatchOperationRecord }
 
-/** Ordered report; preflight failures prevent all writes, commit failures stop later operations. */
+/** Syntax and preflight refusals prevent all writes; a commit failure stops later operations. */
 export type PatchExecutionReport =
-  | { phase: 'syntax'; failure: PatchFailure; outcomes: []; affectedPaths: []; cancelled: false }
-  | { phase: 'preflight'; outcomes: PatchOperationOutcome[]; affectedPaths: []; cancelled: boolean }
+  | { phase: 'syntax'; failure: PatchFailure }
+  | { phase: 'preflight'; refusals: [PatchRefusal, ...PatchRefusal[]] }
   | { phase: 'commit'; outcomes: PatchOperationOutcome[]; affectedPaths: string[]; cancelled: boolean }
 
 /** Resolved operation with raw source spelling retained for no-follow inspection. */
@@ -73,10 +79,10 @@ export type PlannedOperation = {
   | { kind: 'move'; destination: FsTarget; hunks: readonly PatchHunk[] }
 )
 
-/** Resolved operations and per-operation path-resolution failures in one parsed patch. */
+/** Resolved operations and path-resolution refusals in one parsed patch. */
 export interface PatchPlan {
-  /** Successfully resolved operations, retaining their original indexes and order. */
+  /** Resolved operations in patch order. */
   operations: PlannedOperation[]
-  /** Resolution failures; unresolvable paths retain their raw patch spelling. */
-  failures: Extract<PatchOperationOutcome, { status: 'failed' }>[]
+  /** Resolution refusals; unresolvable paths retain their raw patch spelling. */
+  refusals: PatchRefusal[]
 }

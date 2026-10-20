@@ -1,4 +1,3 @@
-import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -177,7 +176,7 @@ describe('SessionSkillCatalog', () => {
     expect(ctx.agents.list()).toEqual([])
   })
 
-  it.each(['agent-preset/not-found', 'agent-preset/invalid'] as const)('falls back to the global registry for %s', async (code) => {
+  it('falls back to the global registry when the recorded preset is unavailable', async () => {
     const ctx = await context()
     const sessionId = SessionId('gone-preset')
     ctx.provide('sessionQuery', {
@@ -187,7 +186,7 @@ describe('SessionSkillCatalog', () => {
       })),
     } as never)
     ctx.provide('agentPresets', {
-      acquireScope: () => Promise.reject(new RemoteError(code, 'unavailable preset', { agentPreset: 'gone', available: [], reason: 'unavailable' })),
+      acquireScope: () => Promise.reject(new Error('unknown preset')),
     } as never)
     const list = vi.fn(() => Promise.resolve([]))
     ctx.provide('skills', { list } as never)
@@ -195,29 +194,6 @@ describe('SessionSkillCatalog', () => {
 
     await expect(catalog.list({ sessionId }, new AbortController().signal)).resolves.toEqual({ skills: [] })
     expect(list).toHaveBeenCalledWith({ cwd: '/cold/project', scope: undefined })
-  })
-
-  it.each([new Error('preset defect'), new RemoteError('gateway/internal', 'preset defect', {})])('warns and falls back to global skills for unexpected preset failures: %s', async (failure) => {
-    const ctx = await context()
-    const sessionId = SessionId('gone-preset')
-    ctx.provide('sessionQuery', {
-      observeSession: () => Promise.resolve(observation(sessionId, {
-        cwd: '/cold/project',
-        agentPreset: 'gone',
-      })),
-    } as never)
-    ctx.provide('agentPresets', {
-      acquireScope: () => Promise.reject(failure),
-    } as never)
-    const list = vi.fn(() => Promise.resolve([]))
-    ctx.provide('skills', { list } as never)
-    const catalog = new SessionSkillCatalog(ctx)
-
-    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
-    await expect(catalog.list({ sessionId }, new AbortController().signal)).resolves.toEqual({ skills: [] })
-    expect(list).toHaveBeenCalledWith({ cwd: '/cold/project', scope: undefined })
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('preset gone'))
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('preset defect'))
   })
 
   it.each([

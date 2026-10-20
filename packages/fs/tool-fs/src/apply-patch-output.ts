@@ -50,7 +50,7 @@ function rejection(code: PatchFailureCode, message: string): HarnessError {
 
 /**
  * Convert a report into a commit value, or reject before any disk change.
- * @param report - executor report with complete operation outcomes.
+ * @param report - executor report.
  * @returns a flat, lossless JSON commit value, including partial failures.
  * @throws FsError or PatchToolError for syntax or preflight refusals.
  */
@@ -59,13 +59,9 @@ export function patchToolValue(report: PatchExecutionReport): PatchToolValue {
     throw rejection(report.failure.code, report.failure.message)
   }
   if (report.phase === 'preflight') {
-    const failures = report.outcomes.filter(outcome => outcome.status === 'failed')
-    const first = failures[0]
-    if (first !== undefined) {
-      const lines = failures.map(({ operation, failure }) =>
-        `- operation ${operation.index + 1} (${operation.kind} ${operation.path}, patch line ${operation.patchLine}): ${failure.message}`)
-      throw rejection(first.failure.code, `Patch rejected before any change (${failures.length} problems):\n${lines.join('\n')}`)
-    }
+    const lines = report.refusals.map(({ operation, failure }) =>
+      `- operation ${operation.index + 1} (${operation.kind} ${operation.path}, patch line ${operation.patchLine}): ${failure.message}`)
+    throw rejection(report.refusals[0].failure.code, `Patch rejected before any change (${report.refusals.length} problems):\n${lines.join('\n')}`)
   }
   return { phase: 'commit', cancelled: report.cancelled, affectedPaths: report.affectedPaths,
     operations: report.outcomes.map(outcome => ({

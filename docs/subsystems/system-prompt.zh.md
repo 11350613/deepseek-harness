@@ -23,7 +23,7 @@ interface AssembleContext {
 }
 ```
 
-`TOOL_APPLY_PATCH` 的顺序为 1350，位于 `TOOL_EDIT`（1300）与 `TOOL_GLOB`（1400）之间；只有评测工具已启用且可见时才显示其提示。
+`TOOL_APPLY_PATCH` 的顺序为 1350，位于 `TOOL_EDIT`（1300）与 `TOOL_GLOB`（1400）之间。
 
 ## 工具提供方结果
 

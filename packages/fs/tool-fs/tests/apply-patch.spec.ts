@@ -8,7 +8,6 @@ import { FsError } from '@deepseek-ai/dsh-fs'
 import { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import type { PtcRunRequest, PtcRunSpec } from '@deepseek-ai/dsh-ptc-runtime'
 import { add, move, patch, remove, setup, update } from './patch/harness.ts'
-import { patchToolValue } from '../src/apply-patch-output.ts'
 
 const guidance = 'Prefer apply_patch over separate edit calls for changes across files or separated regions. '
   + 'Read files before updating or deleting them when the observation policy is enabled. '
@@ -20,7 +19,7 @@ function call(t: Fixture, text: string) {
 }
 
 it('omits patch registration and guidance when explicitly disabled', async () => {
-  const t = await setup({ enableApplyPatch: false })
+  const t = await setup({ applyPatch: false })
   expect(t.ctx.tools.get('apply_patch')).toBeUndefined()
   expect((await t.ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:apply_patch')).toBeUndefined()
 })
@@ -185,7 +184,6 @@ it('dispatches native and PTC patch calls with identical values', async () => {
   expect(await t.bytes('a')).toBe('new\n')
 })
 
-
 it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('retains completed diffs after a real write permission failure', async () => {
   const t = await setup()
   const locked = resolve(t.workspace, 'locked')
@@ -202,9 +200,4 @@ it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('retains com
     expect(await t.bytes('first')).toBe('new\n')
     await expect(t.bytes('last')).rejects.toMatchObject({ code: 'ENOENT' })
   } finally { await chmod(locked, 0o755) }
-})
-
-it('returns a commit value for a preflight report without failures', () => {
-  expect(patchToolValue({ phase: 'preflight', outcomes: [], affectedPaths: [], cancelled: false }))
-    .toEqual({ phase: 'commit', operations: [], affectedPaths: [], cancelled: false })
 })

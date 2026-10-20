@@ -3,7 +3,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import { AttachmentError, AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
-import { LlmError } from '@deepseek-ai/dsh-llm'
 import {
   AcpContentError,
   admitAcpPrompt,
@@ -80,14 +79,7 @@ describe('ACP rich content codec', () => {
     await expect(supportsAcpImagePrompts(absent(store, imageLlm), undefined, 'm')).resolves.toBe(false)
     await expect(supportsAcpImagePrompts(absent(store, imageLlm), 'p', undefined)).resolves.toBe(false)
     await expect(supportsAcpImagePrompts(absent(noMediaStore, imageLlm), 'p', 'm')).resolves.toBe(false)
-    await expect(supportsAcpImagePrompts(absent(store, brokenLlm), 'p', 'm')).rejects.toThrow('catalog down')
-    for (const code of ['NO_ADAPTER', 'UNKNOWN_MODEL']) {
-      const missing = { resolveModelInfo: vi.fn().mockRejectedValue(new LlmError('missing route', code)) }
-      await expect(supportsAcpImagePrompts(absent(store, missing), 'p', 'm')).resolves.toBe(false)
-    }
-    const invalid = new LlmError('invalid metadata', 'INVALID_MODEL_INFO')
-    brokenLlm.resolveModelInfo.mockRejectedValueOnce(invalid)
-    await expect(supportsAcpImagePrompts(absent(store, brokenLlm), 'p', 'm')).rejects.toBe(invalid)
+    await expect(supportsAcpImagePrompts(absent(store, brokenLlm), 'p', 'm')).resolves.toBe(false)
     await expect(supportsAcpImagePrompts(absent(store, unknownLlm), 'p', 'm')).resolves.toBe(false)
     await expect(supportsAcpImagePrompts(absent(store, textLlm), 'p', 'm')).resolves.toBe(false)
     await expect(supportsAcpImagePrompts(absent(store, imageLlm), 'p', 'm')).resolves.toBe(true)

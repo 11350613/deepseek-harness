@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { isImageAdmissionError } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, ImageMediaType, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
-import { LlmError, type ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 
 /** Raster formats shared by ACP image blocks and the core attachment vocabulary. */
 const IMAGE_MEDIA_TYPES: readonly ImageMediaType[] = [
@@ -85,7 +85,6 @@ async function assertImageRoute(ctx: Context, route: ModelSelection | undefined,
  * @param provider - configured provider route used for newly created sessions.
  * @param model - configured exact model id used for newly created sessions.
  * @returns whether this bridge can admit images at initialization time.
- * @throws metadata lookup failures other than an unknown provider or model.
  */
 export async function supportsAcpImagePrompts(
   ctx: Context,
@@ -96,12 +95,12 @@ export async function supportsAcpImagePrompts(
   const llm = ctx.get('llm')
   if (attachments === undefined || llm === undefined || provider === undefined || model === undefined) return false
   if (!attachments.imageLimits.mediaTypes.some(mediaType => IMAGE_MEDIA_TYPES.includes(mediaType))) return false
-  let info
-  try { info = await llm.resolveModelInfo(provider, model) } catch (error) {
-    if (error instanceof LlmError && (error.code === 'NO_ADAPTER' || error.code === 'UNKNOWN_MODEL')) return false
-    throw error
+  try {
+    const info = await llm.resolveModelInfo(provider, model)
+    return info.inputModalities?.includes('image') === true
+  } catch {
+    return false
   }
-  return info.inputModalities?.includes('image') === true
 }
 
 /** Render one baseline resource link into the core's current text vocabulary. */

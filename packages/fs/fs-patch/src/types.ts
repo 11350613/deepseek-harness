@@ -1,6 +1,6 @@
 /** Serializable patch syntax and text-application results; paths remain unresolved. */
 
-/** One contiguous update, with zero-based indices identifying explicit context lines. */
+/** One contiguous update. */
 export interface PatchHunk {
   /** One-based input line containing the marker or first implicit hunk line. */
   lineNumber: number
@@ -10,8 +10,6 @@ export interface PatchHunk {
   oldLines: string[]
   /** Context and added lines, without patch prefixes or line endings. */
   newLines: string[]
-  /** Corresponding old/new offsets for context; identical remove/add pairs are excluded. */
-  contextLineIndices: [number, number][]
   /** Whether `*** End of File` follows this hunk. */
   isEndOfFile: boolean
 }

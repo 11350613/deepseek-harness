@@ -23,7 +23,7 @@ interface AssembleContext {
 }
 ```
 
-`TOOL_APPLY_PATCH` allocates order 1350 between `TOOL_EDIT` (1300) and `TOOL_GLOB` (1400); its guidance is present only when the evaluation tool is enabled and visible.
+`TOOL_APPLY_PATCH` takes order 1350 between `TOOL_EDIT` (1300) and `TOOL_GLOB` (1400).
 
 ## Tool-provider result
 

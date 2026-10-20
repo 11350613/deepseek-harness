@@ -4,7 +4,7 @@
 # Keep the recorded tool set for the fixed compaction thresholds.
 - id: tool-fs
   config:
-    enableApplyPatch: false
+    applyPatch: false
 
 - id: agent-instructions
   disabled: true

@@ -11,7 +11,7 @@ it('reports syntax errors before resolving paths', async () => {
   const resolve = vi.spyOn(t.fs, 'resolve')
   expect(await t.run('invalid')).toEqual({ phase: 'syntax', failure: {
     code: 'PATCH_SYNTAX', message: "Invalid patch at line 1: Expected '*** Begin Patch'",
-  }, outcomes: [], affectedPaths: [], cancelled: false })
+  } })
   expect(resolve).not.toHaveBeenCalled()
   expect(t.observations).toEqual([])
   await expect(t.bytes('a')).rejects.toMatchObject({ code: 'ENOENT' })
@@ -24,11 +24,10 @@ it('collects independent unread and confirmed-absent failures and skips valid wr
   await t.absent('b')
   const a = t.record('update', 'a')
   const b = t.record('update', 'b', 1, 6)
-  expect(await t.run(patch(update('a'), update('b'), add('c')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'failed', operation: a, failure: { code: 'FS_NOT_OBSERVED', message: `cannot modify "${a.path}": file has not been read — read the file, then retry` }, changes: [] },
-    { status: 'failed', operation: b, failure: { code: 'FS_NOT_FOUND', message: `cannot edit "${b.path}": not found` }, changes: [] },
-    { status: 'skipped', operation: t.record('add', 'c', 2, 10) },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(update('a'), update('b'), add('c')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'FS_NOT_OBSERVED', message: `cannot modify "${a.path}": file has not been read — read the file, then retry` } },
+    { operation: b, failure: { code: 'FS_NOT_FOUND', message: `cannot edit "${b.path}": not found` } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   await expect(t.bytes('c')).rejects.toMatchObject({ code: 'ENOENT' })
   expect(t.observations).toEqual([])
@@ -44,11 +43,10 @@ it.each([
   const t = await setup()
   await t.file('a', 'old\n')
   const a = t.record('update', 'a')
-  expect(await t.run(patch(`*** Update File: a\n${marker}\n-${pattern}\n+new`, update('a')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'failed', operation: a, failure: { code: 'FS_PATCH_MISMATCH', hunkLine: 3,
-      message: `cannot patch "${a.path}": hunk at patch line 3 (${stage}) does not match — ${preview}` }, changes: [] },
-    { status: 'skipped', operation: t.record('update', 'a', 1, 6) },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(`*** Update File: a\n${marker}\n-${pattern}\n+new`, update('a')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'FS_PATCH_MISMATCH', hunkLine: 3,
+      message: `cannot patch "${a.path}": hunk at patch line 3 (${stage}) does not match — ${preview}` } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
@@ -59,10 +57,10 @@ it.skipIf(process.platform === 'win32').each(['delete', 'move'] as const)('rejec
   await t.file('a', 'old\n')
   await symlink('a', resolve(t.workspace, 'link'))
   const a = t.record(kind, 'link', 0, 2, kind === 'move' ? 'b' : undefined)
-  expect(await t.run(patch(kind === 'delete' ? remove('link') : move('link', 'b')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'failed', operation: a, failure: { code: 'PATCH_SYMLINK_SOURCE',
-      message: `cannot ${kind} "${a.path}": path is a symbolic link — operate on its target path instead` }, changes: [] },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(kind === 'delete' ? remove('link') : move('link', 'b')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'PATCH_SYMLINK_SOURCE',
+      message: `cannot ${kind} "${a.path}": path is a symbolic link — operate on its target path instead` } },
+  ] })
   expect(await t.bytes('link')).toBe('old\n')
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
@@ -72,9 +70,9 @@ it('rejects a move to an alias of its source', async () => {
   const t = await setup()
   await t.file('a', 'old\n')
   const a = t.record('move', 'a', 0, 2, 'a')
-  expect(await t.run(patch(move('a', './a')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'failed', operation: a, failure: { code: 'FS_SAME_TARGET', message: `cannot move "${a.path}" to itself` }, changes: [] },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(move('a', './a')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'FS_SAME_TARGET', message: `cannot move "${a.path}" to itself` } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
@@ -86,9 +84,9 @@ it.each(['add', 'move'] as const)('attributes an unread %s destination to its re
   await t.file('b', 'existing\n', false)
   const operation = kind === 'add' ? t.record('add', 'b') : t.record('move', 'a', 0, 2, 'b')
   const b = t.record('add', 'b')
-  expect(await t.run(patch(kind === 'add' ? add('b') : move('a', 'b')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'failed', operation, failure: { code: 'FS_NOT_OBSERVED', message: `cannot modify "${b.path}": file has not been read — read the file, then retry` }, changes: [] },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(kind === 'add' ? add('b') : move('a', 'b')))).toEqual({ phase: 'preflight', refusals: [
+    { operation, failure: { code: 'FS_NOT_OBSERVED', message: `cannot modify "${b.path}": file has not been read — read the file, then retry` } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(await t.bytes('b')).toBe('existing\n')
   expect(t.observations).toEqual([])
@@ -99,9 +97,9 @@ it('rejects every operation under read-only policy', async () => {
   const t = await setup({ mode: 'read-only' })
   await t.file('a', 'old\n')
   const records = [t.record('add', 'b'), t.record('update', 'a', 1, 4), t.record('delete', 'a', 2, 8), t.record('move', 'a', 3, 9, 'c')]
-  expect(await t.run(patch(add('b'), update('a'), remove('a'), move('a', 'c')))).toEqual({ phase: 'preflight', outcomes: records.map(operation => ({
-    status: 'failed', operation, failure: { code: 'FS_SANDBOX_DENIED', message: expect.stringContaining('[sandbox: file access denied under read-only mode]') as string }, changes: [],
-  })), affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(add('b'), update('a'), remove('a'), move('a', 'c')))).toEqual({ phase: 'preflight', refusals: records.map(operation => ({
+    operation, failure: { code: 'FS_SANDBOX_DENIED', message: expect.stringContaining('[sandbox: file access denied under read-only mode]') as string },
+  })) })
   expect(await t.bytes('a')).toBe('old\n')
   await expect(t.bytes('b')).rejects.toMatchObject({ code: 'ENOENT' })
   expect(t.observations).toEqual([])
@@ -113,10 +111,9 @@ it('prevents all writes when a move destination is outside writable roots', asyn
   await t.file('a', 'old\n')
   const outside = resolve(process.cwd(), 'patch-preflight-outside-root')
   const a = t.record('move', 'a', 1, 4, outside)
-  expect(await t.run(patch(add('b'), move('a', outside)))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'skipped', operation: t.record('add', 'b') },
-    { status: 'failed', operation: a, failure: { code: 'FS_SANDBOX_DENIED', message: expect.stringContaining('[sandbox: file access denied under workspace-write mode]') as string }, changes: [] },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(add('b'), move('a', outside)))).toEqual({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'FS_SANDBOX_DENIED', message: expect.stringContaining('[sandbox: file access denied under workspace-write mode]') as string } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   await expect(t.bytes('b')).rejects.toMatchObject({ code: 'ENOENT' })
   expect(t.observations).toEqual([])
@@ -129,9 +126,9 @@ it.each(['update', 'delete', 'add', 'move'] as const)('rejects non-regular %s ta
   await t.file('a', 'old\n')
   const operation = kind === 'move' ? t.record(kind, 'a', 0, 2, 'directory') : t.record(kind, 'directory')
   const text = kind === 'add' ? add('directory') : kind === 'delete' ? remove('directory') : kind === 'move' ? move('a', 'directory') : update('directory')
-  expect(await t.run(patch(text))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'failed', operation, failure: { code: 'FS_NOT_REGULAR_FILE', message: `cannot modify "${resolve(t.workspace, 'directory')}": not a regular file` }, changes: [] },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(text))).toEqual({ phase: 'preflight', refusals: [
+    { operation, failure: { code: 'FS_NOT_REGULAR_FILE', message: `cannot modify "${resolve(t.workspace, 'directory')}": not a regular file` } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   expect((await t.fs.stat(await t.target('directory')))?.type).toBe('directory')
   expect(t.observations).toEqual([])
@@ -144,9 +141,9 @@ it.each(['update', 'add'] as const)('rejects a stale observed version before %s'
   const observed = await t.editIntent('a')
   await writeFile(resolve(t.workspace, 'a'), 'external edit\n')
   const a = t.record(kind, 'a')
-  expect(await t.run(patch(kind === 'add' ? add('a') : update('a')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'failed', operation: a, failure: { code: 'FS_STALE_VERSION', message: `cannot ${kind === 'add' ? 'write' : 'edit'} "${a.path}": file changed since it was read — re-read the file, then retry` }, changes: [] },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(kind === 'add' ? add('a') : update('a')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'FS_STALE_VERSION', message: `cannot ${kind === 'add' ? 'write' : 'edit'} "${a.path}": file changed since it was read — re-read the file, then retry` } },
+  ] })
   expect(await t.bytes('a')).toBe('external edit\n')
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual(observed)
@@ -156,9 +153,9 @@ it.each(['FS_NOT_TEXT', 'FS_TOO_LARGE'] satisfies FsErrorCode[])('preserves a pr
   const t = await setup()
   await t.file('a', 'old\n')
   vi.spyOn(t.fs, 'readText').mockRejectedValue(new FsError('cannot read fixture', code))
-  expect(await t.run(patch(update('a')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'failed', operation: t.record('update', 'a'), failure: { code, message: 'cannot read fixture' }, changes: [] },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(update('a')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: t.record('update', 'a'), failure: { code, message: 'cannot read fixture' } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
@@ -167,12 +164,10 @@ it.each(['FS_NOT_TEXT', 'FS_TOO_LARGE'] satisfies FsErrorCode[])('preserves a pr
 it.each(['delete', 'move'] as const)('simulates the missing source after %s without performing it', async (kind) => {
   const t = await setup()
   await t.file('a', 'old\n')
-  const first = t.record(kind, 'a', 0, 2, kind === 'move' ? 'b' : undefined)
   const a = t.record('update', 'a', 1, kind === 'move' ? 7 : 3)
-  expect(await t.run(patch(kind === 'delete' ? remove('a') : move('a', 'b'), update('a')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'skipped', operation: first },
-    { status: 'failed', operation: a, failure: { code: 'FS_NOT_FOUND', message: `cannot edit "${a.path}": not found` }, changes: [] },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(kind === 'delete' ? remove('a') : move('a', 'b'), update('a')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'FS_NOT_FOUND', message: `cannot edit "${a.path}": not found` } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
@@ -204,10 +199,9 @@ it('rejects repeated deletion against simulated absence', async () => {
   const t = await setup()
   await t.file('a', 'old\n')
   const a = t.record('delete', 'a')
-  expect(await t.run(patch(remove('a'), remove('a')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'skipped', operation: a },
-    { status: 'failed', operation: t.record('delete', 'a', 1, 3), failure: { code: 'FS_NOT_FOUND', message: `cannot delete "${a.path}": not found` }, changes: [] },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(remove('a'), remove('a')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: t.record('delete', 'a', 1, 3), failure: { code: 'FS_NOT_FOUND', message: `cannot delete "${a.path}": not found` } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
@@ -218,10 +212,9 @@ it('preserves source simulation after a move destination fails admission', async
   await t.file('a', 'old\n')
   await t.file('b', 'unread\n', false)
   const a = t.record('move', 'a', 0, 2, 'b')
-  expect(await t.run(patch(move('a', 'b'), update('a')))).toEqual({ phase: 'preflight', outcomes: [
-    { status: 'failed', operation: a, failure: { code: 'FS_NOT_OBSERVED', message: `cannot modify "${a.destination}": file has not been read — read the file, then retry` }, changes: [] },
-    { status: 'skipped', operation: t.record('update', 'a', 1, 7) },
-  ], affectedPaths: [], cancelled: false })
+  expect(await t.run(patch(move('a', 'b'), update('a')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'FS_NOT_OBSERVED', message: `cannot modify "${a.destination}": file has not been read — read the file, then retry` } },
+  ] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(await t.bytes('b')).toBe('unread\n')
   expect(t.observations).toEqual([])
@@ -232,9 +225,8 @@ it('preserves source simulation after a move destination fails admission', async
 it('names the missing move source operation', async () => {
   const t = await setup({ policy: false })
   expect(await t.run(patch(move('missing', 'destination')))).toEqual({
-    phase: 'preflight', outcomes: [{ status: 'failed', operation: t.record('move', 'missing', 0, 2, 'destination'),
-      failure: { code: 'FS_NOT_FOUND', message: `cannot move "${resolve(t.workspace, 'missing')}": not found` }, changes: [] }],
-    affectedPaths: [], cancelled: false,
+    phase: 'preflight', refusals: [{ operation: t.record('move', 'missing', 0, 2, 'destination'),
+      failure: { code: 'FS_NOT_FOUND', message: `cannot move "${resolve(t.workspace, 'missing')}": not found` } }],
   })
 })
 

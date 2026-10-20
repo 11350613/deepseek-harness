@@ -83,7 +83,7 @@ function ensureUpdate(operation: PatchOperation | undefined, lineNumber: number)
 }
 
 function newHunk(lineNumber: number): PatchHunk {
-  return { lineNumber, oldLines: [], newLines: [], contextLineIndices: [], isEndOfFile: false }
+  return { lineNumber, oldLines: [], newLines: [], isEndOfFile: false }
 }
 
 function readUpdate(operation: Extract<PatchOperation, { kind: 'update' }>, line: InputLine): void {
@@ -126,7 +126,6 @@ function readUpdate(operation: Extract<PatchOperation, { kind: 'update' }>, line
   if (prefix === '+') hunk.newLines.push(content)
   else if (prefix === '-') hunk.oldLines.push(content)
   else {
-    hunk.contextLineIndices.push([hunk.oldLines.length, hunk.newLines.length])
     hunk.oldLines.push(content)
     hunk.newLines.push(content)
   }

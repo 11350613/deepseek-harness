@@ -114,10 +114,10 @@ interface FsDirEntry {
 <a id="patch-syntax-records"></a>
 ## Patch syntax records
 
-[dsh-fs-patch](../../packages/fs/fs-patch/README.md) parses complete patch text into serializable operations and applies hunks to caller-supplied LF-normalized text. Paths remain unresolved strings; syntax acceptance neither grants permission nor checks file versions. `collectMutationPaths` returns unique source and destination spellings for callers that capture files before mutation. `applyHunks` returns complete new text or a structured match failure. The package README owns the pinned parsing and matching rules and exclusions.
+[dsh-fs-patch](../../packages/fs/fs-patch/README.md) parses complete patch text into serializable operations whose paths are unresolved strings, and `applyHunks` applies hunks to caller-supplied LF-normalized text, returning complete new text or a structured match failure. The package README owns the pinned parsing and matching rules.
 
 ```ts type-equiv
-/** One contiguous update, with zero-based indices identifying explicit context lines. */
+/** One contiguous update. */
 interface PatchHunk {
   /** One-based input line containing the marker or first implicit hunk line. */
   lineNumber: number
@@ -127,8 +127,6 @@ interface PatchHunk {
   oldLines: string[]
   /** Context and added lines, without patch prefixes or line endings. */
   newLines: string[]
-  /** Corresponding old/new offsets for context; identical remove/add pairs are excluded. */
-  contextLineIndices: [number, number][]
   /** Whether `*** End of File` follows this hunk. */
   isEndOfFile: boolean
 }
@@ -192,9 +190,9 @@ The same optional guard rules cover patches, deletion, and moves. Providers perf
 | `moveFile` source | `fs/edit-intent` | Source absent only when `sourceDeleted` is true. |
 | `moveFile` destination | `fs/write-intent` | Destination present at `destination.version`. |
 
-Patch, delete, and move sources must be regular files; missing or stale sources report `FS_STALE_VERSION`. Patch matching follows LF normalization inside the mutation lock. A mismatch reports `FS_PATCH_MISMATCH` with the patch hunk line and stage. Moves reject identical target keys with `FS_SAME_TARGET`, use write guards for their destination, and preserve source line endings and mode. Deletion and overwritten-destination bases are bounded nullable LF text. Moves are not cross-path transactions: the destination may be published while source removal fails. Cancellation is checked before local destination staging; after that, the provider completes both effects and reports their actual outcome. Remote cancellation or connection loss can make that outcome unavailable to the caller.
+Patch, delete, and move sources must be regular files; missing or stale sources report `FS_STALE_VERSION`. Patch matching runs on LF-normalized text inside the mutation lock, and a mismatch reports `FS_PATCH_MISMATCH` with the patch hunk line and stage. Moves reject identical target keys with `FS_SAME_TARGET`, use write guards for their destination, and preserve source line endings and mode. Deletion and overwritten-destination bases are bounded nullable LF text. A move is two effects: the destination may be published while source removal fails. Cancellation is checked before local destination staging; after that, the provider completes both effects and reports their outcome.
 
-Targets already follow symlinks. A caller that rejects symlink sources must inspect the path with `lstat` before `resolve`. Internal preflight reads are not model observations and cannot establish a guard.
+Targets already follow symlinks, so a caller that rejects symlink sources inspects the path with `lstat` before `resolve`.
 
 ```ts type-equiv
 /** Outcome of a guarded delete; the bounded basis follows FsWriteOutcome.before. */
@@ -351,7 +349,7 @@ Observed state is a `WeakMap<owner, Map<targetKey, FsObservation>>` held inside 
 
 ## Patch execution (consumer)
 
-The internal [tool-fs patch executor](../../packages/fs/tool-fs/README.md#understand-the-implementation) dispatches pure intent decisions in preflight, simulates preceding successful operations, and reacquires guards for each commit. Internal reads never establish model observation. Provider results determine which effects are recorded; executor details and failure guarantees belong to the package README.
+The internal [tool-fs patch executor](../../packages/fs/tool-fs/README.md#understand-the-implementation) dispatches intent decisions in preflight without emitting observations, simulates preceding operations, and reacquires guards for each commit. Provider results determine which effects are recorded; executor details and failure guarantees belong to the package README.
 
 | Operation | Preflight intent on first target use | Commit intent | Successful observation |
 |---|---|---|---|
@@ -360,7 +358,7 @@ The internal [tool-fs patch executor](../../packages/fs/tool-fs/README.md#unders
 | delete | `fs/delete-intent` | `fs/delete-intent` | target absent |
 | move | source `fs/edit-intent`; destination `fs/write-intent` | same two intents, freshly dispatched | destination present(version); source absent only when removed |
 
-The opt-in `apply_patch` tool returns strict commit values with per-operation diagnostics and full-text change inputs for rendering; persisted metadata holds diff hunks and a stopped flag. Syntax and preflight refusals set `isError: true`; commit reports retain `isError: false` even when stopped so known partial diffs reach Session presentation. The [tool README](../../packages/fs/tool-fs/README.md#use-this-package) owns formatting and recovery.
+The `apply_patch` tool returns strict commit values with per-operation diagnostics and full-text change inputs for rendering; persisted metadata holds diff hunks and a stopped flag. Syntax and preflight refusals set `isError: true`; commit reports retain `isError: false` even when stopped so known partial diffs reach Session presentation. The [tool README](../../packages/fs/tool-fs/README.md#use-this-package) owns formatting and recovery.
 
 ## Error taxonomy (provider contract)
 
@@ -570,49 +568,49 @@ abstract writeText( target: FsTarget, content: string, expected?: FsWriteIntent,
 abstract editText( target: FsTarget, edit: FsEditRequest, expected?: { version: FsVersion }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsEditOutcome>
 
 /**
- * Apply hunks under the version guard and mutation lock. Missing targets and
- * stale versions report FS_STALE_VERSION; unmatched hunks report FS_PATCH_MISMATCH.
- * Callers obtain expected through fs/edit-intent and record present(version)
- * through fs/observed on success. Internal preflight reads are not model observations.
- * @param target - resolved regular UTF-8 file to update.
- * @param hunks - ordered parsed hunks applied to LF-normalized content.
- * @param expected - observed version; omit to patch the current content unconditionally.
- * @param signal - aborts before atomic publication.
- * @param sandboxPolicy - per-call confinement; omit to use the provider default.
- * @returns the published version and LF-normalized before/after text.
+ * Atomically apply parsed hunks to the LF-normalized text and restore the
+ * stored line-ending style. A missing or stale target reports
+ * `FS_STALE_VERSION`; an unmatched hunk reports `FS_PATCH_MISMATCH`.
+ * @param target - the resolved regular file to patch.
+ * @param hunks - ordered hunks from `parsePatch`.
+ * @param expected - the version guard; omit for an unconditional patch.
+ * @param signal - aborts before atomic publication takes effect.
+ * @param sandboxPolicy - the per-call mode and workspace root this patch runs
+ *   under; a sandboxing backend fences the patch by it, the bare backend
+ *   ignores it. Omit to leave the backend its own default.
+ * @returns the outcome, including the version the patch produced.
  */
 abstract patchText( target: FsTarget, hunks: readonly PatchHunk[], expected?: { version: FsVersion }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsEditOutcome>
 
 /**
- * Remove a resolved regular file. Missing/stale targets report FS_STALE_VERSION;
- * other types report FS_NOT_REGULAR_FILE. Obtain expected through fs/delete-intent
- * and record absent through fs/observed after successful removal.
- * Resolution follows symlinks: callers rejecting symlink sources must lstat before resolve.
- * @param target - resolved file to remove, including the real target of a symlink.
- * @param expected - observed version; omit for unconditional removal of the current file.
- * @param signal - aborts before removal; successful removal is not rolled back.
- * @param sandboxPolicy - per-call confinement; omit to use the provider default.
- * @returns the bounded LF-normalized removed content, or null when no basis is available.
+ * Remove a regular file. A missing or stale target reports `FS_STALE_VERSION`;
+ * a directory or other non-file reports `FS_NOT_REGULAR_FILE`. Resolution has
+ * already followed symlinks, so the target is the real file.
+ * @param target - the resolved file to remove.
+ * @param expected - the version guard; omit for an unconditional removal.
+ * @param signal - aborts before removal.
+ * @param sandboxPolicy - the per-call mode and workspace root this removal
+ *   runs under; a sandboxing backend fences it, the bare backend ignores it.
+ *   Omit to leave the backend its own default.
+ * @returns the bounded LF-normalized removed text, or null when no basis is available.
  */
 abstract deleteFile( target: FsTarget, expected?: { version: FsVersion }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsDeleteOutcome>
 
 /**
- * Publish source text at a destination, optionally patching it, then remove the source.
- * Both paths remain locked in canonical order. FS_SAME_TARGET rejects identical keys;
- * source guards match patchText, destination guards match writeText. No cross-path
- * transaction is promised: destination publication with the source retained is a final outcome.
- * Obtain source/destination guards through fs/edit-intent and fs/write-intent. On
- * resolution, record destination present(destination.version); record source absent
- * only when sourceDeleted is true. Providers do not emit these observations.
- * Resolution follows symlinks: callers rejecting symlink sources must lstat before resolve.
- * @param source - resolved regular UTF-8 source; its line-ending style and mode are preserved.
- * @param destination - resolved destination in the same provider, distinct from source.
- * @param options - optional hunks and source/destination guards; omitted fields mean
- *   no text patch and unconditional source/destination mutations respectively.
- * @param signal - checked before destination staging; once staging starts, cancellation
- *   does not interrupt the local commit. Remote cancellation can leave the outcome unknown.
- * @param sandboxPolicy - confinement for both paths; omit to use the provider default.
- * @returns locked LF sourceBefore, destination outcome, and source-removal status; failures before publication reject.
+ * Publish the source text, optionally patched, at the destination, then remove
+ * the source. Both targets stay locked in canonical order. Identical targets
+ * report `FS_SAME_TARGET`; the source guard follows `patchText` and the
+ * destination guard follows `writeText`. The two effects are separate: a
+ * published destination with a retained source is a final outcome reported
+ * through `sourceDeleted: false`.
+ * @param source - the resolved regular source; its line-ending style and mode carry over.
+ * @param destination - the resolved destination within the same provider.
+ * @param options - optional hunks and the source/destination guards; an omitted guard is unconditional.
+ * @param signal - checked before destination staging; the commit then completes both effects.
+ * @param sandboxPolicy - the per-call mode and workspace root both paths run
+ *   under; a sandboxing backend fences them, the bare backend ignores it.
+ *   Omit to leave the backend its own default.
+ * @returns the locked LF source text, the destination outcome, and the source-removal status.
  */
 abstract moveFile( source: FsTarget, destination: FsTarget, options: { hunks?: readonly PatchHunk[] expectedSource?: { version: FsVersion } expectedDestination?: FsWriteIntent }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsMoveOutcome>
 ```

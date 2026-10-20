@@ -27,7 +27,7 @@ kind: "package-group"
 | 包 | 职责 | ctx 键 |
 |---|---|---|
 | [`fs/`](fs/README.zh.md) | `ctx.fs` 服务约定：执行世界路径、有界文本 I/O，以及带可选版本防护的原子变更 | `ctx.fs` |
-| [`fs-patch/`](fs-patch/README.zh.md) | Codex 风格补丁的纯解析与受影响路径收集 | 无 |
+| [`fs-patch/`](fs-patch/README.zh.md) | Codex 风格补丁的纯解析与 hunk 应用 | 无 |
 | [`fs-local/`](fs-local/README.zh.md) | 宿主文件系统后端：读取、写入并编辑本机上的真实文件 | 注册到 `ctx.fs` |
 | [`fs-sandbox/`](fs-sandbox/README.zh.md) | 沙箱强制后端：按每次调用的沙箱模式约束写入与编辑，读取直接通过 | 注册到 `ctx.fs` |
 | [`fs-observation-policy/`](fs-observation-policy/README.zh.md) | 编辑前读取策略：记录观测到的存在或缺失，并通过 `fs/*` 事件防护写入/编辑 | `fs/*` 监听器 |

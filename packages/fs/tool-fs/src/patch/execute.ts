@@ -110,7 +110,6 @@ export async function commitPatch(
       outcome = uncertain
         ? { status: 'unknown', operation: record, failure: { ...failure, message: `${failure.message} — re-read the affected files before retrying` } }
         : { status: 'failed', operation: record, failure, changes: [] }
-      cancelled = exec.signal.aborted
     }
     outcomes[index] = outcome
     if (outcome.status !== 'completed') { cancelled = exec.signal.aborted; break }
