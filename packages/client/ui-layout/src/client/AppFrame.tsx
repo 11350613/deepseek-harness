@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { focusWithoutRing, isBehindModal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -130,6 +131,8 @@ export function AppFrame({
 }: AppFrameProps) {
   const layoutInfo = useStore(state => state.layoutInfo)
   const frameRef = useRef<HTMLDivElement | null>(null)
+  const leadingSeat = useRef<HTMLDivElement>(null)
+  const sidebarFocus = useRef<HTMLElement | null>(null)
   const viewport = layoutInfo.viewportWidth
   const [foldedLandscape, setFoldedLandscape] = useState(false)
 
@@ -174,6 +177,11 @@ export function AppFrame({
   const centeredSidebar = foldedLandscape && viewport >= SIDEBAR_DRAWER_BREAKPOINT
   const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
   const drawerOpen = drawer && !sidebarCollapsed
+  useLayoutEffect(() => {
+    if (!drawer || !sidebarCollapsed || sidebarFocus.current !== document.activeElement) return
+    const opener = leadingSeat.current?.querySelector('button')
+    if (opener != null && !isBehindModal(opener)) focusWithoutRing(opener, { preventScroll: true })
+  }, [drawer, sidebarCollapsed])
   // Entering drawer mode from a collapsed rail hides the backing immediately.
   const [sidebarTransition, setSidebarTransition] = useState({ drawer, collapsed: sidebarCollapsed, instant: true })
   if (sidebarTransition.drawer !== drawer || sidebarTransition.collapsed !== sidebarCollapsed) {
@@ -315,6 +323,7 @@ export function AppFrame({
       {drawer && <div className={css.drawerMask} data-sidebar-mask aria-hidden="true"
         onClick={drawerOpen ? () => { actions.toggleSidebar() } : undefined} />}
       <div className={css.sidebarCol}
+        onFocusCapture={(event) => { if (event.target instanceof HTMLElement) sidebarFocus.current = event.target }}
         style={drawer ? { width: sidebarWidth } : undefined}
         {...{ inert: drawer && sidebarCollapsed ? '' : undefined }}>
         {sidebar}
@@ -332,7 +341,7 @@ export function AppFrame({
         {overlays}
       </div>
       {leadingMounted && (
-        <div className={css.leadingSeat} data-shell-leading {...{ inert: drawerOpen ? '' : undefined }}>
+        <div ref={leadingSeat} className={css.leadingSeat} data-shell-leading {...{ inert: drawerOpen ? '' : undefined }}>
           {leading}
         </div>
       )}

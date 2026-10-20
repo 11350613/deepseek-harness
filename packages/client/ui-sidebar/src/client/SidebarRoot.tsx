@@ -20,7 +20,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   FishLogo, focusWithoutRing, IconNewChatOutlineMedium, IconNewChatOutlineRegular,
-  IconPanelLeftOutlineRegular, isBehindModal, isDarwinDesktop, ShortcutKeys, Tooltip, useModalLayer,
+  IconPanelLeftOutlineRegular, isBehindModal, isDarwinDesktop, ShortcutKeys, Toast, Tooltip, useModalLayer,
+  writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
@@ -135,8 +136,8 @@ export function SidebarRoot({
   const column = useRef<HTMLDivElement>(null)
   const toggleButton = useRef<HTMLButtonElement>(null)
   const drawerFocus = useRef<HTMLElement | null>(null)
-  // Retained drawer contents require focus restoration after the closing commit,
-  // beyond React's mutation-phase selection restoration.
+  // The drawer's opener can unmount when the rail replaces it; the surviving
+  // rail toggle supplies the fallback that useModalLayer cannot restore.
   useLayoutEffect(() => {
     if (drawer && !collapsed) {
       const active = document.activeElement
@@ -192,6 +193,16 @@ export function SidebarRoot({
   }, [pointerInside])
 
   const buildVersion = localBuildVersion()
+  // The local-build fallbacks copy the badge text; the brand button below
+  // skips New Session for clicks inside them. The click still bubbles, so
+  // document-level outside-click listeners see it.
+  // Each successful copy bumps the key so a repeated copy replays the toast.
+  const [copiedToast, setCopiedToast] = useState<number | null>(null)
+  const copyVersion = (version: string) => (): void => {
+    void writeClipboard(version).then((ok) => {
+      if (ok) setCopiedToast(seq => (seq ?? 0) + 1)
+    })
+  }
 
   const darwinDesktop = isDarwinDesktop()
   // Rail resting state is the whale mark; hovering swaps in the panel icon
@@ -244,19 +255,24 @@ export function SidebarRoot({
         {/* Expanded, the brand doubles as a New Session shortcut — except on
             macOS, where it stays part of the logo row's window-drag surface
             (a button would subtract itself through the global no-drag rule);
-            the collapsed rail's logo is the expand toggle below instead. */}
+            the collapsed rail's logo is the expand toggle below instead.
+            Mouse clicks on the local-build fallbacks copy the version instead. */}
         {wide && (() => {
           const identity = (
             <span className={css.brandIdentity} aria-hidden="true">
               <span className={css.brandMark}>
-                {renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: <FishLogo size={24} /> })}
+                {renderSlot('sidebar.brand.mark', { size: 24 }, {
+                  fallback: buildVersion === undefined
+                    ? <FishLogo size={24} />
+                    : <span className={css.copyVersion} data-copy-version onClick={copyVersion(buildVersion)}><FishLogo size={24} /></span>,
+                })}
               </span>
               <span className={css.brandName}>
                 {renderSlot('sidebar.brand.name', {}, {
                   fallback: buildVersion === undefined
                     ? <span className={css.fallbackBrandName}>{t('brand.localBuild')}</span>
                     : (
-                      <span className={css.localBuildBrand}>
+                      <span className={clsx(css.localBuildBrand, css.copyVersion)} data-copy-version onClick={copyVersion(buildVersion)}>
                         <span className={css.localBuildTitle}>{t('brand.localBuild')}</span>
                         <span className={css.buildVersion}>{buildVersion}</span>
                       </span>
@@ -273,7 +289,10 @@ export function SidebarRoot({
                 className={clsx(css.brand, css.wide)}
                 aria-label={t('session.new.label')}
                 aria-keyshortcuts={newShortcut?.aria}
-                onClick={() => { startSession() }}
+                onClick={(event) => {
+                  if ((event.target as Element).closest('[data-copy-version]') !== null) return
+                  startSession()
+                }}
               >
                 {identity}
               </button>
@@ -327,6 +346,10 @@ export function SidebarRoot({
           expandSidebar: () => { if (collapsed) toggleSidebar() },
         })}
       </div>
+
+      {copiedToast !== null && (
+        <Toast key={copiedToast} tone="success" text={t('version.copied')} onDone={() => { setCopiedToast(null) }} />
+      )}
 
       {/* Footer actions stack above Settings in both sidebar widths. */}
       <div className={css.footArea}>

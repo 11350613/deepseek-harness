@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 /** Frame interactions with a real store and explicitly driven browser measurements. */
+import { useState } from 'react'
+import { Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { GlobalStandardProps, RenderOpts } from '@deepseek-ai/dsh-client-ui-slots'
 import { allowAllAccess, bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -61,13 +63,13 @@ function resize(width: number): void {
   })
 }
 
-function mountFrame(windowWidth = frameWidth) {
+function mountFrame(windowWidth = frameWidth, content?: AppFrameProps['renderSlot']) {
   vi.stubGlobal('innerWidth', windowWidth)
   const instance = createLayoutStore().create()
   const slotCalls: { key: string; props: object; options: RenderOpts | undefined }[] = []
   const renderSlot: AppFrameProps['renderSlot'] = (key, owner, options) => {
     slotCalls.push({ key, props: owner, options })
-    return <div data-testid={`${key}-content`} data-entry-key={options?.entryKey} />
+    return content?.(key, owner, options) ?? <div data-testid={`${key}-content`} data-entry-key={options?.entryKey} />
   }
   const useSessions: AppFrameProps['useSessions'] = sel => sel({
     ids: selectedSession === undefined ? [] : [selectedSession],
@@ -801,4 +803,26 @@ describe('sidebar drawer', () => {
     expect(sidebarOwner().collapsed).toBe(true)
     expect(tracks(frame)).toEqual([0, 0])
   })
+})
+
+it.each(['menu', 'outside', 'dialog'] as const)('closes an obscured sidebar menu while preserving %s focus', (destination) => {
+  function Sidebar() {
+    const [open, setOpen] = useState(true)
+    return <><Menu open={open} onClose={() => { setOpen(false) }} portal
+      anchor={<button>View options</button>} items={[{ id: 'flat', label: 'Flat list' }]} />
+    {destination === 'dialog' && <Modal open title="Settings" closeLabel="Close" onClose={vi.fn()}><button>Settings control</button></Modal>}
+    </>
+  }
+  const view = mountFrame(1200, key => key === 'sidebar' ? <Sidebar />
+    : key === 'shell.leading' ? <button>Open navigation</button> : <button>Outside control</button>)
+  const menuItem = view.getByRole('menuitem')
+  let target: HTMLElement = menuItem
+  if (destination === 'outside') target = view.getAllByRole('button', { name: 'Outside control' })[0]!
+  if (destination === 'dialog') target = view.getByRole('button', { name: 'Settings control' })
+  target.focus()
+  resize(767)
+  act(flushFrames)
+  expect(view.queryByRole('menuitem')).toBeNull()
+  expect(document.activeElement).toBe(destination === 'menu'
+    ? view.getByRole('button', { name: 'Open navigation' }) : target)
 })

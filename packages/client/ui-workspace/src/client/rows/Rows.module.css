@@ -265,8 +265,8 @@
 }
 
 .projectRow.menuOpen .rowActions,
-.projectRow:focus-within .rowActions,
-.searchResultRow:focus-within .rowActions {
+:global(html[data-input-modality='keyboard']) .projectRow:focus-within .rowActions,
+:global(html[data-input-modality='keyboard']) .searchResultRow:focus-within .rowActions {
   display: inline-flex;
 }
 

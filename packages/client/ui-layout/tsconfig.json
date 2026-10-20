@@ -8,6 +8,7 @@
     "src"
   ],
   "references": [
+    { "path": "../ui-primitives" },
     {
       "path": "../../util/brand"
     },

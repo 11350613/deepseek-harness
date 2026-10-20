@@ -8,6 +8,7 @@ export const zh = {
   'toggle.collapse': '收起侧边栏',
   'panels.label': '全局面板',
   'navigation.label': '导航',
+  'version.copied': '版本号复制成功',
 } satisfies Record<string, string>
 
 /** The sidebar namespace key union. */
@@ -21,4 +22,5 @@ export const en = {
   'toggle.collapse': 'Collapse sidebar',
   'panels.label': 'Global panels',
   'navigation.label': 'Navigation',
+  'version.copied': 'Version copied',
 } satisfies Record<SidebarKey, string>

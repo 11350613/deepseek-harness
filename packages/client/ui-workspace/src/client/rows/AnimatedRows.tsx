@@ -1,6 +1,7 @@
 /** React-commit-driven movement and entry/exit fades for the sidebar's keyed rows. */
 import { Component, createRef, type ReactNode } from 'react'
 import css from './AnimatedRows.module.css'
+import { TreeRows } from './TreeRows.tsx'
 
 const ROW_FADE_MS = 100
 const ROW_GLIDE_MS = 200
@@ -167,16 +168,14 @@ export class AnimatedRows extends Component<AnimatedRowsProps> {
 
   override render(): ReactNode {
     return <>
-      <div
-        ref={this.list}
+      <TreeRows
+        listRef={this.list}
         className={this.props.className}
-        role="tree"
-        aria-label={this.props.label}
-        onPointerDownCapture={() => { this.armed = true }}
-        onKeyDownCapture={() => { this.armed = true }}
+        label={this.props.label}
+        onInput={() => { this.armed = true }}
       >
         {this.props.children}
-      </div>
+      </TreeRows>
       <div ref={this.overlay} className={css.exits} aria-hidden="true" />
     </>
   }

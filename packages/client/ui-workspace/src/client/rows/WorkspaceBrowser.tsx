@@ -38,6 +38,7 @@ import {
 } from '../tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { AnimatedRows } from './AnimatedRows.tsx'
+import { TreeRows } from './TreeRows.tsx'
 import { FLAT_SESSION_ORDER_KEY, type SessionGroupBy } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
@@ -556,6 +557,7 @@ function SessionTree({
           }}
       >
         <ProjectRowItem
+          level={depth + 1}
           newShortcut={shortcuts.find(row => row.id === 'session.new')}
           group={group}
           containsCurrentDescendant={currentAncestors.has(group.key)}
@@ -624,6 +626,7 @@ function SessionTree({
           return (
             <SessionNodeItem
               key={node.id}
+              level={depth + 2}
               node={node}
               currentId={current}
               now={now}
@@ -851,7 +854,7 @@ function SearchResults({
   return (
     <div className={clsx(css.treeBody, css.wide)}>
       <div className={css.list}>
-        <div className={css.searchTree} role="tree" aria-label={t('search.results.aria')}>
+        <TreeRows className={css.searchTree} label={t('search.results.aria')}>
           {results.items.map(result => (
             <SearchResultItem
               key={result.id}
@@ -862,7 +865,7 @@ function SearchResults({
               t={t}
             />
           ))}
-        </div>
+        </TreeRows>
         {pending && (
           /* Two skeleton rows on an empty list, one when local matches already
              show and only the content hits are outstanding. */

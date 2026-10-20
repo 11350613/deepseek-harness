@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { TreeRows } from '../src/client/rows/TreeRows.tsx'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
 import type { ComponentProps } from 'react'
@@ -177,6 +178,10 @@ describe('workspace browser rows', () => {
     expect(row.querySelector('[data-state="ongoing"]')).toBeTruthy()
     expect(screen.getByText('进行中')).toBeTruthy()
     expect(row.hasAttribute('draggable')).toBe(false)
+    for (const key of ['Enter', ' ']) for (const modifier of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
+      fireEvent.keyDown(row, { key, [modifier]: true })
+    }
+    expect(onOpen).not.toHaveBeenCalled()
     fireEvent.click(row)
     expect(onOpen).toHaveBeenCalledWith(result.id)
   })
@@ -212,6 +217,11 @@ describe('workspace browser rows', () => {
     expect(screen.getByRole('button', { name: '在“Project”中新建会话' }).getAttribute('aria-keyshortcuts')).toBe('Control+N')
     fireEvent.click(screen.getByRole('button', { name: '在“Project”中新建会话' }))
     expect(onCreate).toHaveBeenCalledOnce()
+    expect(onToggle).not.toHaveBeenCalled()
+    const row = screen.getByRole('treeitem')
+    for (const key of ['Enter', ' ']) for (const modifier of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
+      fireEvent.keyDown(row, { key, [modifier]: true })
+    }
     expect(onToggle).not.toHaveBeenCalled()
     fireEvent.click(screen.getByText('Project'))
     expect(onToggle).toHaveBeenCalledOnce()
@@ -1217,7 +1227,8 @@ describe('session row decoration seats', () => {
 
   it('opens a focused row with Enter or Space without handling its action buttons', () => {
     const onOpen = vi.fn()
-    render(<SessionNodeItem node={idle} currentId={undefined} now={0} onOpen={onOpen} t={t} />)
+    render(<TreeRows className="rows" label="Sessions"><SessionNodeItem node={idle} currentId={undefined}
+      now={0} onOpen={onOpen} t={t} /></TreeRows>)
     const row = screen.getByRole('treeitem')
     expect(row.tabIndex).toBe(0)
     fireEvent.keyDown(row, { key: 'ArrowDown' })
