@@ -70,6 +70,7 @@ describe('classifyInstallFailure', () => {
     expect(classifyInstallFailure({ log: 'ENOSPC: no space left on device, write' })).toBe('disk-full')
     expect(classifyInstallFailure({ log: 'EACCES: permission denied, mkdir' })).toBe('permission')
     expect(classifyInstallFailure({ log: 'ERR_PNPM_TARBALL_INTEGRITY  Got sha512-...' })).toBe('integrity')
+    expect(classifyInstallFailure({ log: 'ERR_PNPM_MISSING_TARBALL_INTEGRITY  1 lockfile entry has no integrity' })).toBe('integrity')
     expect(classifyInstallFailure({ log: 'ERR_PNPM_META_FETCH_FAIL  GET https://registry/x: request to https://registry/x failed, reason: getaddrinfo ENOTFOUND registry' })).toBe('network')
     expect(classifyInstallFailure({ log: 'ECONNRESET' })).toBe('network')
     expect(classifyInstallFailure({ log: 'ERR_PNPM_FETCH_502  GET https://registry/x: Bad Gateway' })).toBe('network')

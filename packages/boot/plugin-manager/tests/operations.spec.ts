@@ -112,6 +112,50 @@ function result(
   return Object.assign(done, { stdout, stderr, nodeChildProcess: raw })
 }
 
+function writeMissingIntegrityLockfile(dir: string, name: string): void {
+  writeFileSync(join(dir, 'pnpm-lock.yaml'), `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      '${name}':
+        specifier: https://example.com/${name}.tgz
+        version: https://example.com/${name}.tgz
+
+packages:
+
+  '${name}@https://example.com/${name}.tgz':
+    resolution: {tarball: 'https://example.com/${name}.tgz'}
+
+snapshots:
+
+  '${name}@https://example.com/${name}.tgz': {}
+`)
+}
+
+function writeIntegrityLockfile(dir: string, name: string, resolution: string): void {
+  writeFileSync(join(dir, 'pnpm-lock.yaml'), `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      '${name}':
+        specifier: https://example.com/${name}.tgz
+        version: https://example.com/${name}.tgz
+
+packages:
+
+  '${name}@https://example.com/${name}.tgz':
+    resolution: ${resolution}
+
+snapshots:
+
+  '${name}@https://example.com/${name}.tgz': {}
+`)
+}
+
 /** A child that printed once and never exits on its own: only the silence bound can end it. */
 function silentChild(output: string, exitCode?: number) {
   const stdout = new PassThrough()
@@ -458,6 +502,192 @@ it.each([
   pnpm.mutate = (target) => { installGuarded(target, 'alias', 'actual') }
   expect(await runProfilePnpm(context, ['add', 'alias@npm:actual@1.0.0'], { execution: 'service', outputBytes: 8192 })).toMatchObject({ exitCode })
   expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toEqual(exitCode === 0 ? ['alias'] : [])
+})
+
+it('retries a removal with a trusted lockfile when pnpm reports missing tarball integrity', async () => {
+  const { dir, context } = fixture()
+  writeMissingIntegrityLockfile(dir, 'plugin')
+  const chunks: string[] = []
+  command.run
+    .mockImplementationOnce(() => result(1, 'ERR_PNPM_MISSING_TARBALL_INTEGRITY plugin has no integrity'))
+    .mockImplementationOnce(() => result(0, ''))
+  const outcome = await runProfilePnpm(context, ['remove', 'plugin'], {
+    execution: 'cli', outputBytes: 8192, onOutput: (text) => { chunks.push(text) },
+  })
+  expect(outcome).toMatchObject({ exitCode: 0 })
+  expect(command.run.mock.calls[0]?.[1]).toEqual(['remove', 'plugin'])
+  expect(command.run.mock.calls[0]?.[2]).toMatchObject({ stdout: 'pipe', stderr: 'pipe' })
+  expect(command.run.mock.calls[1]?.[1]).toEqual(['remove', 'plugin', '--config.trust-lockfile=true'])
+  expect(chunks.join('')).toContain('--config.trust-lockfile=true')
+})
+
+it.each([
+  ['empty integrity', "{integrity: '', tarball: 'https://example.com/plugin.tgz'}"],
+  ['null integrity', "{integrity: null, tarball: 'https://example.com/plugin.tgz'}"],
+  ['numeric integrity', "{integrity: 0, tarball: 'https://example.com/plugin.tgz'}"],
+])('retries a removal when pnpm treats %s as missing integrity', async (_label, resolution) => {
+  const { dir, context } = fixture()
+  writeIntegrityLockfile(dir, 'plugin', resolution)
+  command.run
+    .mockImplementationOnce(() => result(1, 'ERR_PNPM_MISSING_TARBALL_INTEGRITY plugin has no integrity'))
+    .mockImplementationOnce(() => result(0, ''))
+  expect(await runProfilePnpm(context, ['remove', 'plugin'], {
+    execution: 'service', outputBytes: 8192,
+  })).toMatchObject({ exitCode: 0 })
+  expect(command.run.mock.calls[1]?.[1]).toEqual(['remove', 'plugin', '--config.trust-lockfile=true'])
+})
+
+it('does not trust a removal when the package resolution is null', async () => {
+  const { dir, context } = fixture()
+  writeIntegrityLockfile(dir, 'plugin', 'null')
+  command.run.mockImplementationOnce(() => result(0, ''))
+  expect(await runProfilePnpm(context, ['remove', 'plugin'], {
+    execution: 'service', outputBytes: 8192,
+  })).toMatchObject({ exitCode: 0 })
+  expect(command.run).toHaveBeenCalledOnce()
+  expect(command.run.mock.calls[0]?.[1]).toEqual(['remove', 'plugin'])
+})
+
+it('does not trust a removal when a missing entry remains reachable from retained packages', async () => {
+  const { dir, context } = fixture()
+  writeFileSync(join(dir, 'pnpm-lock.yaml'), `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      b:
+        specifier: 1.0.0
+        version: 1.0.0
+      a:
+        specifier: https://example.com/a.tgz
+        version: https://example.com/a.tgz
+
+packages:
+
+  'b@1.0.0':
+    resolution: {integrity: 'sha512-b'}
+
+  'a@https://example.com/a.tgz':
+    resolution: {tarball: 'https://example.com/a.tgz'}
+
+snapshots:
+
+  'b@1.0.0':
+    dependencies:
+      a: https://example.com/a.tgz
+
+  'a@https://example.com/a.tgz': {}
+`)
+  command.run.mockImplementationOnce(() => result(1, 'ERR_PNPM_MISSING_TARBALL_INTEGRITY a has no integrity'))
+  expect(await runProfilePnpm(context, ['remove', 'a'], {
+    execution: 'service', outputBytes: 8192,
+  })).toMatchObject({ exitCode: 1 })
+  expect(command.run).toHaveBeenCalledOnce()
+  expect(command.run.mock.calls[0]?.[1]).toEqual(['remove', 'a'])
+})
+
+it('does not trust a removal when pnpm reports another lockfile violation', async () => {
+  const { dir, context } = fixture()
+  writeMissingIntegrityLockfile(dir, 'plugin')
+  command.run.mockImplementationOnce(() => result(1, `ERR_PNPM_LOCKFILE_RESOLUTION_VERIFICATION 2 lockfile entries failed verification:
+  plugin@1.0.0 [MISSING_TARBALL_INTEGRITY] no integrity
+  retained@1.0.0 [TRUST_DOWNGRADE] downgraded`))
+  expect(await runProfilePnpm(context, ['remove', 'plugin'], {
+    execution: 'service', outputBytes: 8192,
+  })).toMatchObject({ exitCode: 1 })
+  expect(command.run).toHaveBeenCalledOnce()
+})
+
+it('does not trust a removal when a retained peer variant reaches the missing entry', async () => {
+  const { dir, context } = fixture()
+  writeFileSync(join(dir, 'pnpm-lock.yaml'), `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      holder:
+        specifier: 1.0.0
+        version: 1.0.0
+      plugin:
+        specifier: https://example.com/plugin.tgz
+        version: https://example.com/plugin.tgz
+
+packages:
+
+  'holder@1.0.0(peer@1)':
+    resolution: {integrity: 'sha512-holder1'}
+
+  'holder@1.0.0(peer@2)':
+    resolution: {integrity: 'sha512-holder2'}
+
+  'plugin@https://example.com/plugin.tgz':
+    resolution: {tarball: 'https://example.com/plugin.tgz'}
+
+snapshots:
+
+  'holder@1.0.0(peer@1)': {}
+
+  'holder@1.0.0(peer@2)':
+    dependencies:
+      plugin: https://example.com/plugin.tgz
+
+  'plugin@https://example.com/plugin.tgz': {}
+`)
+  command.run.mockImplementationOnce(() => result(1, 'ERR_PNPM_MISSING_TARBALL_INTEGRITY plugin has no integrity'))
+  expect(await runProfilePnpm(context, ['remove', 'plugin'], {
+    execution: 'service', outputBytes: 8192,
+  })).toMatchObject({ exitCode: 1 })
+  expect(command.run).toHaveBeenCalledOnce()
+})
+
+it('inserts the trust flag before the argument separator', async () => {
+  const { dir, context } = fixture()
+  writeMissingIntegrityLockfile(dir, 'plugin')
+  command.run
+    .mockImplementationOnce(() => result(1, 'ERR_PNPM_MISSING_TARBALL_INTEGRITY plugin has no integrity'))
+    .mockImplementationOnce(() => result(0, ''))
+  expect(await runProfilePnpm(context, ['remove', '--', 'plugin'], {
+    execution: 'service', outputBytes: 8192,
+  })).toMatchObject({ exitCode: 0 })
+  expect(command.run.mock.calls[1]?.[1]).toEqual(['remove', '--config.trust-lockfile=true', '--', 'plugin'])
+})
+
+it('leaves a removal without lockfile trust when a retained package lacks integrity', async () => {
+  const { dir, context } = fixture()
+  writeMissingIntegrityLockfile(dir, 'retained')
+  command.run.mockImplementationOnce(() => result(1, 'ERR_PNPM_MISSING_TARBALL_INTEGRITY retained has no integrity'))
+  expect(await runProfilePnpm(context, ['remove', 'plugin'], {
+    execution: 'service', outputBytes: 8192,
+  })).toMatchObject({ exitCode: 1 })
+  expect(command.run).toHaveBeenCalledOnce()
+  expect(command.run.mock.calls[0]?.[1]).toEqual(['remove', 'plugin'])
+})
+
+it('recognizes removal behind an application-owned package-manager prefix', async () => {
+  const { dir, context } = fixture()
+  writeMissingIntegrityLockfile(dir, 'plugin')
+  const runtime = { command: '/app/electron', args: ['--expose-internals', '/app/pnpm.mjs'], env: { ELECTRON_RUN_AS_NODE: '1' } }
+  command.run
+    .mockImplementationOnce(() => result(1, 'ERR_PNPM_MISSING_TARBALL_INTEGRITY plugin has no integrity'))
+    .mockImplementationOnce(() => result(0, ''))
+  expect(await runProfilePnpm(context, ['remove', 'plugin'], {
+    ...runtime, execution: 'service', outputBytes: 8192,
+  })).toMatchObject({ exitCode: 0 })
+  expect(command.run.mock.calls[0]?.[1]).toEqual([...runtime.args, 'remove', 'plugin'])
+  expect(command.run.mock.calls[1]?.[1]).toEqual([...runtime.args, 'remove', 'plugin', '--config.trust-lockfile=true'])
+})
+
+it('does not trust a lockfile for a failed installation', async () => {
+  const { dir, context } = fixture()
+  writeMissingIntegrityLockfile(dir, 'plugin')
+  command.run.mockImplementationOnce(() => result(1, 'ERR_PNPM_MISSING_TARBALL_INTEGRITY lockfile entry has no integrity'))
+  expect(await runProfilePnpm(context, ['add', 'https://example.com/plugin.tgz'], {
+    execution: 'service', outputBytes: 8192,
+  })).toMatchObject({ exitCode: 1 })
+  expect(command.run).toHaveBeenCalledOnce()
+  expect(command.run.mock.calls[0]?.[1]).toEqual(['add', 'https://example.com/plugin.tgz'])
 })
 
 it.each(['list', 'remove'])('allows %s with preexisting incompatible packages', async (operation) => {

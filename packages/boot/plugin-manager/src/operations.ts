@@ -3,6 +3,7 @@ import { once } from 'node:events'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, open, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { parse } from 'yaml'
 import { execa } from 'execa'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
@@ -142,6 +143,122 @@ async function drainWithin(collectors: readonly Promise<void>[], ms: number): Pr
 /** Install commands that take the packages to install as positionals. */
 const INSTALL_COMMANDS = new Set(['add', 'install', 'i'])
 
+const REMOVE_COMMANDS = new Set(['remove', 'rm', 'uninstall', 'un'])
+
+type LockfileResolution = { type?: unknown; integrity?: unknown; tarball?: unknown }
+type LockfileEntry = { resolution?: LockfileResolution | null }
+type LockfileDependency = { version?: string } | null
+type LockfileSnapshot = { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string> }
+type LockfileDocument = {
+  packages?: Record<string, LockfileEntry | null>
+  importers?: Record<string, {
+    dependencies?: Record<string, LockfileDependency>
+    devDependencies?: Record<string, LockfileDependency>
+    optionalDependencies?: Record<string, LockfileDependency>
+  }>
+  snapshots?: Record<string, LockfileSnapshot>
+}
+
+function removalPackages(args: readonly string[]): string[] | undefined {
+  const index = args.findIndex(argument => !argument.startsWith('-'))
+  const command = index < 0 ? undefined : args[index]
+  if (command === undefined || !REMOVE_COMMANDS.has(command)) return undefined
+  const packages: string[] = []
+  for (const argument of args.slice(index + 1)) {
+    if (argument.startsWith('-')) continue
+    try {
+      const parsed = parseInstallSpec(argument)
+      if (parsed.kind === 'registry') packages.push(parsed.name)
+    } catch { continue }
+  }
+  return packages
+}
+
+function lockfilePackageName(depPath: string): string {
+  const scope = depPath.startsWith('@') ? depPath.indexOf('/', 1) : -1
+  const start = scope === -1 ? 0 : scope + 1
+  const at = depPath.indexOf('@', start)
+  return at === -1 ? depPath : depPath.slice(0, at)
+}
+
+function missingIntegrityEntries(text: string | undefined): Map<string, string> {
+  const entries = new Map<string, string>()
+  if (text === undefined) return entries
+  try {
+    const document = parse(text) as LockfileDocument
+    for (const [depPath, entry] of Object.entries(document.packages ?? {})) {
+      if (entry == null) continue
+      const resolution = entry.resolution
+      if (resolution == null || resolution.type != null) continue
+      const integrity = resolution.integrity
+      if (typeof integrity === 'string' && integrity.length > 0) continue
+      if (typeof resolution.tarball === 'string' && !resolution.tarball.startsWith('http://') && !resolution.tarball.startsWith('https://')) continue
+      entries.set(depPath, lockfilePackageName(depPath))
+    }
+  } catch {
+    return entries
+  }
+  return entries
+}
+
+function snapshotKeys(keys: readonly string[], name: string, version: string): string[] {
+  const prefix = `${name}@${version}`
+  return keys.filter(key => key === prefix || key.startsWith(`${prefix}(`))
+}
+
+function retainedPackageKeys(text: string | undefined, removed: ReadonlySet<string>): Set<string> | undefined {
+  if (text === undefined) return undefined
+  try {
+    const document = parse(text) as LockfileDocument
+    const importer = document.importers?.['.']
+    const snapshots = document.snapshots
+    if (importer === undefined || snapshots === undefined) return undefined
+    const keys = Object.keys(snapshots)
+    const pending: string[] = []
+    const importerDependencies = [importer.dependencies, importer.devDependencies, importer.optionalDependencies]
+    for (const dependencies of importerDependencies) {
+      for (const [name, dependency] of Object.entries(dependencies ?? {})) {
+        if (removed.has(name) || dependency == null || dependency.version === undefined) continue
+        pending.push(...snapshotKeys(keys, name, dependency.version))
+      }
+    }
+    const retained = new Set<string>()
+    while (pending.length > 0) {
+      const key = pending.pop()
+      if (key === undefined || retained.has(key)) continue
+      retained.add(key)
+      const dependencies = [snapshots[key]?.dependencies, snapshots[key]?.optionalDependencies]
+      for (const entries of dependencies) {
+        for (const [name, version] of Object.entries(entries ?? {})) {
+          pending.push(...snapshotKeys(keys, name, version))
+        }
+      }
+    }
+    return retained
+  } catch {
+    return undefined
+  }
+}
+
+function pnpmErrorCodes(output: string): Set<string> {
+  return new Set(output.match(/ERR_PNPM_[A-Z0-9_]+/g) ?? [])
+}
+
+function failureOutput(result: PackageResult): string {
+  if (!result.truncated) return result.output
+  try {
+    return optionalFile(result.logPath) ?? result.output
+  } catch {
+    return result.output
+  }
+}
+
+function trustLockfileArgs(args: readonly string[]): string[] {
+  const flag = '--config.trust-lockfile=true'
+  const separator = args.indexOf('--')
+  return separator === -1 ? [...args, flag] : [...args.slice(0, separator), flag, ...args.slice(separator)]
+}
+
 /** Bound on a pre-install registry lookup when the caller names none. */
 const LOOKUP_TIMEOUT_MS = 20_000
 
@@ -271,18 +388,7 @@ function bundleComponentManifests(manifest: ProfileManifest, dir: string, anchor
   })
 }
 
-/** Execute pnpm inside a profile whose caller already holds the profile write lock.
- * Newly installed or updated direct dependencies are checked even when activation is disabled;
- * an untouched dependency never blocks an unrelated operation and stays denied at startup.
- * Compatibility denial restores the profile manifest and lockfile, but leaves downloaded modules on disk.
- * @param context Launcher-owned profile and resolution locations.
- * @param args Pnpm arguments, before relative path anchoring.
- * @param options Output, activation and cancellation policy.
- * @returns Exit status, whether the silence bound stopped the run, and the diagnostic path.
- * A compatibility denial returns exit code 1. Service output is bounded; CLI output uses inherited descriptors.
- * The diagnostic file is closed on return or rejection, including preparation and spawn failures.
- */
-export async function runProfilePnpm(
+async function runProfilePnpmOnce(
   context: PackageOperationContext, args: readonly string[], options: PackageOperationOptions,
 ): Promise<PackageResult> {
   const dir = context.dir ?? resolveProfileDir(context.profile, context.home)
@@ -355,10 +461,12 @@ export async function runProfilePnpm(
   // run is killed: a lifecycle script outlives the pnpm process that started it.
   // The CLI keeps the caller's process group, so an interrupt still reaches it.
   const grouped = leadsOwnGroup(options.execution)
+  const captured = options.execution === 'service'
+    || (options.onOutput !== undefined && removalPackages(args) !== undefined)
   const child = execa(options.command ?? 'pnpm', [...options.args ?? [], ...args.map(arg => anchorPathSpec(arg, context.cwd))], {
     cwd: dir, env: environment, extendEnv: false, reject: false,
-    stdout: options.execution === 'cli' ? 'inherit' : 'pipe',
-    stderr: options.execution === 'cli' ? 'inherit' : 'pipe',
+    stdout: captured ? 'pipe' : 'inherit',
+    stderr: captured ? 'pipe' : 'inherit',
     killDescendants: options.execution === 'service',
     buffer: false, stdin: options.execution === 'cli' ? 'inherit' : 'ignore', cancelSignal: options.signal === undefined
       ? cancellation.signal : AbortSignal.any([cancellation.signal, options.signal]),
@@ -534,6 +642,45 @@ export async function runProfilePnpm(
     exitCode, output: output.toString('utf8'), truncated, logPath,
     ...control.stalled ? { timedOut: true } : {}, ...incompatible.length > 0 ? { incompatible } : {},
   }
+}
+
+/** Execute pnpm inside a profile whose caller already holds the profile write lock.
+ * Newly installed or updated direct dependencies are checked even when activation is disabled;
+ * an untouched dependency never blocks an unrelated operation and stays denied at startup.
+ * Compatibility denial restores the profile manifest and lockfile, but leaves downloaded modules on disk.
+ * @param context Launcher-owned profile and resolution locations.
+ * @param args Pnpm arguments, before relative path anchoring.
+ * @param options Output, activation and cancellation policy.
+ * @returns Exit status, whether the silence bound stopped the run, and the diagnostic path.
+ * A compatibility denial returns exit code 1.
+ * The diagnostic file is closed on return or rejection, including preparation and spawn failures.
+ */
+export async function runProfilePnpm(
+  context: PackageOperationContext, args: readonly string[], options: PackageOperationOptions,
+): Promise<PackageResult> {
+  const packages = removalPackages(args)
+  const result = await runProfilePnpmOnce(context, args, options)
+  if (result.exitCode === 0 || result.timedOut === true || options.signal?.aborted === true) return result
+  if (packages === undefined) return result
+  const codes = pnpmErrorCodes(failureOutput(result))
+  if (codes.size !== 1 || !codes.has('ERR_PNPM_MISSING_TARBALL_INTEGRITY')) return result
+  const dir = context.dir ?? resolveProfileDir(context.profile, context.home)
+  let lockfile: string | undefined
+  try {
+    lockfile = optionalFile(join(dir, 'pnpm-lock.yaml'))
+  } catch { return result }
+  const missing = missingIntegrityEntries(lockfile)
+  const removed = new Set(packages)
+  if (missing.size === 0 || ![...missing.values()].every(name => removed.has(name))) return result
+  const retained = retainedPackageKeys(lockfile, removed)
+  if (retained === undefined) return result
+  const retainedNames = new Set([...retained].map(lockfilePackageName))
+  if ([...missing].some(([key, name]) => retained.has(key) || retainedNames.has(name))) return result
+  options.onOutput?.(
+    `dsh: warning: retrying removal with --config.trust-lockfile=true after pnpm rejected ${[...new Set(missing.values())].join(', ')} for missing tarball integrity; the lockfile is not verified\n`,
+    'stderr',
+  )
+  return runProfilePnpmOnce(context, trustLockfileArgs(args), options)
 }
 
 /** Initialize and run the dsh plugin command with the same write lock as the service.
