@@ -4,14 +4,15 @@
 - navigation "Global panels":
   - button "Plugins"
   - button "Automation tasks"
+  - button "More"
 - text: Workspaces
 - button "Search sessions"
 - textbox "Search session names"
 - button "View options"
 - button "Add workspace"
 - tree "Sessions":
-  - treeitem "workspace" [expanded]
-  - treeitem "New Session" [selected]
+  - treeitem "workspace" [expanded] [level=1]
+  - treeitem "New Session" [level=2] [selected]
 - button "Account menu": More
 - banner:
   - button "Open right sidebar"

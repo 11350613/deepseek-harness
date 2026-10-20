@@ -189,6 +189,19 @@ export function probeFreePort(): Promise<number> {
   })
 }
 
+/** Open collapsed mobile navigation before using a sidebar action. */
+async function revealNavigationDrawer(page: Page, locale: 'en' | 'zh'): Promise<void> {
+  const drawer = await page.evaluate(() => window.innerWidth < 768
+    && !document.documentElement.hasAttribute('data-windows-titlebar'))
+  await expect.poll(() => page.locator('[data-sidebar-drawer]').count()).toBe(drawer ? 1 : 0)
+  const closed = page.locator('[data-sidebar-drawer][data-sidebar-collapsed]')
+  if (await closed.count() === 0) return
+  await page.locator('[data-shell-leading]').getByRole('button', {
+    name: locale === 'zh' ? '打开侧边栏' : 'Open sidebar', exact: true,
+  }).click()
+  await expect.poll(() => closed.count()).toBe(0)
+}
+
 /**
  * Drive the hero's workspace picker through the composed directory dialog
  * until the live composer unlocks. A fresh world has no Workspace, so the boot
@@ -208,6 +221,7 @@ export function probeFreePort(): Promise<number> {
  */
 export async function connectFreshWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
+  await revealNavigationDrawer(page, 'en')
   await page.getByRole('button', { name: 'Add workspace', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
   await dialog.waitFor({ timeout: 10_000 })
@@ -234,6 +248,7 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
  */
 export async function connectFreshWorkspaceZh(page: Page, root: string, name = 'workspace', modelAvailable = true): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
+  await revealNavigationDrawer(page, 'zh')
   await page.getByRole('button', { name: '添加工作区', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '选择工作区目录' })
   await dialog.waitFor({ timeout: 10_000 })
@@ -338,6 +353,7 @@ export async function openSettings(page: Page, locale: 'en' | 'zh'): Promise<voi
     name: locale === 'zh' ? '账号菜单' : 'Account menu', exact: true, includeHidden: true,
   })
   await trigger.waitFor({ state: 'attached' })
+  await revealNavigationDrawer(page, locale)
   if (!await trigger.isVisible()) {
     await page.getByRole('button', { name: locale === 'zh' ? '打开侧边栏' : 'Open sidebar', exact: true }).click()
   }

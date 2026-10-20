@@ -8,6 +8,7 @@ export const zh = {
   'toggle.collapse': '收起侧边栏',
   'panels.label': '全局面板',
   'navigation.label': '导航',
+  'panels.more': '更多',
   'version.copied': '版本号复制成功',
 } satisfies Record<string, string>
 
@@ -22,5 +23,6 @@ export const en = {
   'toggle.collapse': 'Collapse sidebar',
   'panels.label': 'Global panels',
   'navigation.label': 'Navigation',
+  'panels.more': 'More',
   'version.copied': 'Version copied',
 } satisfies Record<SidebarKey, string>

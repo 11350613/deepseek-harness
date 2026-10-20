@@ -1,2 +1,2 @@
 - tree "Search results":
-  - treeitem "Untitled {{workspace}}"
+  - treeitem "Untitled {{workspace}}" [level=1]

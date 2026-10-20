@@ -4,14 +4,15 @@
 - navigation "全局面板":
   - button "插件"
   - button "自动化任务"
+  - button "更多"
 - text: 工作区
 - button "搜索会话"
 - textbox "搜索会话名称"
 - button "视图选项"
 - button "添加工作区"
 - tree "会话":
-  - treeitem "workspace" [expanded]
-  - treeitem "新会话" [selected]
+  - treeitem "workspace" [expanded] [level=1]
+  - treeitem "新会话" [level=2] [selected]
 - button "账号菜单": 更多
 - banner:
   - button "打开右侧边栏"
