@@ -6,7 +6,7 @@ import { Context, type Fiber } from '@deepseek-ai/cordis'
 import { stubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { SlotRendererHost } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, SlotRendererHost } from '@deepseek-ai/dsh-client-ui-slots'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply as themeApply, inject as themeInject, ThemeRuntime } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { apply, inject, LayoutController } from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -98,7 +98,7 @@ describe('ui-layout client apply', () => {
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     const entry = slots.entries('root')[0]!
-    expect(entry.inject).toBeUndefined()
+    expect(entry.inject).toBeTypeOf('function')
     const handle = entry.store as ReturnType<typeof createLayoutStore>
     const instance = handle.create()
     expect(handle.create()).toBe(instance)
@@ -147,6 +147,47 @@ describe('ui-layout client apply', () => {
     theme.setTheme('dark')
     expect(document.documentElement.style.colorScheme).toBe('')
     expect(document.body.hasAttribute('data-ds-dark-theme')).toBe(false)
+  })
+
+  it('injects one live folded-landscape source and releases each subscription', async () => {
+    const query = Object.assign(new EventTarget(), { matches: true })
+    vi.stubGlobal('matchMedia', (media: string) => media === '(device-posture: folded) and (orientation: landscape)'
+      ? query : Object.assign(new EventTarget(), { matches: false }))
+    const { ctx, slots } = await bench()
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const entry = slots.entries('root')[0]
+    if (entry?.inject === undefined) throw new Error('the root entry must inject its media source')
+    const first = entry.inject() as { hooks: { foldedLandscape: HostObservable<boolean> } }
+    const second = entry.inject() as typeof first
+    const source = first.hooks.foldedLandscape
+    expect(second.hooks.foldedLandscape).toBe(source)
+    expect(source.getSnapshot()).toBe(true)
+    const listener = vi.fn()
+    const unsubscribe = source.subscribe(listener)
+    try {
+      query.matches = false
+      query.dispatchEvent(new Event('change'))
+      expect(source.getSnapshot()).toBe(false)
+      expect(listener).toHaveBeenCalledOnce()
+    } finally { unsubscribe() }
+    query.matches = true
+    query.dispatchEvent(new Event('change'))
+    expect(listener).toHaveBeenCalledOnce()
+  })
+
+  it('provides ordinary layout when the client tree starts without browser media queries', async () => {
+    vi.stubGlobal('matchMedia', undefined)
+    const { ctx, slots } = await bench()
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const entry = slots.entries('root')[0]
+    if (entry?.inject === undefined) throw new Error('the root entry must inject its media source')
+    const source = (entry.inject() as { hooks: { foldedLandscape: HostObservable<boolean> } }).hooks.foldedLandscape
+    expect(source.getSnapshot()).toBe(false)
+    const listener = vi.fn()
+    source.subscribe(listener)()
+    expect(listener).not.toHaveBeenCalled()
   })
 
   it('teardown unwinds the service, the root registration, and the child declarations', async () => {

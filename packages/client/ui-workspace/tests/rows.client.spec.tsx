@@ -178,10 +178,14 @@ describe('workspace browser rows', () => {
     expect(row.querySelector('[data-state="ongoing"]')).toBeTruthy()
     expect(screen.getByText('进行中')).toBeTruthy()
     expect(row.hasAttribute('draggable')).toBe(false)
+    expect(fireEvent.keyDown(row, { key: 'ArrowDown' })).toBe(true)
     for (const key of ['Enter', ' ']) for (const modifier of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
-      fireEvent.keyDown(row, { key, [modifier]: true })
+      expect(fireEvent.keyDown(row, { key, [modifier]: true })).toBe(true)
     }
     expect(onOpen).not.toHaveBeenCalled()
+    for (const key of ['Enter', ' ']) expect(fireEvent.keyDown(row, { key })).toBe(false)
+    expect(onOpen.mock.calls).toEqual([[result.id], [result.id]])
+    onOpen.mockClear()
     fireEvent.click(row)
     expect(onOpen).toHaveBeenCalledWith(result.id)
   })
@@ -219,10 +223,15 @@ describe('workspace browser rows', () => {
     expect(onCreate).toHaveBeenCalledOnce()
     expect(onToggle).not.toHaveBeenCalled()
     const row = screen.getByRole('treeitem')
+    expect(fireEvent.keyDown(row, { key: 'ArrowDown' })).toBe(true)
+    expect(fireEvent.keyDown(screen.getByRole('button', { name: '在“Project”中新建会话' }), { key: 'Enter' })).toBe(true)
     for (const key of ['Enter', ' ']) for (const modifier of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
-      fireEvent.keyDown(row, { key, [modifier]: true })
+      expect(fireEvent.keyDown(row, { key, [modifier]: true })).toBe(true)
     }
     expect(onToggle).not.toHaveBeenCalled()
+    for (const key of ['Enter', ' ']) expect(fireEvent.keyDown(row, { key })).toBe(false)
+    expect(onToggle).toHaveBeenCalledTimes(2)
+    onToggle.mockClear()
     fireEvent.click(screen.getByText('Project'))
     expect(onToggle).toHaveBeenCalledOnce()
   })
@@ -1176,15 +1185,22 @@ describe('workspace browser rows', () => {
   })
 
   it('flags an archived content-search result', () => {
+    const onOpen = vi.fn()
+    const onUnarchive = vi.fn()
     const result: SearchResultNode = {
       id: sid('result'), title: 'Old result', workspace: 'Workspace context',
       running: false, runningSubagentCount: 0, completed: false, archived: true,
     }
-    render(<SearchResultItem result={result} currentId={undefined} onOpen={vi.fn()} onUnarchive={vi.fn()} t={t} />)
+    render(<SearchResultItem result={result} currentId={undefined} onOpen={onOpen} onUnarchive={onUnarchive} t={t} />)
     const row = screen.getByRole('treeitem')
     expect(row.className).toMatch(/archived/)
     // No leading marker: the grayed row alone carries the archived look.
     expect(screen.queryByRole('img', { name: '已归档' })).toBeNull()
+    const unarchive = screen.getByRole('button', { name: '取消归档' })
+    expect(fireEvent.keyDown(unarchive, { key: 'Enter' })).toBe(true)
+    fireEvent.click(unarchive)
+    expect(onUnarchive).toHaveBeenCalledWith(result.id)
+    expect(onOpen).not.toHaveBeenCalled()
   })
 })
 

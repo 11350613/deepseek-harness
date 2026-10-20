@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { GlobalStandardProps, RenderOpts } from '@deepseek-ai/dsh-client-ui-slots'
 import { allowAllAccess, bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { AppFrame } from '../src/client/AppFrame.tsx'
@@ -35,7 +36,7 @@ let frameWidth: number
 let animationFrames: Map<number, FrameRequestCallback>
 let nextFrame: number
 let originalTitle: string
-let foldQuery: EventTarget & { matches: boolean }
+let foldedLandscape: SnapshotStore<boolean>
 const restoreProperties: (() => void)[] = []
 
 function replaceProperty<T extends object, K extends keyof T>(target: T, key: K, value: T[K]): void {
@@ -98,6 +99,7 @@ function mountFrame(windowWidth = frameWidth, content?: AppFrameProps['renderSlo
       renderSlot={renderSlot}
       useSessions={useSessions}
       usePanelInfo={usePanelInfo}
+      useFoldedLandscape={bindSnapshotSelector(foldedLandscape)}
       useSessionStatus={useSessionStatus}
       useSessionRetainInfo={() => undefined}
       useResource={useResource}
@@ -155,8 +157,8 @@ beforeEach(() => {
   nextFrame = 1
   vi.stubEnv('DSH_CLIENT_TITLE', undefined)
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
-  foldQuery = Object.assign(new EventTarget(), { matches: false })
-  vi.stubGlobal('matchMedia', () => foldQuery)
+  foldedLandscape = createSnapshotStore(false)
+  vi.stubGlobal('matchMedia', () => ({ matches: false }))
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     const id = nextFrame++
     animationFrames.set(id, callback)
@@ -305,11 +307,7 @@ describe('AppFrame normal width concessions', () => {
     const sidebar = getByTestId('sidebar-content')
     expect(tracks(frame)[0]).toBe(360)
     fireEvent.transitionEnd(frame, { propertyName: 'grid-template-columns' })
-    const removeListener = vi.spyOn(foldQuery, 'removeEventListener')
-    act(() => {
-      foldQuery.matches = true
-      foldQuery.dispatchEvent(new Event('change'))
-    })
+    act(() => { foldedLandscape.set(true) })
     expect(tracks(frame)).toEqual([475.5, 0])
     expect(frame.dataset.animating).toBe('true')
     expect(sidebarOwner()).toEqual({ collapsed: false, width: 475.5, drawer: false })
@@ -325,16 +323,12 @@ describe('AppFrame normal width concessions', () => {
     act(() => { instance.actions.toggleSidebar() })
     expect(tracks(frame)[0]).toBe(475.5)
     fireEvent.transitionEnd(frame, { propertyName: 'grid-template-columns' })
-    act(() => {
-      foldQuery.matches = false
-      foldQuery.dispatchEvent(new Event('change'))
-    })
+    act(() => { foldedLandscape.set(false) })
     expect(tracks(frame)[0]).toBe(360)
     expect(frame.dataset.animating).toBe('true')
     expect(frame.querySelector('[data-side="sidebar"]')).not.toBeNull()
     expect(instance.getSnapshot().layoutInfo.sidebar).toBe(360)
     unmount()
-    expect(removeListener).toHaveBeenCalledWith('change', expect.any(Function))
   })
 
   it('measures the frame, not the window, before choosing the first-open preference', () => {
