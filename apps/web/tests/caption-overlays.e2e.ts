@@ -21,6 +21,8 @@ it('keeps settings and expanded plugin dialogs clear of the Windows caption acro
         document.documentElement.setAttribute('data-windows-titlebar', '')
         document.documentElement.style.setProperty('--dsh-windows-titlebar-height', '40px')
       })
+      await page.setViewportSize({ width: 521, height: 600 })
+      await page.locator('[data-sidebar-drawer]').waitFor({ state: 'detached' })
       const reopenSidebar = page.locator('[data-shell-leading]').getByRole('button', { name: '打开侧边栏', exact: true })
       await openSettings(page, 'zh')
       const settings = page.getByRole('dialog', { name: '设置', exact: true })
@@ -84,7 +86,7 @@ it('keeps settings and expanded plugin dialogs clear of the Windows caption acro
           else document.documentElement.removeAttribute('data-platform')
         }, platform)
         // Publish the synthetic platform change through the frame's size observer.
-        await page.setViewportSize({ width: platform === 'darwin' ? 521 : 520, height: 600 })
+        await page.setViewportSize({ width: platform === 'darwin' ? 520 : 521, height: 600 })
         await page.locator('[data-sidebar-drawer]').waitFor()
         await openSettings(page, 'zh')
         await expect.poll(async () => (await settings.boundingBox())?.y).toBe(platform === 'darwin' ? 68 : 24)

@@ -193,13 +193,13 @@ export function probeFreePort(): Promise<number> {
 async function revealNavigationDrawer(page: Page, locale: 'en' | 'zh'): Promise<void> {
   const drawer = await page.evaluate(() => window.innerWidth < 768
     && !document.documentElement.hasAttribute('data-windows-titlebar'))
-  await expect.poll(() => page.locator('[data-sidebar-drawer]').count()).toBe(drawer ? 1 : 0)
+  await page.waitForFunction(expected => Boolean(document.querySelector('[data-sidebar-drawer]')) === expected, drawer)
   const closed = page.locator('[data-sidebar-drawer][data-sidebar-collapsed]')
   if (await closed.count() === 0) return
   await page.locator('[data-shell-leading]').getByRole('button', {
     name: locale === 'zh' ? '打开侧边栏' : 'Open sidebar', exact: true,
   }).click()
-  await expect.poll(() => closed.count()).toBe(0)
+  await closed.waitFor({ state: 'detached' })
 }
 
 /**
