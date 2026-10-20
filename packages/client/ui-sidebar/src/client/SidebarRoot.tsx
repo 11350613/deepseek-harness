@@ -16,10 +16,11 @@
  * scrollbar indirection away while it is elsewhere, so a list the user is not
  * pointing at carries no bar.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  FishLogo, IconNewChatOutlineMedium, IconNewChatOutlineRegular, IconPanelLeftOutlineRegular, isDarwinDesktop, ShortcutKeys, Tooltip,
+  FishLogo, focusWithoutRing, IconNewChatOutlineMedium, IconNewChatOutlineRegular,
+  IconPanelLeftOutlineRegular, isBehindModal, isDarwinDesktop, ShortcutKeys, Tooltip, useModalLayer,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
@@ -88,6 +89,7 @@ function PanelRow({ id, label, wide, usePanelInfo, selectPanel, renderSlot }: Pa
 export function SidebarRoot({
   collapsed,
   width,
+  drawer,
   startSession,
   toggleSidebar,
   selectPanel,
@@ -103,14 +105,15 @@ export function SidebarRoot({
   const toggleLabel = collapsed ? t('toggle.open') : t('toggle.collapse')
   // Wide content stays mounted while the collapse animates (fading via
   // .collapsed .wide), unmounts at settle, and remounts right away on expand.
+  // A closed drawer retains its content with the rail phase already settled.
   const [settled, setSettled] = useState(collapsed)
   useEffect(() => {
-    if (!collapsed) { setSettled(false); return }
+    if (drawer || !collapsed) { setSettled(collapsed); return }
     const timer = window.setTimeout(() => { setSettled(true) }, COLLAPSE_SETTLE_MS)
     return () => { window.clearTimeout(timer) }
-  }, [collapsed])
+  }, [collapsed, drawer])
   const windowsTitlebar = document.documentElement.hasAttribute('data-windows-titlebar')
-  const wide = windowsTitlebar ? !collapsed : !collapsed || !settled
+  const wide = drawer || (windowsTitlebar ? !collapsed : !collapsed || !settled)
   // The Windows caption menus occupy the strip to the right of these controls
   // (that is what --dsh-windows-menu-start reserves), so a right-side bubble
   // lands under their text. Below the caption is the only clear side.
@@ -119,18 +122,37 @@ export function SidebarRoot({
   // && wide): the sliding column then clips it instead of reflowing it. The
   // rail layout (.collapsed styles) only applies once the fade settles.
   const lastWideWidth = useRef(width)
-  if (!collapsed) lastWideWidth.current = width
+  if (drawer || !collapsed) lastWideWidth.current = width
 
-  // Rail-in only crossfades a live collapse: a refresh straight into the
-  // collapsed state renders the rail statically (no delay-hidden icons).
-  const everWide = useRef(!collapsed)
-  if (!collapsed) everWide.current = true
+  // A closed drawer returns to the static rail; only a live collapse fades it in.
+  const animateRail = useRef(!collapsed)
+  if (drawer || !collapsed) animateRail.current = !collapsed
 
   // Scrollbars in the column follow the pointer (.quietBars rebinds them
   // away): drawn while it is inside, and for SCROLLBAR_LINGER_MS after it
   // leaves. A pointer that returns within that window cancels the pending
   // hide rather than restarting from a hidden bar.
   const column = useRef<HTMLDivElement>(null)
+  const toggleButton = useRef<HTMLButtonElement>(null)
+  const drawerFocus = useRef<HTMLElement | null>(null)
+  // Retained drawer contents require focus restoration after the closing commit,
+  // beyond React's mutation-phase selection restoration.
+  useLayoutEffect(() => {
+    if (drawer && !collapsed) {
+      const active = document.activeElement
+      drawerFocus.current = active instanceof HTMLElement ? active : null
+    } else {
+      let target = drawerFocus.current
+      drawerFocus.current = null
+      if (target?.isConnected === false && !drawer && collapsed && column.current?.contains(document.activeElement)) {
+        target = toggleButton.current
+      }
+      if (target?.isConnected && !target.closest('[inert], [hidden]') && !isBehindModal(target)) {
+        focusWithoutRing(target, { preventScroll: true })
+      }
+    }
+  }, [drawer, collapsed])
+  useModalLayer(column, drawer && !collapsed, toggleSidebar)
   const [pointerInside, setPointerInside] = useState(false)
   const lingerTimer = useRef<number | undefined>(undefined)
   const armLinger = (): void => {
@@ -176,8 +198,9 @@ export function SidebarRoot({
   // (the expand affordance, figma sidebar-hover flow). Expanded it is a plain
   // panel icon.
   const toggle = (
-    <Tooltip label={toggleLabel} shortcutKeys={shortcut?.keys} delayMs={500} side={captionTooltipSide}>
+    <Tooltip label={toggleLabel} shortcutKeys={shortcut?.keys} delayMs={500} side={captionTooltipSide} portal={drawer}>
       <button
+        ref={toggleButton}
         type="button"
         className={clsx(css.iconButton, css.toggle)}
         aria-label={toggleLabel}
@@ -199,11 +222,15 @@ export function SidebarRoot({
   return (
     <div
       ref={column}
+      role={drawer ? 'dialog' : undefined}
+      aria-modal={drawer && !collapsed ? true : undefined}
+      aria-label={drawer ? t('navigation.label') : undefined}
+      tabIndex={drawer ? -1 : undefined}
       className={clsx(
-        css.root, !wide && css.collapsed, !wide && everWide.current && css.railIn,
-        collapsed && wide && css.fading, !pointerInside && css.quietBars,
+        css.root, !wide && css.collapsed, !wide && animateRail.current && css.railIn,
+        !drawer && collapsed && wide && css.fading, !pointerInside && css.quietBars,
       )}
-      style={wide ? { width: collapsed ? lastWideWidth.current : width } : undefined}
+      style={wide ? { width: !drawer && collapsed ? lastWideWidth.current : width } : undefined}
       onPointerEnter={() => {
         cancelLinger()
         setPointerInside(true)

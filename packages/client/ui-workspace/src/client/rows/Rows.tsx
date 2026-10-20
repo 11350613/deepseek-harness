@@ -11,7 +11,7 @@
  * session and workspace hover cards are suppressed while a menu is open.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { RefObject } from 'react'
+import type { PointerEvent, RefObject } from 'react'
 import clsx from 'clsx'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -100,11 +100,15 @@ function restTitle(title: HTMLSpanElement): void {
  * @param title - ref to the row's clipping title element.
  * @returns stable pointer enter/leave handlers for the row.
  */
-function useTitleMarquee(title: RefObject<HTMLSpanElement | null>): { enter: () => void; leave: () => void } {
+function useTitleMarquee(title: RefObject<HTMLSpanElement | null>): {
+  enter: (event: PointerEvent) => void
+  leave: () => void
+} {
   const frame = useRef(0)
   useEffect(() => () => { cancelAnimationFrame(frame.current) }, [])
   return useMemo(() => ({
-    enter: (): void => {
+    enter: (event: PointerEvent): void => {
+      if (event.pointerType === 'touch') return
       /* v8 ignore next -- defensive: the title span renders unconditionally. */
       if (title.current === null) return
       const element = title.current
@@ -245,8 +249,14 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
       className={clsx(css.projectRow, menuOpen && css.menuOpen)}
       data-row-key={`workspace:${group.key}`}
       role="treeitem"
+      tabIndex={0}
       aria-expanded={row.expanded}
       onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return
+        event.preventDefault()
+        onToggle()
+      }}
       draggable={drag !== undefined}
       onDragStart={drag === undefined
         ? undefined
@@ -487,9 +497,15 @@ export function SearchResultItem({ result, currentId, onOpen, onUnarchive, t }: 
     <div
       className={clsx(css.searchResultRow, selected && css.selected, result.archived && css.archived)}
       role="treeitem"
+      tabIndex={0}
       aria-selected={selected}
       aria-description={result.archived ? t('toast.archivedNotOpenable') : undefined}
       onClick={() => { onOpen(result.id) }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return
+        event.preventDefault()
+        onOpen(result.id)
+      }}
     >
       <span className={css.searchResultHeading}>
         {/* Like session rows, the leading slot owns every row marker; on
@@ -604,9 +620,9 @@ export function SessionNodeItem({
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
       role="treeitem"
+      tabIndex={0}
       aria-selected={selected}
       aria-description={row.archived ? t('toast.archivedNotOpenable') : undefined}
-      tabIndex={0}
       onClick={() => { onOpen(node.id) }}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return

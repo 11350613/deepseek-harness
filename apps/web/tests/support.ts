@@ -334,6 +334,13 @@ export function conversationContextKey(kind: string, id: string): string {
  * @param locale - current UI language.
  */
 export async function openSettings(page: Page, locale: 'en' | 'zh'): Promise<void> {
-  await page.getByRole('button', { name: locale === 'zh' ? '账号菜单' : 'Account menu', exact: true }).click()
+  const trigger = page.getByRole('button', {
+    name: locale === 'zh' ? '账号菜单' : 'Account menu', exact: true, includeHidden: true,
+  })
+  await trigger.waitFor({ state: 'attached' })
+  if (!await trigger.isVisible()) {
+    await page.getByRole('button', { name: locale === 'zh' ? '打开侧边栏' : 'Open sidebar', exact: true }).click()
+  }
+  await trigger.click()
   await page.getByRole('menuitem', { name: locale === 'zh' ? '设置' : 'Settings', exact: true }).click()
 }

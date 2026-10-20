@@ -31,6 +31,8 @@ Use the sidebar to browse Workspaces and their Sessions, reorder them, and start
 
 History rows without a stored title use the localized unnamed label (未命名 / Untitled), rather than a directory name. The current blank row remains New Session; other blank rows remain hidden. Rename drafts use the stored title, or start empty when unnamed; unnamed rows do not offer title copying.
 
+Workspace, Session, and search-result rows accept keyboard focus and activate with Enter or Space. With hover support, focus reveals row actions. Without hover, Workspace actions appear only while expanded, Session actions appear after selection, and search-result actions remain visible. Toolbar tooltips render outside the sidebar so its drawer animation does not crop them. Search and rename inputs use 16px text with a coarse pointer; a fine pointer keeps their compact sizes.
+
 ### Reordering and view options
 
 Pinned Sessions lead ordinary Sessions in both grouped and flat views. **Last updated** sorts each partition strictly by the latest user prompt or steer time, newest first; pin time does not affect it. **Manual** uses the relative positions in one complete Session sequence, including hidden archives. Returning to Last updated discards the manual layout, and entering Manual again freezes the then-current chronological order. The browser defaults to Last updated and remembers the selected mode across reloads.
@@ -50,6 +52,8 @@ Hierarchy uses registered canonical paths only. It does not scan for projects or
 Collapsed search is one header action beside the view and add actions: activating it expands the field across the header. A non-blank query replaces either browsing mode with one flat result list — case-insensitive title and Workspace substring matches appear immediately, while a 250 ms debounced Host request adds ranked current-conversation content matches and snippets. Each new query aborts the preceding request; a failed content search leaves metadata matches visible without an additional warning. The list is capped at 20. Choosing an unarchived result clears and collapses search, opens the Session, and scrolls its row into view in the configured browsing mode; grouped browsing also expands its Workspace and the full Session list when required. Archived results offer Unarchive; attempting to open one explains that restriction without clearing the query or navigating.
 
 ### Managing sessions
+
+Session row actions appear on hover for devices that support hovering. On devices without hover, selecting a non-blank Session keeps More visible in place of its trailing time. The built-in archive and pin buttons stay hidden there; both actions remain in More, and the static pin marker remains visible. Plugin row actions retain their registered presentation. An open row menu keeps its action strip visible on either device type.
 
 The final built-in item in a Session row's "..." menu is Copy Session ID. It closes the menu and copies the complete ID directly, without opening a dialog. Clipboard success or failure appears in the global toast; a failed copy can be retried from the menu. Copying does not retain the Session, load its history, or call the Host.
 
@@ -189,6 +193,7 @@ Once the Workspace baseline is ready, browser-persisted expansion and Session-or
 The sidebar hides durable summaries with `origin: 'subagent'`. A visible ordinary row shows the shared ongoing loader from running direct children in its loaded parent catalog, never from summary lineage. Child activity uses the latest UI status, falling back to the Session summary until that status is known.
 
 Row motion belongs to [AnimatedRows](src/client/rows/AnimatedRows.tsx). It measures keyed rows before and after React commits that change their membership or order, and uses native movement and opacity animations. Removed rows fade as inert copies outside the scrolling list; they do not delay React unmounting or extend its scroll range. Initial loading, drag commits, overflow expansion, and view-option changes settle immediately. The animator has no layout observers or polling and does not measure content-only updates or scrolling.
+
 
 ### Hover cards
 

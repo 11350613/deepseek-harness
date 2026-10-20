@@ -27,7 +27,11 @@ This package provides the Web GUI's three-column AppFrame, edge-column widths, a
 
 Desktop Mod+B toggles the left sidebar through the same layout action used by its controls. The shortcut command is unavailable behind modal dialogs and yields to terminal input.
 
-The root slot composes the sidebar, main content, and right column. The sidebar spans 264–420px, defaults to 280px, and retains a 56px rail when collapsed; below 1024px it collapses automatically, and opening the right panel collapses a manually expanded sidebar. The right panel first opens at 45% of the viewport, then retains the user's pixel preference, capped at 70%. To protect 400px for the center, the frame first reduces the right panel to 300px, then reports insufficient room so its occupant closes it, and only then compresses the center further. Dragging has no transition delay; the right handle is absent while closed or fullscreen.
+The root slot composes the sidebar, main content, and right column. The sidebar spans 264–420px, defaults to 280px, and retains a 56px rail when collapsed at widths of 768px and above. Below 768px, without a native Windows caption, it uses a modal drawer without reserving a column; the header retains the reopen controls, and navigation closes the drawer. Below 1024px it collapses automatically, and opening the right panel collapses a manually expanded sidebar. The right panel first opens at 45% of the viewport, then retains the user's pixel preference, capped at 70%. To protect 400px for the center, the frame first reduces the right panel to 300px, then reports insufficient room so its occupant closes it, and only then compresses the center further. Dragging has no transition delay; the right handle is absent while closed or fullscreen.
+
+When the browser reports a folded device in landscape and the frame is at least 768px wide, the expanded sidebar occupies half the frame, aligning its divider with the center fold. Its resize handle is hidden; unfolding restores the saved width. Fold changes at a stable viewport width use the existing track transition; reduced motion disables it. Browsers without the device-posture media feature keep the ordinary layout.
+
+The drawer mask fades with the panel’s transition duration and easing on both open and close; reduced motion disables both transitions. Entering drawer mode from an already collapsed sidebar hides the drawer immediately; an expanded sidebar keeps its closing slide. The drawer has no edge divider, and its frame does not scroll. The frame fills the [shell’s layout viewport](../web/README.md#viewport-sizing), retaining its height while the keyboard opens. Drawer backing and mask cover its full height, including the top and bottom safe areas and `shell.bottom`; frame and drawer content retain the safe-area insets once.
 
 Global panels occupy the root-scoped `main` keyed slot; `conversation` is the reserved key for the Conversation. `ctx.layout.selectPanel(id)` selects a registered panel, and `null` selects the Conversation without changing the current Session. The Plugins page contributes one of the shipped global panels.
 
@@ -92,7 +96,7 @@ None; this package neither assembles nor sends a provider request.
 These limits define the current layout behavior. They are current package constraints, not a general window-manager comparison or a task backlog.
 
 - **Panel geometry is transient** — reload restores the sidebar default and the right panel hidden; each dragged width is one frame-wide preference, not a per-Session fact.
-- **Extremely narrow windows** — after the right panel closes, the center may still fall below 400px; the left 56px rail remains.
+- **Extremely narrow windows** — after the right panel closes, the center may still fall below 400px; browser drawers reserve no sidebar width below 768px.
 - **Track and panel travel on one shared curve only while animating** — during a discrete open/close the frame sets `data-animating` and its track transition and the occupant's slide read the same duration and easing variables; an occupant that used its own would detach the panel's edge from the conversation's while squeezing. Drags and instant presentation switches run transition-free, so the curve does not cover them.
 - **No scroll anchoring during squeeze reflow** — layout changes may move the reader's viewport.
 

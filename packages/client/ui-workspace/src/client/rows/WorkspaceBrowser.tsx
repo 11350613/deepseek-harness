@@ -188,7 +188,7 @@ function ViewOptionsMenu({ groupBy, orderBy, archivedFilter, onGroupPick, onOrde
       // be cut off at the header's bounds.
       portal
       anchor={(
-        <Tooltip label={t('viewOptions.label')} side="bottom" delayMs={500}>
+        <Tooltip label={t('viewOptions.label')} side="bottom" delayMs={500} portal>
           <button
             type="button"
             className={clsx(css.iconButton, css.wide)}
@@ -1286,7 +1286,7 @@ export function WorkspaceBrowser({
                 searchInput.current?.focus()
               }}
             >
-              <Tooltip label={t('search')} shortcutKeys={searchShortcut?.keys} side="bottom" delayMs={500} disabled={searchExpanded}>
+              <Tooltip label={t('search')} shortcutKeys={searchShortcut?.keys} side="bottom" delayMs={500} disabled={searchExpanded} portal>
                 <button
                   type="button"
                   className={css.searchButton}
@@ -1348,7 +1348,7 @@ export function WorkspaceBrowser({
               picking affordance has nothing to offer here: the region hides the
               button rather than leaving a dead one in the header. */}
           {directoryFlowAvailable && (
-            <Tooltip label={t('workspace.add')} shortcutKeys={addShortcut?.keys} side="bottom" delayMs={500}>
+            <Tooltip label={t('workspace.add')} shortcutKeys={addShortcut?.keys} side="bottom" delayMs={500} portal>
               <button
                 ref={wsPlusRef}
                 type="button"
@@ -1386,7 +1386,7 @@ export function WorkspaceBrowser({
 
       {/* The collapsed rail keeps search as its own 36px control. */}
       {!wide && <div className={css.search}>
-        <Tooltip label={t('search')} shortcutKeys={searchShortcut?.keys}>
+        <Tooltip label={t('search')} shortcutKeys={searchShortcut?.keys} portal>
           <button
             type="button"
             className={css.searchButton}

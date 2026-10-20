@@ -3,7 +3,7 @@ import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ShortcutCatalogEntry, ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import { allowAllAccess, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ReactNode } from 'react'
 import type {
@@ -35,9 +35,10 @@ type AttentionSnapshot = Parameters<Parameters<SidebarRootComponentProps['useSes
 const noAttention: AttentionSnapshot = new Map()
 const useSessionStatus: SidebarRootComponentProps['useSessionStatus'] = selector => selector(noAttention)
 
-function mountShell({ collapsed = false, width = 300, shortcuts = [] }: {
+function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts = [] }: {
   collapsed?: boolean
   width?: number
+  drawer?: boolean
   shortcuts?: readonly ShortcutCatalogEntry[]
 } = {}) {
   const startSession = vi.fn()
@@ -47,9 +48,10 @@ function mountShell({ collapsed = false, width = 300, shortcuts = [] }: {
   let footerActionOwner: SidebarFooterActionOwnerProps | undefined
   const brandMark = <span data-testid="custom-brand-mark">M</span>
   const brandName = <span data-testid="custom-brand-name">Custom Brand</span>
-  let current = { collapsed, width }
+  let current = { collapsed, width, drawer }
   const root = () => (
     <SidebarRoot
+      drawer={current.drawer}
       collapsed={current.collapsed} width={current.width}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useShortcuts={selector => selector(shortcuts)}
@@ -141,6 +143,7 @@ describe('SidebarRoot shell', () => {
     vi.stubEnv('DSH_CLIENT_GIT_DIRTY', 'true')
     vi.stubEnv('DSH_CLIENT_VERSION', '1.2.3-rc.4')
     const { container } = render(<SidebarRoot
+      drawer={false}
       collapsed={false} width={300}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useShortcuts={selector => selector([])}
@@ -162,6 +165,7 @@ describe('SidebarRoot shell', () => {
   ])('omits unavailable build-version suffixes from %j', (environment, expected) => {
     for (const [name, value] of Object.entries(environment)) vi.stubEnv(name, value)
     render(<SidebarRoot
+      drawer={false}
       collapsed={false} width={300}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useShortcuts={selector => selector([])}
@@ -178,6 +182,7 @@ describe('SidebarRoot shell', () => {
 
   it('retains the local-build fallback without complete build metadata', () => {
     render(<SidebarRoot
+      drawer={false}
       collapsed={false} width={300}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useShortcuts={selector => selector([])}
@@ -223,9 +228,23 @@ describe('SidebarRoot shell', () => {
     expect(screen.getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
   })
 
+  it.each([false, true])('returns directly from a closed drawer to the compact layout (previously opened: %s)', (opened) => {
+    vi.useFakeTimers()
+    const b = mountShell({ drawer: true, collapsed: !opened, width: 280 })
+    if (opened) b.rerender({ collapsed: true })
+    b.rerender({ drawer: false, collapsed: true, width: 56 })
+    expect(b.regionOwner().wide).toBe(false)
+    expect(b.settingsOwner().wide).toBe(false)
+    expect(screen.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
+    const root = screen.getByTestId('region').closest<HTMLElement>('[class*="root"]')!
+    expect(root.style.width).toBe('')
+    expect(root.className).not.toMatch(/fading|railIn/)
+  })
+
   it('shows only the badge bubble while the rail badge is hovered inside the toggle', () => {
     vi.useFakeTimers()
     render(<SidebarRoot
+      drawer={false}
       collapsed width={56}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useShortcuts={selector => selector([])}
@@ -318,4 +337,119 @@ it('uses the same effective sidebar binding for hover/focus hints and ARIA', () 
   expect(toggle.getAttribute('aria-keyshortcuts')).toBe('Meta+B')
   fireEvent.focus(toggle)
   expect(Array.from(screen.getByRole('tooltip').querySelectorAll('kbd'), key => key.textContent)).toEqual(['⌘', 'B'])
+})
+
+it('retains drawer content through close and restores focus without entering an editor', () => {
+  const opener = document.createElement('button')
+  document.body.append(opener)
+  try {
+    opener.focus()
+    expect(document.activeElement).toBe(opener)
+    const h = mountShell({ drawer: true })
+    const dialog = screen.getByRole('dialog', { name: 'Navigation' })
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    const region = screen.getByTestId('region')
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    expect(h.toggleSidebar).toHaveBeenCalledOnce()
+    h.rerender({ collapsed: true })
+    expect(dialog.hasAttribute('aria-modal')).toBe(false)
+    expect(document.activeElement).toBe(opener)
+    expect(screen.getByTestId('region')).toBe(region)
+    expect(h.regionOwner().wide).toBe(true)
+  } finally {
+    opener.remove()
+  }
+})
+
+it('moves focus into the drawer from a focused SVG element', () => {
+  const opener = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  opener.setAttribute('tabindex', '0')
+  document.body.append(opener)
+  try {
+    opener.focus()
+    expect(document.activeElement).toBe(opener)
+    mountShell({ drawer: true })
+    expect(screen.getByRole('dialog', { name: 'Navigation' }).contains(document.activeElement)).toBe(true)
+  } finally {
+    opener.remove()
+  }
+})
+
+it('keeps focus in a foreground dialog when the drawer closes behind it', () => {
+  const opener = document.createElement('button')
+  document.body.append(opener)
+  try {
+    opener.focus()
+    const h = mountShell({ drawer: true })
+    render(<Modal open headless title="Settings" onClose={vi.fn()}><button>Settings control</button></Modal>)
+    const control = screen.getByRole('button', { name: 'Settings control' })
+    expect(document.activeElement).toBe(control)
+    h.rerender({ collapsed: true })
+    expect(document.activeElement).toBe(control)
+  } finally {
+    opener.remove()
+  }
+})
+
+it('moves focus to the rail toggle when the drawer opener unmounts', () => {
+  vi.useFakeTimers()
+  const opener = document.createElement('button')
+  document.body.append(opener)
+  try {
+    opener.focus()
+    const h = mountShell({ drawer: true })
+    const dialog = screen.getByRole('dialog', { name: 'Navigation' })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    opener.remove()
+    h.rerender({ drawer: false, collapsed: true, width: 56 })
+    act(() => { vi.advanceTimersByTime(150) })
+    expect(screen.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open sidebar' }))
+  } finally {
+    opener.remove()
+  }
+})
+
+it.each(['dialog', 'outside'] as const)('preserves %s focus when a drawer becomes a rail without its opener', (destination) => {
+  vi.useFakeTimers()
+  const opener = document.createElement('button')
+  const outside = document.createElement('button')
+  document.body.append(opener, outside)
+  try {
+    opener.focus()
+    const h = mountShell({ drawer: true })
+    let control: HTMLElement = outside
+    if (destination === 'dialog') {
+      render(<Modal open headless title="Settings" onClose={vi.fn()}><button>Settings control</button></Modal>)
+      control = screen.getByRole('button', { name: 'Settings control' })
+    } else {
+      outside.focus()
+    }
+    expect(document.activeElement).toBe(control)
+    opener.remove()
+    h.rerender({ drawer: false, collapsed: true, width: 56 })
+    act(() => { vi.advanceTimersByTime(150) })
+    expect(document.activeElement).toBe(control)
+  } finally {
+    opener.remove()
+    outside.remove()
+  }
+})
+
+it('closes a drawer opened from a focused SVG element', () => {
+  const opener = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  opener.setAttribute('tabindex', '0')
+  document.body.append(opener)
+  try {
+    opener.focus()
+    expect(document.activeElement).toBe(opener)
+    const h = mountShell({ drawer: true })
+    const dialog = screen.getByRole('dialog', { name: 'Navigation' })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    h.rerender({ collapsed: true })
+    expect(dialog.hasAttribute('aria-modal')).toBe(false)
+  } finally {
+    opener.remove()
+  }
 })

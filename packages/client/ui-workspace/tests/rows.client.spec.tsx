@@ -18,6 +18,8 @@ import type { GroupNode, SearchResultNode, SessionNode } from '../src/client/tre
 import { en, zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
+beforeEach(() => { vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(any-hover: hover)' })) })
+afterEach(() => { vi.unstubAllGlobals() })
 
 const t = makeTranslate(zh, commonZh) as never
 const tEn = makeTranslate(en, commonEn) as never
@@ -251,6 +253,29 @@ describe('workspace browser rows', () => {
     expect(onOpen).toHaveBeenCalledWith(node.id)
   })
 
+  it('opens a focused session with the keyboard without handling its action buttons twice', () => {
+    const node: SessionNode = {
+      id: sid('keyboard'), title: 'Keyboard session', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
+    }
+    const onOpen = vi.fn()
+    const action = vi.fn()
+    const renderSlot: RowRenderSlot = (name: RowSlotName) => name === 'sidebar.workspaces.session.row.action'
+      ? <button onClick={action}>action</button> : null
+    render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen} renderSlot={renderSlot} t={t} />)
+    const row = screen.getByRole('treeitem')
+    row.focus()
+    expect(document.activeElement).toBe(row)
+    fireEvent.keyDown(row, { key: 'Enter' })
+    fireEvent.keyDown(row, { key: ' ' })
+    expect(onOpen).toHaveBeenCalledTimes(2)
+    const button = screen.getByRole('button', { name: 'action' })
+    fireEvent.keyDown(button, { key: 'Enter' })
+    fireEvent.click(button)
+    expect(onOpen).toHaveBeenCalledTimes(2)
+    expect(action).toHaveBeenCalledOnce()
+  })
+
   it('marquees a clipped session title at a constant speed while the row is hovered', () => {
     vi.useFakeTimers()
     // jsdom implements no matchMedia; the stub answers the reduced-motion probe.
@@ -273,6 +298,11 @@ describe('workspace browser rows', () => {
       }
 
       geometry(320, 180)
+      const touch = new Event('pointerover', { bubbles: true })
+      Object.defineProperty(touch, 'pointerType', { value: 'touch' })
+      fireEvent(row, touch)
+      vi.advanceTimersByTime(1000)
+      expect(title.scrollLeft).toBe(0)
       fireEvent.pointerEnter(row)
       // The first frame only records the clock; travel begins on the second.
       vi.advanceTimersByTime(16)

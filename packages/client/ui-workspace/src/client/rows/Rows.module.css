@@ -7,12 +7,15 @@
   padding: 0 8px;
   padding-inline-start: calc(8px + var(--dsh-workspace-indent, 0px));
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
   color: var(--dsw-alias-label-primary);
 }
 
-.projectRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .projectRow:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 .sessionRow.selected {
@@ -35,8 +38,10 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.searchResultRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .searchResultRow:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 .searchResultRow.selected {
@@ -259,9 +264,9 @@
   gap: 15px;
 }
 
-.projectRow:hover .rowActions,
-.searchResultRow:hover .rowActions,
-.projectRow.menuOpen .rowActions {
+.projectRow.menuOpen .rowActions,
+.projectRow:focus-within .rowActions,
+.searchResultRow:focus-within .rowActions {
   display: inline-flex;
 }
 
@@ -430,8 +435,10 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.iconButton:hover {
-  color: var(--dsw-alias-label-primary);
+@media (hover: hover) {
+  .iconButton:hover {
+    color: var(--dsw-alias-label-primary);
+  }
 }
 
 /* Chevrons ride the caption grey (#ADB2B8); the folder glyph stays one step
@@ -445,4 +452,15 @@
     animation: none;
     transition: none;
   }
+}
+
+@media (hover: hover) {
+  .projectRow:hover .rowActions,
+  .searchResultRow:hover .rowActions { display: inline-flex; }
+}
+
+@media (hover: none) {
+  .projectRow .rowActions,
+  .searchResultRow .rowActions { display: inline-flex; }
+  .projectRow[aria-expanded='false'] .rowActions { display: none; }
 }
