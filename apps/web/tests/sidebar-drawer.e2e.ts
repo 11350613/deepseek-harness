@@ -21,7 +21,7 @@ async function assertCompactRail(sidebar: Locator): Promise<void> {
   })).toEqual({ fits: true, animations: [] })
 }
 
-it.each(['light', 'dark'] as const)('keeps the macOS drawer opaque and disables covered window drag regions in %s mode', async (colorScheme) => {
+it.each(['light', 'dark'] as const)('keeps the macOS drawer opaque and excludes inert content from window drag regions in %s mode', async (colorScheme) => {
   const scaffold = await launchWebScaffold({
     extraOverlayPath: fileURLToPath(new URL('./pin-browse-picker.overlay.yml', import.meta.url)),
   })
@@ -54,10 +54,14 @@ it.each(['light', 'dark'] as const)('keeps the macOS drawer opaque and disables 
           root.dataset.platform = platform
         }
       })).toBe(true)
-      const inactiveDragRows = page.locator('[inert] [data-window-drag]')
-      expect(await inactiveDragRows.count()).toBeGreaterThan(0)
-      expect(await inactiveDragRows.evaluateAll(rows => rows.every(row => getComputedStyle(row).getPropertyValue('app-region') === 'no-drag')))
-        .toBe(true)
+      const inactiveContent = page.locator('[inert], [inert] *')
+      expect(await inactiveContent.count()).toBeGreaterThan(0)
+      expect(await inactiveContent.evaluateAll(elements => elements
+        .filter(el => getComputedStyle(el).getPropertyValue('app-region') !== 'none')
+        .map(el => `${el.tagName}.${el.getAttribute('class')}: ${getComputedStyle(el).getPropertyValue('app-region')}`)))
+        .toEqual([])
+      expect(await drawer.locator('[data-window-drag]').first().evaluate(el => getComputedStyle(el).getPropertyValue('app-region')))
+        .toBe('drag')
       const collapse = drawer.getByRole('button', { name: 'Collapse sidebar', exact: true })
       await collapse.click()
       await drawer.waitFor({ state: 'hidden' })
