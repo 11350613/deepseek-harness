@@ -16,11 +16,11 @@
  * scrollbar indirection away while it is elsewhere, so a list the user is not
  * pointing at carries no bar.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  FishLogo, focusWithoutRing, IconAppsAddOutlineRegular, IconNewChatOutlineMedium, IconNewChatOutlineRegular,
-  IconPanelLeftOutlineRegular, isBehindModal, isDarwinDesktop, Menu, ShortcutKeys, Toast, Tooltip, useModalLayer,
+  FishLogo, IconAppsAddOutlineRegular, IconNewChatOutlineMedium, IconNewChatOutlineRegular,
+  IconPanelLeftOutlineRegular, isDarwinDesktop, Menu, ShortcutKeys, Toast, Tooltip, useModalLayer,
   writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -167,25 +167,6 @@ export function SidebarRoot({
   // leaves. A pointer that returns within that window cancels the pending
   // hide rather than restarting from a hidden bar.
   const column = useRef<HTMLDivElement>(null)
-  const toggleButton = useRef<HTMLButtonElement>(null)
-  const drawerFocus = useRef<HTMLElement | null>(null)
-  // The drawer's opener can unmount when the rail replaces it; the surviving
-  // rail toggle supplies the fallback that useModalLayer cannot restore.
-  useLayoutEffect(() => {
-    if (drawer && !collapsed) {
-      const active = document.activeElement
-      drawerFocus.current = active instanceof HTMLElement ? active : null
-    } else {
-      let target = drawerFocus.current
-      drawerFocus.current = null
-      if (target?.isConnected === false && !drawer && collapsed && column.current?.contains(document.activeElement)) {
-        target = toggleButton.current
-      }
-      if (target?.isConnected && !target.closest('[inert], [hidden]') && !isBehindModal(target)) {
-        focusWithoutRing(target, { preventScroll: true })
-      }
-    }
-  }, [drawer, collapsed])
   useModalLayer(column, drawer && !collapsed, toggleSidebar)
   const [pointerInside, setPointerInside] = useState(false)
   const lingerTimer = useRef<number | undefined>(undefined)
@@ -244,7 +225,6 @@ export function SidebarRoot({
   const toggle = (
     <Tooltip label={toggleLabel} shortcutKeys={shortcut?.keys} delayMs={500} side={captionTooltipSide} portal={drawer}>
       <button
-        ref={toggleButton}
         data-modal-autofocus={drawer || undefined}
         type="button"
         className={clsx(css.iconButton, css.toggle)}
