@@ -24,6 +24,7 @@
   // cannot see both sides of the cordis Context merges).
   "exclude": [
     "tests/sidebar-drawer.e2e.ts",
+    "tests/hover-input.e2e.ts",
     "tests/collapse-timing.e2e.ts",
     "tests/notice-wake-tail.e2e.ts",
     "tests/fold-blank-matrix.e2e.ts",

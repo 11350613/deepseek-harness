@@ -202,9 +202,7 @@
   .searchButton:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
-}
 
-@media (hover: hover) {
   .searchExpanded .searchButton:hover {
     background: transparent;
   }

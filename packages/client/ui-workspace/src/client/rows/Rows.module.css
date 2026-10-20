@@ -22,6 +22,21 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+.dragPreview {
+  position: fixed;
+  top: 0;
+  /* WebKit fills transparent snapshot pixels white, including rounded corners. */
+  background: var(--dsw-specific-sidebar-fill);
+  pointer-events: none;
+}
+
+.dragPreview > :first-child {
+  box-sizing: border-box;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .searchResultRow {
   display: flex;
   flex-direction: column;
@@ -146,8 +161,11 @@
 
 /* Project leading slot: folder by default, expand arrow on row hover. */
 .projectRow .chevron { display: none; }
-.projectRow:hover .chevron { display: inline-flex; }
-.projectRow:hover .folder { display: none; }
+@media (hover: hover) {
+  .projectRow:hover .chevron { display: inline-flex; }
+
+  .projectRow:hover .folder { display: none; }
+}
 
 /* Expand arrow (filled triangle): points right closed, rotates to point down open. */
 .arrow {
@@ -264,6 +282,13 @@
   gap: 15px;
 }
 
+@media (hover: hover) {
+  .projectRow:hover .rowActions,
+  .searchResultRow:hover .rowActions {
+    display: inline-flex;
+  }
+}
+
 .projectRow.menuOpen .rowActions,
 :global(html[data-input-modality='keyboard']) .projectRow:focus-within .rowActions,
 :global(html[data-input-modality='keyboard']) .searchResultRow:focus-within .rowActions {
@@ -320,11 +345,14 @@
 }
 
 @media (hover: none) {
+  .projectRow .rowActions,
+  .searchResultRow .rowActions,
   .sessionRow .rowActions {
     display: inline-flex;
   }
 
-  .sessionRow .rowQuickActions {
+  .sessionRow .rowQuickActions,
+  .projectRow[aria-expanded='false'] .rowActions {
     display: none;
   }
 }
@@ -452,15 +480,4 @@
     animation: none;
     transition: none;
   }
-}
-
-@media (hover: hover) {
-  .projectRow:hover .rowActions,
-  .searchResultRow:hover .rowActions { display: inline-flex; }
-}
-
-@media (hover: none) {
-  .projectRow .rowActions,
-  .searchResultRow .rowActions { display: inline-flex; }
-  .projectRow[aria-expanded='false'] .rowActions { display: none; }
 }
