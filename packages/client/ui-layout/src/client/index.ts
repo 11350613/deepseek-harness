@@ -212,7 +212,7 @@ export function apply(ctx: ClientContext): void {
         'web:macos': { code: 'KeyB', modifiers: ['primary', 'alt'] },
         'web:windows': { code: 'KeyB', modifiers: ['primary', 'alt'] },
       },
-      regions: ['page', 'editable'], modals: [],
+      regions: ['page', 'editable'], modals: ['sidebar'],
       resolve: () => ({ status: 'handled', run: () => { layout.toggleSidebar() } }),
     })
     const disposePanels = ctx.slots.subscribe('main', retainMainPanels)

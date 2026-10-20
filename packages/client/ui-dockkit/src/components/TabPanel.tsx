@@ -367,6 +367,7 @@ export function TabStrip({ state, pane, callbacks }: TabPanelProps): ReactNode {
       {!(callbacks.hideSplitWhenBlocked && block !== undefined) && (
         <Tooltip label={block === undefined ? callbacks.labels.splitPane : splitBlockedTitle(callbacks.labels, block)} shortcutKeys={callbacks.labels.splitPaneKeys} side="bottom" delayMs={500}>
           <span
+            data-dockkit-split-control
             tabIndex={block === undefined ? undefined : 0}
             aria-label={block === undefined ? undefined : splitBlockedTitle(callbacks.labels, block)}
           >

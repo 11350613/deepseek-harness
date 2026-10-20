@@ -418,6 +418,8 @@ it('retains drawer content through close and restores focus without entering an 
     const h = mountShell({ drawer: true })
     const dialog = screen.getByRole('dialog', { name: 'Navigation' })
     expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(dialog.getAttribute('data-shortcut-modal')).toBe('sidebar')
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Collapse sidebar' }))
     expect(dialog.contains(document.activeElement)).toBe(true)
     const region = screen.getByTestId('region')
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' })

@@ -245,6 +245,7 @@ export function SidebarRoot({
     <Tooltip label={toggleLabel} shortcutKeys={shortcut?.keys} delayMs={500} side={captionTooltipSide} portal={drawer}>
       <button
         ref={toggleButton}
+        data-modal-autofocus={drawer || undefined}
         type="button"
         className={clsx(css.iconButton, css.toggle)}
         aria-label={toggleLabel}
@@ -267,6 +268,7 @@ export function SidebarRoot({
     <div
       ref={column}
       role={drawer ? 'dialog' : undefined}
+      data-shortcut-modal={drawer ? 'sidebar' : undefined}
       aria-modal={drawer && !collapsed ? true : undefined}
       aria-label={drawer ? t('navigation.label') : undefined}
       tabIndex={drawer ? -1 : undefined}

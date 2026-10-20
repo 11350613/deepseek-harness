@@ -331,12 +331,6 @@ it('overlays the conversation and closes after navigation without losing its sid
       await restoreViewport.dispose()
       await expect.poll(() => root.boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 })
       await expect.poll(async () => (await drawer.boundingBox())?.height).toBe(844)
-      // Desktop Chromium supplies zero safe-area insets; exercise the shell's
-      // inset properties with the same geometry as a phone's protected edges.
-      await root.evaluate((el) => {
-        el.style.setProperty('--dsh-safe-area-top', '56px')
-        el.style.setProperty('--dsh-safe-area-bottom', '34px')
-      })
       await frame.evaluate((el) => { el.scrollLeft = 10 })
       expect(await frame.evaluate(el => el.scrollLeft)).toBe(0)
       await expect.poll(() => mask.boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 })
@@ -347,14 +341,6 @@ it('overlays the conversation and closes after navigation without losing its sid
         const { y, height } = column.getBoundingClientRect()
         return { y, height }
       })).toEqual({ y: 0, height: 844 })
-      await expect.poll(async () => {
-        const box = await drawer.boundingBox()
-        return { y: box?.y, height: box?.height }
-      }).toEqual({ y: 56, height: 754 })
-      await root.evaluate((el) => {
-        el.style.removeProperty('--dsh-safe-area-top')
-        el.style.removeProperty('--dsh-safe-area-bottom')
-      })
       await expect.poll(async () => (await drawer.boundingBox())?.height).toBe(844)
       await page.setViewportSize({ width: 844, height: 390 })
       await expect.poll(async () => (await root.boundingBox())?.height).toBe(390)
@@ -471,7 +457,7 @@ it('overlays the conversation and closes after navigation without losing its sid
         'search input: 16px on touch; 13px with a fine pointer',
         'simulated keyboard: homepage and drawer retain 844px layout height without following the 360px visual viewport; Settings stays within the viewport',
         'keyboard close: layout height stays 844px; sidebar search retained; Settings close remains reachable',
-        'safe areas: drawer backing and mask cover 844px; content retains 56px top and 34px bottom insets',
+        'shell coverage: drawer backing and mask cover 844px without synthetic safe-area insets',
         'rotation: 844x390 then 390x844 restores shell height and sidebar breakpoint',
         'folded landscape: 951px frame splits at 475.5px without a resize handle; unfolding restores 280px and search focus; portrait retains the drawer',
         'fold transitions: sidebar controls follow the divider in both directions; reduced motion changes width without animation',
@@ -576,4 +562,84 @@ it('uses arrows inside one tree entry and keeps pointer focus from pinning row a
       ].join('\n'), webSnapshotMode())
     } finally { await browser.close() }
   } finally { await scaffold.close() }
+})
+
+it('keeps drawer shortcuts and hit targets above fullscreen and floating right panels', async () => {
+  const scaffold = await launchWebScaffold({
+    extraOverlayPath: fileURLToPath(new URL('./pin-browse-picker.overlay.yml', import.meta.url)),
+  })
+  try {
+    const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
+    const seed = await readFile(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url), 'utf8')
+    const sessionId = await seedSession(scaffold, seed, 'session-c4421b66-252e-44c0-80ed-6e320abeba25')
+    await workspace.attachSession(sessionId)
+    await scaffold.ctx.sessionController.rename({ sessionId, title: 'Drawer overlay checks' })
+    const browser = await chromium.launch()
+    try {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 844 }, locale: 'en-US' })
+      await page.addInitScript(() => { Object.defineProperty(navigator, 'platform', { value: 'MacIntel' }) })
+      await page.goto(scaffold.authenticatedUrl)
+      const row = page.getByRole('treeitem').filter({ has: page.getByText('Drawer overlay checks', { exact: true }) })
+      await row.click()
+      await page.locator('[data-sidebar-right-expand]').click()
+      await page.locator('[data-sidebar-right-guide-entry="files"]').click()
+      const panel = page.locator('[data-sidebar-right-open]')
+      const primary = await page.evaluate(() => /mac/i.test(navigator.platform) ? 'Meta' : 'Control')
+      const toggle = `${primary}+Alt+b`
+      await row.hover()
+      const card = page.getByRole('button', { name: 'Copy: Drawer overlay checks', exact: true })
+      await card.waitFor()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await card.waitFor({ state: 'hidden' })
+      expect(await row.count()).toBe(1)
+      const drawer = page.getByRole('dialog', { name: 'Navigation', exact: true })
+      await expect.poll(() => panel.getAttribute('data-sidebar-right-panel')).toBe('fullscreen')
+      const assertAboveRightPanel = async (coveredPoint?: { x: number; y: number }) => {
+        await page.locator('[data-sidebar-drawer][data-sidebar-collapsed]').waitFor()
+        await page.keyboard.press(toggle)
+        await drawer.waitFor()
+        const collapse = drawer.getByRole('button', { name: 'Collapse sidebar', exact: true })
+        await expect.poll(() => collapse.evaluate(el => document.activeElement === el)).toBe(true)
+        await expect.poll(() => drawer.evaluate((el) => {
+          const box = el.getBoundingClientRect()
+          return el.contains(document.elementFromPoint(box.left + 140, 30))
+        })).toBe(true)
+        expect(await page.evaluate(() => document.elementFromPoint(380, 420)?.hasAttribute('data-sidebar-mask'))).toBe(true)
+        if (coveredPoint !== undefined) {
+          expect(await drawer.evaluate((el, point) => {
+            const hit = document.elementFromPoint(point.x, point.y)
+            return el.contains(hit) || hit?.hasAttribute('data-sidebar-mask')
+          }, coveredPoint)).toBe(true)
+        }
+        await page.keyboard.press(`${primary}+Alt+k`)
+        await expect.poll(() => drawer.getByPlaceholder('Search session names').evaluate(el => document.activeElement === el)).toBe(true)
+        await page.keyboard.press(toggle)
+        await drawer.waitFor({ state: 'hidden' })
+        expect(await panel.evaluate(el => el.closest('[inert]') === null)).toBe(true)
+      }
+      await assertAboveRightPanel()
+      await page.setViewportSize({ width: 1280, height: 844 })
+      await expect.poll(() => panel.getAttribute('data-sidebar-right-panel')).toBe('push')
+      const tab = panel.locator('[data-dockkit-tab]').filter({ hasText: 'Files' })
+      const bounds = (await tab.boundingBox())!
+      await page.mouse.move(bounds.x + 6, bounds.y + bounds.height / 2)
+      await page.mouse.down()
+      try {
+        await page.mouse.move(190, 400, { steps: 8 })
+      } finally { await page.mouse.up() }
+      const floating = page.locator('[data-dockkit-float]')
+      await floating.waitFor()
+      await page.setViewportSize({ width: 390, height: 844 })
+      const box = (await floating.boundingBox())!
+      expect(box.x).toBeLessThan(390)
+      expect(box.x + box.width).toBeGreaterThan(0)
+      const point = { x: (Math.max(0, box.x) + Math.min(390, box.x + box.width)) / 2, y: box.y + 40 }
+      await expect.poll(() => floating.evaluate((el, at) => el.contains(document.elementFromPoint(at.x, at.y)), point)).toBe(true)
+      await assertAboveRightPanel(point)
+    } finally {
+      await browser.close()
+    }
+  } finally {
+    await scaffold.close()
+  }
 })

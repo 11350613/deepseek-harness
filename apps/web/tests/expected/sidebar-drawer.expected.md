@@ -10,7 +10,7 @@ tooltips: sidebar and workspace controls escape the drawer and fit the viewport
 search input: 16px on touch; 13px with a fine pointer
 simulated keyboard: homepage and drawer retain 844px layout height without following the 360px visual viewport; Settings stays within the viewport
 keyboard close: layout height stays 844px; sidebar search retained; Settings close remains reachable
-safe areas: drawer backing and mask cover 844px; content retains 56px top and 34px bottom insets
+shell coverage: drawer backing and mask cover 844px without synthetic safe-area insets
 rotation: 844x390 then 390x844 restores shell height and sidebar breakpoint
 folded landscape: 951px frame splits at 475.5px without a resize handle; unfolding restores 280px and search focus; portrait retains the drawer
 fold transitions: sidebar controls follow the divider in both directions; reduced motion changes width without animation

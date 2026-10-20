@@ -4,7 +4,6 @@
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
   box-sizing: border-box;
-  padding-block: var(--dsh-safe-area-top, 0px) var(--dsh-safe-area-bottom, 0px);
   overflow: hidden;
   background: var(--dsw-alias-bg-base);
 }
@@ -299,10 +298,9 @@
   position: absolute;
   grid-area: auto;
   inset: 0 auto 0 0;
-  z-index: 31;
+  z-index: 71;
   box-sizing: border-box;
   border-right: none;
-  padding-block: var(--dsh-safe-area-top, 0px) var(--dsh-safe-area-bottom, 0px);
   transform: translateX(0);
   visibility: visible;
   transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
@@ -323,7 +321,7 @@
 .drawerMask {
   position: absolute;
   inset: var(--dsh-frame-chrome-top, 0px) 0 0;
-  z-index: 30;
+  z-index: 70;
   background: var(--dsw-alias-bg-mask-1);
   backdrop-filter: var(--dsw-mask-blur);
   opacity: 0;
@@ -337,7 +335,7 @@
 }
 
 .frame[data-sidebar-drawer] .leadingSeat {
-  top: calc(11px + var(--dsh-safe-area-top, 0px));
+  top: 11px;
   left: 12px;
 }
 
