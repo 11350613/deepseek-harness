@@ -12,6 +12,8 @@ import * as FsPolicy from '@deepseek-ai/dsh-fs-observation-policy'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import * as PtcToolExecutor from '@deepseek-ai/dsh-tool-executor-ptc'
 import type { ToolExecution, ToolExecutionToken } from '@deepseek-ai/dsh-tools'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
@@ -41,7 +43,8 @@ export async function setup(options: { policy?: boolean; mode?: SandboxMode; pro
   onTestFinished(() => { vi.restoreAllMocks() })
   provideWorkingDirectoryFixture(ctx, workspace)
   await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime, { mode: options.toolMode ?? 'native' })
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin((options.toolMode ?? 'native') === 'ptc' ? PtcToolExecutor : NativeToolExecutor)
   if (options.mode !== undefined) {
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SandboxPolicyService, { mode: options.mode })

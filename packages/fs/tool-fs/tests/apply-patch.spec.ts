@@ -6,6 +6,7 @@ import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import { expect, it, vi } from 'vitest'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
+import { executeModelToolFixture, executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import type { PtcRunRequest, PtcRunSpec } from '@deepseek-ai/dsh-ptc-runtime'
 import { add, move, patch, remove, setup, update } from './patch/harness.ts'
 
@@ -15,7 +16,7 @@ const guidance = 'Prefer apply_patch over separate edit calls for changes across
 
 type Fixture = Awaited<ReturnType<typeof setup>>
 function call(t: Fixture, text: string) {
-  return t.ctx.tools.execute({ ...t.exec, arguments: { patch: text } })
+  return executeToolFixture(t.ctx, { ...t.exec, arguments: { patch: text } })
 }
 
 it('omits patch registration and guidance when explicitly disabled', async () => {
@@ -147,7 +148,7 @@ it('advertises escalation only for a confining backend and throws the sandbox re
   const t = await setup({ mode: 'read-only' })
   expect(t.ctx.tools.get('apply_patch')?.parameters).toHaveProperty('properties.sandbox_permissions')
   // The provider denies the first commit; with nothing written, the tool rejects like a preflight refusal.
-  const result = await t.ctx.tools.execute({ signal: t.exec.signal, callId: t.exec.callId, name: 'apply_patch',
+  const result = await executeToolFixture(t.ctx, { signal: t.exec.signal, callId: t.exec.callId, name: 'apply_patch',
     arguments: { patch: patch(add(resolve(t.workspace, 'a')), add(resolve(t.workspace, 'b'))) } })
   expect(result.error?.info).toEqual({ name: 'FsError', code: 'FS_SANDBOX_DENIED' })
   expect(result.content).toEqual([{ type: 'text', text: `Error: Patch rejected before any change (1 problems):\n- operation 1 (add ${resolve(t.workspace, 'a')}, patch line 2): [sandbox: file access denied under read-only mode]\n[sandbox: escalation available — retry this exact operation once with sandbox_permissions (the narrowest wider mode that suffices) + justification; the approval prompt asks the user]` }])
@@ -176,8 +177,10 @@ it('dispatches native and PTC patch calls with identical values', async () => {
   const native = await call(t, runtime.patch)
   if (native.isError) throw new Error('expected native success')
   await t.file('a', 'old\n')
-  const ptc = await p.ctx.tools.execute({ ...p.exec, agent: { ctx: p.ctx, session: { header: { cwd: t.workspace }, append() {} } } as never,
-    name: 'run_code', arguments: { code: 'return await tools.apply_patch({patch})', description: 'Apply the fixture patch' } })
+  const ptc = await executeModelToolFixture(p.ctx, {
+    signal: p.exec.signal, callId: p.exec.callId, agent: { ctx: p.ctx, session: { header: { cwd: t.workspace }, append() {} } } as never,
+    name: 'run_code', arguments: { code: 'return await tools.apply_patch({patch})', description: 'Apply the fixture patch' },
+  })
   if (ptc.isError) throw new Error(JSON.stringify(ptc))
   expect(ptc.value).toEqual({ logs: [], result: native.value })
   expect(await t.bytes('a')).toBe('new\n')
