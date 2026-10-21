@@ -55,7 +55,7 @@ kind: "package-reference"
 
 ### 配置
 
-所有键均为可选。`read`、`readImage`、`write`、`edit` 和 `applyPatch` 开关默认为 `true`；将开关设为 `false` 可省略对应工具及其指导文本。允许关闭全部五个工具。启用 `readImage` 仍需要附件存储和支持图片输入的模型。关闭 `read` 时仍会校验读取上限。
+所有键均为可选。`read`、`readImage`、`write` 和 `edit` 开关默认为 `true`；将开关设为 `false` 可省略对应工具及其指导文本。`applyPatch` 默认为 `write && edit`：补丁像 `write` 一样创建文件、像 `edit` 一样更新文件，因此关闭任一文本修改工具的组合无需额外声明即失去 `apply_patch`；显式设置可覆盖。允许关闭全部五个工具。启用 `readImage` 仍需要附件存储和支持图片输入的模型。关闭 `read` 时仍会校验读取上限。
 
 | 键 | 默认值 | 含义 |
 |---|---|---|
@@ -63,7 +63,7 @@ kind: "package-reference"
 | `readImage` | `true` | 附件存储挂载时注册 `read_image` |
 | `write` | `true` | 注册 `write` 及其指导文本 |
 | `edit` | `true` | 注册 `edit` 及其指导文本 |
-| `applyPatch` | `true` | 注册 `apply_patch` 及其提示 |
+| `applyPatch` | `write && edit` | 注册 `apply_patch` 及其提示 |
 | `readLimit` | `2000` | 一次 `read` 调用返回的默认和最大行数 |
 | `readMaxLineLength` | `2000` | 每行截断前保留的字符数 |
 | `readMaxBytes` | `51200` | 一次 `read` 调用所选行的字节上限；溢出时以「已达上限」footer 结束窗口 |

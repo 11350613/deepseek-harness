@@ -33,7 +33,7 @@ export interface Config {
   write?: boolean
   /** Register `edit` and its guidance. Defaults to true. */
   edit?: boolean
-  /** Register `apply_patch` and its guidance. Defaults to true. */
+  /** Register `apply_patch` and its guidance. Defaults to `write && edit`, the two capabilities a patch combines. */
   applyPatch?: boolean
   /** Default and maximum number of lines returned by one `read` call. */
   readLimit?: number
@@ -50,15 +50,25 @@ export const Config: z<Config> = z.object({
   readImage: z.boolean().default(true),
   write: z.boolean().default(true),
   edit: z.boolean().default(true),
-  applyPatch: z.boolean().default(true),
+  applyPatch: z.boolean(),
   readLimit: z.number().default(READ_LIMIT),
   readMaxLineLength: z.number().default(READ_MAX_LINE_LENGTH),
   readMaxBytes: z.number().default(READ_MAX_BYTES),
   readStreamMinSize: z.number().default(STREAM_MIN_SIZE),
 })
 
-/** Configuration after schemastery applied the defaults. */
+/** Configuration after schemastery applied the defaults and `applyPatch` was derived. */
 type ResolvedConfig = Required<Config>
+
+/**
+ * Derive the patch switch from the write and edit switches unless configured explicitly.
+ * @param config - configuration with schemastery defaults applied.
+ * @returns the configuration with every switch decided.
+ */
+function resolveConfig(config: Config): ResolvedConfig {
+  const defaulted = config as Omit<ResolvedConfig, 'applyPatch'> & Pick<Config, 'applyPatch'>
+  return { ...defaulted, applyPatch: defaulted.applyPatch ?? (defaulted.write && defaulted.edit) }
+}
 
 /** Every read cap counts lines/chars/bytes — a positive integer, or windowing arithmetic misbehaves silently. */
 function assertPositiveInteger(name: string, value: number): void {
@@ -69,8 +79,7 @@ function assertPositiveInteger(name: string, value: number): void {
 
 /** Register the selected filesystem tools; `read_image` additionally requires a mounted attachment store. */
 export function apply(ctx: Context, config: Config): void {
-  // schemastery (Config) has already filled every defaulted field.
-  const resolved = config as ResolvedConfig
+  const resolved = resolveConfig(config)
   assertPositiveInteger('readLimit', resolved.readLimit)
   assertPositiveInteger('readMaxLineLength', resolved.readMaxLineLength)
   assertPositiveInteger('readMaxBytes', resolved.readMaxBytes)

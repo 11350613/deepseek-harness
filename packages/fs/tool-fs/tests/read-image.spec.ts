@@ -514,7 +514,7 @@ describe('argument and service preconditions', () => {
     expect(text(nonImage)).toContain('the .txt extension does not declare a supported image format')
   })
 
-  it.each([{}, { toolFs: { read: false, write: false, edit: false, applyPatch: false } }] satisfies SetupOptions[])
+  it.each([{}, { toolFs: { read: false, write: false, edit: false } }] satisfies SetupOptions[])
   ('refuses when no attachment service is mounted: %j', async (config) => {
     await writeFile(join(dir, 'red.png'), PNG_1X1)
     const ctx = await setup({ ...config, attachments: false })
@@ -762,7 +762,7 @@ describe('image admission failures', () => {
 
 describe('registration surface', () => {
   it('registers only read_image without text guidance', async () => {
-    const ctx = await setup({ toolFs: { read: false, write: false, edit: false, applyPatch: false } })
+    const ctx = await setup({ toolFs: { read: false, write: false, edit: false } })
     try {
       expect(ctx.tools.schemas().map(tool => tool.name)).toEqual(['read_image'])
       expect((await ctx.systemPrompt.assemble()).sections.some(section => section.name.startsWith('tool:'))).toBe(false)
@@ -790,7 +790,7 @@ describe('registration surface', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(LocalFileSystem, { cwd: dir })
       const attachment = await ctx.plugin(LocalAttachmentStore, { dshHome: home })
-      const plugin = await ctx.plugin(ToolFs, { read: false, write: false, edit: false, applyPatch: false })
+      const plugin = await ctx.plugin(ToolFs, { read: false, write: false, edit: false })
       const names = () => ctx.tools.schemas().map(tool => tool.name).sort()
       expect(names()).toEqual(['read_image'])
       await attachment.dispose()

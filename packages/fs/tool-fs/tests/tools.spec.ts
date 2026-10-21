@@ -154,10 +154,11 @@ describe('current directory resolution', () => {
 describe('registration', () => {
   it.each([
     { config: { read: false }, tools: ['apply_patch', 'edit', 'write'], sections: ['tool:apply_patch', 'tool:edit', 'tool:write'] },
-    { config: { write: false }, tools: ['apply_patch', 'edit', 'read'], sections: ['tool:apply_patch', 'tool:edit', 'tool:read'] },
-    { config: { edit: false }, tools: ['apply_patch', 'read', 'write'], sections: ['tool:apply_patch', 'tool:read', 'tool:write'] },
+    { config: { write: false }, tools: ['edit', 'read'], sections: ['tool:edit', 'tool:read'] },
+    { config: { edit: false }, tools: ['read', 'write'], sections: ['tool:read', 'tool:write'] },
+    { config: { write: false, applyPatch: true }, tools: ['apply_patch', 'edit', 'read'], sections: ['tool:apply_patch', 'tool:edit', 'tool:read'] },
     { config: { applyPatch: false }, tools: ['edit', 'read', 'write'], sections: ['tool:edit', 'tool:read', 'tool:write'] },
-    { config: { read: false, readImage: false, write: false, edit: false, applyPatch: false }, tools: [], sections: [] },
+    { config: { read: false, readImage: false, write: false, edit: false }, tools: [], sections: [] },
   ])('omits disabled tools and their guidance: $config', async ({ config, tools, sections }) => {
     const { ctx } = await setup(config)
     try {

@@ -55,7 +55,7 @@ Field names are snake_case to match Claude Code and existing harness tool schema
 
 ### Configuration
 
-All keys are optional. The `read`, `readImage`, `write`, `edit`, and `applyPatch` switches default to `true`; set a switch to `false` to omit that tool and its guidance. All five may be disabled. Enabling `readImage` still requires an attachment store and an image-capable model. Read caps remain validated when `read` is disabled.
+All keys are optional. The `read`, `readImage`, `write`, and `edit` switches default to `true`; set a switch to `false` to omit that tool and its guidance. `applyPatch` defaults to `write && edit`, because a patch creates files like `write` and updates them like `edit`, so a composition that disables either text mutation also loses `apply_patch` without naming it; set it explicitly to override. All five may be disabled. Enabling `readImage` still requires an attachment store and an image-capable model. Read caps remain validated when `read` is disabled.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -63,7 +63,7 @@ All keys are optional. The `read`, `readImage`, `write`, `edit`, and `applyPatch
 | `readImage` | `true` | Register `read_image` while an attachment store is mounted |
 | `write` | `true` | Register `write` and its guidance |
 | `edit` | `true` | Register `edit` and its guidance |
-| `applyPatch` | `true` | Register `apply_patch` and its guidance |
+| `applyPatch` | `write && edit` | Register `apply_patch` and its guidance |
 | `readLimit` | `2000` | Default and maximum lines returned by one `read` call |
 | `readMaxLineLength` | `2000` | Characters kept per line before truncation |
 | `readMaxBytes` | `51200` | Byte cap on one `read` call's selected lines; overflow ends the window with a capped footer |

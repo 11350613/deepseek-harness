@@ -3870,7 +3870,7 @@ export interface Config {
   write?: boolean
   /** Register `edit` and its guidance. Defaults to true. */
   edit?: boolean
-  /** Register `apply_patch` and its guidance. Defaults to true. */
+  /** Register `apply_patch` and its guidance. Defaults to `write && edit`, the two capabilities a patch combines. */
   applyPatch?: boolean
   /** Default and maximum number of lines returned by one `read` call. */
   readLimit?: number

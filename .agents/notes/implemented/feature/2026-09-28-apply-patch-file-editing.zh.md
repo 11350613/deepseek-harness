@@ -20,7 +20,7 @@ Status: implemented
 
 [Review 采集](../../../../packages/deliverables/workspace-changes/README.zh.md)使用文件系统 intent 监听器，不解析参数。`tools/pre-execute` 将执行关联到轮次记录器；前置的 write、edit 和 delete 监听器先等待策略决策，再等待捕获完成，然后提供方才修改文件。移动捕获两端。每轮保留首次基线，比较实际最终字节，因此重复编辑形成一份净 diff，还原的变化不再显示。现有大小、数量、时间、位置和 Session 生命周期限制保持适用。
 
-`tool-fs.applyPatch` 默认为 `true`，普通编程会话与 read、write、edit 一同获得该工具；显式设为 `false` 可省略工具及其指导文本，有意排除文本文件工具的最小 SDK 和 Web 预设将其设为 `false`。工具通过插件 effect 注册 schema、指导文本、native/PTC 执行与调用展示；不修改 agent loop（智能体循环）。
+`tool-fs.applyPatch` 默认为 `write && edit`，普通编程会话与 read、write、edit 一同获得该工具，而同时关闭两者的最小 SDK 和 Web 预设无需单独的键即失去它，用户覆盖 `tool-fs` config 时也不会把该键丢掉；显式设置可覆盖派生值。工具通过插件 effect 注册 schema、指导文本、native/PTC 执行与调用展示；不修改 agent loop（智能体循环）。
 
 ## 考虑过的替代方案
 

@@ -20,7 +20,7 @@ Commit reports return `isError: false` so completed diff metadata survives a sto
 
 [Review capture](../../../../packages/deliverables/workspace-changes/README.md) uses filesystem intent listeners, not argument parsing. `tools/pre-execute` associates the execution with its turn recorder; prepended write, edit, and delete listeners first await the policy decision, then await capture before provider mutation. Moves capture both endpoints. Each turn retains its first baseline and compares actual final bytes, so repeated edits yield one net diff and reverted changes disappear. Existing size, count, time, location, and Session-lifetime limits remain.
 
-`tool-fs.applyPatch` defaults to `true`, so ordinary coding sessions get the tool alongside read, write, and edit; explicit `false` omits the tool and its guidance, and the minimal SDK and Web presets, which exclude text file tools, set it to `false`. The tool registers its schema, guidance, native/PTC execution, and tool presentation through plugin effects; the agent loop is unchanged.
+`tool-fs.applyPatch` defaults to `write && edit`, so ordinary coding sessions get the tool alongside read, write, and edit, while the minimal SDK and Web presets, which disable both, lose it without a separate key that a user's `tool-fs` config override could drop; an explicit value overrides the derivation. The tool registers its schema, guidance, native/PTC execution, and tool presentation through plugin effects; the agent loop is unchanged.
 
 ## Alternatives considered
 
