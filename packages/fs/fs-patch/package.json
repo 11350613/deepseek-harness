@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-fs-patch",
-  "description": "Pure Codex-style patch parser and affected-path collection",
+  "description": "Pure Codex-style patch parser and LF text updater with structured match failures",
   "version": "0.2.1-rc.2",
   "publishConfig": {
     "access": "public"

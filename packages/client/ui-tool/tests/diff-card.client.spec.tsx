@@ -50,10 +50,11 @@ const settled = (over?: Partial<ToolResultNode>): ToolResultNode => {
 }
 
 describe('diffCardModel', () => {
-  it('derives patch diffs only from settled metadata without parsing the patch', () => {
+  it('derives applied diffs from settled metadata when the arguments carry no single intended diff', () => {
     const call = { name: 'apply_patch', argsRaw: '{"patch":"invalid"}' }
     expect(diffCardModel(running(call))).toBeNull()
     expect(diffCardModel(settled({ call }))).toEqual({ card: { diffs: DIFFS } })
+    expect(diffCardModel(settled({ call: null }))).toEqual({ card: { diffs: DIFFS } })
     expect(diffCardModel(settled({ call, isError: true }))).toBeNull()
     expect(diffCardModel(settled({ call, meta: {} }))).toBeNull()
     expect(diffCardModel(settled({ call, meta: { diffs: [] } }))).toBeNull()
@@ -137,8 +138,8 @@ describe('diffCardModel', () => {
     })
   })
 
-  it('returns null for missing calls, errors, malformed args, unrelated tools, and child dispatches', () => {
-    expect(diffCardModel(settled({ call: null }))).toBeNull()
+  it('returns null for errors, malformed args, unrelated tools, and child dispatches', () => {
+    expect(diffCardModel(settled({ call: null, meta: {} }))).toBeNull()
     expect(diffCardModel(settled({ isError: true }))).toBeNull()
     expect(diffCardModel(running({ argsRaw: '{' }))).toBeNull()
     expect(diffCardModel(running({ name: 'read' }))).toBeNull()

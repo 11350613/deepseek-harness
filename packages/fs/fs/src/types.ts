@@ -181,10 +181,10 @@ export interface FsMoveSourceFailure {
   message: string
 }
 
-/** Published destination and removal status; sourceBefore is the LF source text captured under the move lock. */
+/** Published destination and removal status; sourceBefore is the bounded LF source basis captured under the move lock. */
 export type FsMoveOutcome =
-  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: true }
-  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
+  | { sourceBefore: string | null; destination: FsWriteOutcome; sourceDeleted: true }
+  | { sourceBefore: string | null; destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
 
 /** Stable filesystem failure codes shared by providers, consumers, and wire validators. */
 export const FS_ERROR_CODES = [

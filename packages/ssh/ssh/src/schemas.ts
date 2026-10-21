@@ -55,8 +55,8 @@ export const moveOptionsSchema = z.object({
 export const deleteResultSchema = z.object({ before: z.string().nullable() }).strict()
 /** Move completion preserves a published destination even when source removal fails. */
 export const moveResultSchema = z.discriminatedUnion('sourceDeleted', [
-  z.object({ sourceBefore: z.string(), destination: writeResultSchema, sourceDeleted: z.literal(true) }).strict(),
-  z.object({ sourceBefore: z.string(), destination: writeResultSchema, sourceDeleted: z.literal(false), sourceFailure: z.object({
+  z.object({ sourceBefore: z.string().nullable(), destination: writeResultSchema, sourceDeleted: z.literal(true) }).strict(),
+  z.object({ sourceBefore: z.string().nullable(), destination: writeResultSchema, sourceDeleted: z.literal(false), sourceFailure: z.object({
     code: z.enum(FS_ERROR_CODES),
     message: z.string(),
   }).strict() }).strict(),

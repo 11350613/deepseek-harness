@@ -81,7 +81,7 @@ kind: "package-reference"
 
 ### 失败与恢复
 
-`apply_patch` 的语法与预检拒绝在磁盘变更前抛错，结果为 `isError: true`。`FsError` 保留文件系统错误码；`PatchToolError extends HarnessError` 携带 `PATCH_SYNTAX` 和 `PATCH_SYMLINK_SOURCE`。进入提交后，即使失败或结果不确定也返回 `isError: false` 的值，确保已知部分效果的 diff 元数据得以保留。`phase`、`cancelled`、有序 `operations` 与 `affectedPaths` 描述提交；每条操作保留索引、种类、展示路径、补丁行号、状态、诊断与已知变更。完整 `before`/`after` 文本供渲染和 PTC 使用；Session 保存渲染文本以及 `meta.diffs` 与 `meta.stopped`。删除与移动源在 diff 元数据中使用 `newText: ''`，因为 `FileDiff.newText` 不可为 null。
+`apply_patch` 的语法与预检拒绝在磁盘变更前抛错，结果为 `isError: true`。`FsError` 保留文件系统错误码；`PatchToolError extends HarnessError` 携带 `PATCH_SYNTAX` 和 `PATCH_SYMLINK_SOURCE`。进入提交后，即使失败或结果不确定也返回 `isError: false` 的值，确保已知部分效果的 diff 元数据得以保留；提交期间被取消的调用与其他工具一样收到工具注册表的中止结果，已完成的变更仍可通过 Review 查看。`phase`、`cancelled`、有序 `operations` 与 `affectedPaths` 描述提交；每条操作保留索引、种类、展示路径、补丁行号、状态、诊断与已知变更。完整 `before`/`after` 文本供渲染和 PTC 使用；Session 保存渲染文本以及 `meta.diffs` 与 `meta.stopped`。新建与 `write` 一样不保存 diff；删除与移动源仅在提供方返回有界基线时保存删除 diff，并使用 `newText: ''`，因为 `FileDiff.newText` 不可为 null。
 
 失败被规范化为 `Error: <message>`，并为调用方保留结构化错误码。稳定消息包括 `file_path must be a non-empty string`、`limit must be less than or equal to <max>`、`cannot read "<path>": not found`、`cannot read "<path>": not a regular file`，以及图像路由拒绝 `cannot read "<path>" as an image: model "<model>" does not declare image input; switch to an image-capable model to read images`。无论拒绝来自策略还是提供方，`FS_NOT_OBSERVED` 都规范化为 `cannot modify "<path>": file has not been read — read the file, then retry`；`FS_STALE_VERSION` 保留提供方原因并追加 `— re-read the file, then retry`。该次重新读取确认缺失后，`edit` 报告 `FS_NOT_FOUND` 而不会重复陈旧恢复指令，`write` 则使用防护创建。
 
@@ -112,7 +112,7 @@ kind: "package-reference"
 | [`src/edit.ts`](src/edit.ts) | `edit` 执行器：意图 waterfall、字面量编辑、观察 |
 | [`src/patch/index.ts`](src/patch/index.ts)、[`types.ts`](src/patch/types.ts) | 内部 `executePatch` 入口与可序列化的逐操作报告 |
 | [`src/patch/plan.ts`](src/patch/plan.ts) | 解析补丁并按 Session 工作目录解析路径；保留共享规范化目标的有序操作 |
-| [`src/patch/preflight.ts`](src/patch/preflight.ts) | 模拟前序成功操作，在任何写入前收集观察、沙箱、类型与 hunk 失败 |
+| [`src/patch/preflight.ts`](src/patch/preflight.ts) | 模拟前序成功操作，在任何写入前收集观察、类型、文本与 hunk 失败 |
 | [`src/patch/execute.ts`](src/patch/execute.ts) | 重新获取防护、顺序提交、记录实际效果并判断不确定失败 |
 | [`src/read-render.ts`](src/read-render.ts) | 不依赖 Cordis 的窗口构建与信封格式化 |
 | [`src/sandbox.ts`](src/sandbox.ts) | 各变更工具共享的升权 API：策略解析与拒绝标记映射 |
@@ -123,7 +123,7 @@ kind: "package-reference"
 
 四个工具共享同一种流程形态：用调用会话的 cwd 解析路径、运行适用的门禁、恰好执行一次提供方操作，并且只在成功后发出 `fs/observed`。`read` 与 `read_image` 为类型与大小路由付出一次 `stat`；`write` 与 `edit` 不执行 stat，因为防护来自意图槽位，提供方失败以类型化 `FsError` 结果呈现。各工具执行器位于 `src/read.ts`、`src/read-image.ts`、`src/write.ts` 与 `src/edit.ts`。
 
-内部补丁执行器接收原始补丁和已解析的沙箱策略。它建立有序计划，针对模拟状态预检全部操作，再通过 `writeText`、`patchText`、`deleteFile` 或一次 `moveFile` 调用提交。被预检拒绝的操作不产生模拟效果，任何拒绝都会阻止全部写入。语法报告携带解析器失败；预检报告列出被拒绝的操作；提交报告为每个操作保留 `completed`、`failed`、`unknown` 或 `skipped` 状态及已知的 LF 文本变化。未解析的路径保留补丁原始写法；已解析的路径使用提供方显示路径。编程错误使调用拒绝。
+内部补丁执行器接收原始补丁和已解析的沙箱策略。它建立有序计划，针对模拟状态预检全部操作，再通过 `writeText`、`patchText`、`deleteFile` 或一次 `moveFile` 调用提交。被预检拒绝的操作不产生模拟效果，任何拒绝都会阻止全部写入。沙箱围栏不参与模拟：与 `write`、`edit` 一样由提供方在每次提交时判断，被拒绝的操作使补丁停止并保留之前的操作。语法报告携带解析器失败；预检报告列出被拒绝的操作；提交报告为每个操作保留 `completed`、`failed`、`unknown` 或 `skipped` 状态及已知的 LF 文本变化。未解析的路径保留补丁原始写法；已解析的路径使用提供方显示路径。编程错误使调用拒绝。
 
 ### 观察与并发
 
@@ -131,7 +131,7 @@ kind: "package-reference"
 
 补丁预检读取从不发出 `fs/observed`。对目标的首次预检操作分发意图；同一目标的后续操作使用模拟状态。每次提交重新分发意图以取得当前防护。新增与更新记录存在，删除记录缺失，移动记录目标存在，且仅在源删除成功后记录源缺失；部分移动为 `failed`，只包含目标变化。移动源基线由 `moveFile` 在锁内返回。
 
-变更以 `FS_IO_ERROR` 或 `FS_ABORTED` 拒绝后，执行器使用不携带已取消信号的新 `stat` 比较每个受影响目标的版本。全部未变表示已知失败；任何目标已变或比较失败均为 `unknown`，不记录观察或变化。执行在首个失败或未知提交后停止，或在信号已取消的操作开始前停止。
+变更以 `FS_IO_ERROR` 拒绝后，执行器使用新的 `stat` 比较每个受影响目标的版本。全部未变表示已知失败；任何目标已变或比较失败均为 `unknown`，不记录观察或变化。`FS_ABORTED` 一律为 `unknown`：被取消的远端请求在提供方可能仍在写入时就已拒绝。执行在首个失败或未知提交后停止，或在信号已取消的操作开始前停止。
 
 </details>
 
@@ -265,7 +265,7 @@ Read a file before editing it (the default fs-observation-policy requires it), u
 ##### 系统提示
 
 ```markdown
-Prefer apply_patch over separate edit calls for changes across files or separated regions. Read files before updating or deleting them when the observation policy is enabled. Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.
+Prefer apply_patch over separate edit calls for changes across files or separated regions. Read a file before updating, deleting, or moving it (the default fs-observation-policy requires it), unless you just created or edited it in this session. Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.
 ```
 
 ##### 结果示例

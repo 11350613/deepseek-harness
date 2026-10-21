@@ -30,7 +30,7 @@ interface SentenceContract {
  * so an absent section cannot be mistaken for forgotten documentation.
  */
 const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
-  'packages/fs/fs-patch': 'The pure parser only transforms caller-supplied patch text and collects paths; consumers own tools, execution, capture, and model output.',
+  'packages/fs/fs-patch': 'The pure library only parses caller-supplied patch text and applies hunks to text; consumers own tools, execution, capture, and model output.',
   'packages/core/scope': 'The package is a model-agnostic registration and lifecycle primitive; model-facing consumers own any context selection.',
   'packages/util/brand': 'The package only constructs plain string values and registers nothing model-facing.',
   'packages/util/home-paths': 'The package only resolves harness-owned host paths; model-facing consumers own any rendered use.',

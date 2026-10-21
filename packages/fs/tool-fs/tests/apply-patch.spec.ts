@@ -10,7 +10,7 @@ import type { PtcRunRequest, PtcRunSpec } from '@deepseek-ai/dsh-ptc-runtime'
 import { add, move, patch, remove, setup, update } from './patch/harness.ts'
 
 const guidance = 'Prefer apply_patch over separate edit calls for changes across files or separated regions. '
-  + 'Read files before updating or deleting them when the observation policy is enabled. '
+  + 'Read a file before updating, deleting, or moving it (the default fs-observation-policy requires it), unless you just created or edited it in this session. '
   + 'Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.'
 
 type Fixture = Awaited<ReturnType<typeof setup>>
@@ -60,11 +60,10 @@ it('returns exact native values and applied metadata for all four operation kind
     ] },
   ], affectedPaths: ['edit', 'created', 'delete', 'destination', 'source'].map(path) })
   expect(result.content).toEqual([{ type: 'text', text: `Success. Updated the following files:\nA ${path('created')}\nM ${path('edit')}\nM ${path('destination')}\nD ${path('delete')}` }])
+  // Creations store no diff, as for write; removals store the provider's bounded basis.
   expect(result.meta).toEqual({ stopped: false, diffs: [
     { path: path('edit'), oldText: 'old', newText: 'new' },
-    { path: path('created'), oldText: null, newText: 'new\n' },
     { path: path('delete'), oldText: 'gone\n', newText: '' },
-    { path: path('destination'), oldText: null, newText: 'new\n' },
     { path: path('source'), oldText: 'old\n', newText: '' },
   ] })
   expect(await t.bytes('edit')).toBe('new\n')
@@ -121,9 +120,7 @@ it('keeps a partial move as a value with its destination diff and exact stop tex
   expect(result.content).toEqual([{ type: 'text', text: `Patch stopped after 1 of 3 operations.\nCompleted:\nA ${path('first')}\nFailed:\n`
     + `- operation 2 (move ${path('a')} -> ${path('b')}, patch line 4): source removal denied\n`
     + `  destination ${path('b')} was written; source ${path('a')} remains\nNot executed:\n- operation 3 (add ${path('last')})` }])
-  expect(result.meta).toEqual({ stopped: true, diffs: [
-    { path: path('first'), oldText: null, newText: 'new\n' }, { path: path('b'), oldText: null, newText: 'new\n' },
-  ] })
+  expect(result.meta).toEqual({ stopped: true, diffs: [] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(await t.bytes('b')).toBe('new\n')
   await expect(t.bytes('last')).rejects.toMatchObject({ code: 'ENOENT' })
@@ -149,10 +146,12 @@ it('advertises escalation only for a confining backend and throws the sandbox re
   expect(bare.ctx.tools.get('apply_patch')?.parameters).not.toHaveProperty('properties.sandbox_permissions')
   const t = await setup({ mode: 'read-only' })
   expect(t.ctx.tools.get('apply_patch')?.parameters).toHaveProperty('properties.sandbox_permissions')
+  // The provider denies the first commit; with nothing written, the tool rejects like a preflight refusal.
   const result = await t.ctx.tools.execute({ signal: t.exec.signal, callId: t.exec.callId, name: 'apply_patch',
-    arguments: { patch: patch(add(resolve(t.workspace, 'a'))) } })
+    arguments: { patch: patch(add(resolve(t.workspace, 'a')), add(resolve(t.workspace, 'b'))) } })
   expect(result.error?.info).toEqual({ name: 'FsError', code: 'FS_SANDBOX_DENIED' })
   expect(result.content).toEqual([{ type: 'text', text: `Error: Patch rejected before any change (1 problems):\n- operation 1 (add ${resolve(t.workspace, 'a')}, patch line 2): [sandbox: file access denied under read-only mode]\n[sandbox: escalation available — retry this exact operation once with sandbox_permissions (the narrowest wider mode that suffices) + justification; the approval prompt asks the user]` }])
+  expect(result.meta).toBeUndefined()
 })
 
 class PatchPtcRuntime extends PtcRuntime {
@@ -184,7 +183,7 @@ it('dispatches native and PTC patch calls with identical values', async () => {
   expect(await t.bytes('a')).toBe('new\n')
 })
 
-it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('retains completed diffs after a real write permission failure', async () => {
+it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('retains completed operations after a real write permission failure', async () => {
   const t = await setup()
   const locked = resolve(t.workspace, 'locked')
   await mkdir(locked, { mode: 0o555 })
@@ -196,7 +195,7 @@ it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('retains com
     expect(result.content).toEqual([{ type: 'text', text: `Patch stopped after 1 of 3 operations.\nCompleted:\nA ${first}\nFailed:\n`
       + `- operation 2 (add ${denied}, patch line 4): cannot write "${denied}": permission denied\nNot executed:\n`
       + `- operation 3 (add ${resolve(t.workspace, 'last')})` }])
-    expect(result.meta).toEqual({ stopped: true, diffs: [{ path: first, oldText: null, newText: 'new\n' }] })
+    expect(result.meta).toEqual({ stopped: true, diffs: [] })
     expect(await t.bytes('first')).toBe('new\n')
     await expect(t.bytes('last')).rejects.toMatchObject({ code: 'ENOENT' })
   } finally { await chmod(locked, 0o755) }

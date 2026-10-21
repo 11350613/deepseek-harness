@@ -106,7 +106,9 @@ export async function commitPatch(
     } catch (error) {
       if (!(error instanceof FsError)) throw error
       const failure = patchFailure(sandbox, policy, error, failurePath)
-      const uncertain = started && (error.code === 'FS_ABORTED' || error.code === 'FS_IO_ERROR') && !await unchanged(ctx, before)
+      // A cancelled remote request rejects while the provider may still be writing, so no
+      // stat can settle an aborted mutation; an I/O failure is settled by unchanged versions.
+      const uncertain = started && (error.code === 'FS_ABORTED' || (error.code === 'FS_IO_ERROR' && !await unchanged(ctx, before)))
       outcome = uncertain
         ? { status: 'unknown', operation: record, failure: { ...failure, message: `${failure.message} — re-read the affected files before retrying` } }
         : { status: 'failed', operation: record, failure, changes: [] }

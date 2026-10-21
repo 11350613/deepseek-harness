@@ -6,6 +6,7 @@ import { diffsFromMeta, stoppedFromMeta } from './diff.ts'
 
 /**
  * Preview the requested operations without resolving paths or reading the filesystem.
+ * A deletion has no diff text to preview and appears only among the locations.
  * @param patch - raw patch argument.
  * @returns a diff call view, or undefined when syntax is invalid.
  */
@@ -15,20 +16,21 @@ export function presentPatchCall(patch: string): DiffCallView | undefined {
     if (!(error instanceof PatchParseError)) throw error
     return undefined
   }
-  const diffs = operations.map((operation): FileDiff => {
+  const diffs = operations.flatMap((operation): FileDiff[] => {
     const path = operation.path
     switch (operation.kind) {
-      case 'add': return { path, oldText: null, newText: operation.content }
-      case 'delete': return { path, oldText: null, newText: '' }
-      case 'update': return { path, oldText: operation.hunks.flatMap(hunk => hunk.oldLines).join('\n') || null,
-        newText: operation.hunks.flatMap(hunk => hunk.newLines).join('\n') }
+      case 'add': return [{ path, oldText: null, newText: operation.content }]
+      case 'delete': return []
+      case 'update': return [{ path, oldText: operation.hunks.flatMap(hunk => hunk.oldLines).join('\n') || null,
+        newText: operation.hunks.flatMap(hunk => hunk.newLines).join('\n') }]
       /* v8 ignore next -- Exhaustive closed parser union. */
       default: return assertNever(operation)
     }
   })
-  return { card: 'diff', title: `Apply patch (${operations.length} files)`, diffs,
-    locations: operations.flatMap(operation => [{ path: operation.path },
-      ...operation.kind === 'update' && operation.moveTo !== undefined ? [{ path: operation.moveTo }] : []]),
+  const paths = new Set(operations.flatMap(operation =>
+    operation.kind === 'update' && operation.moveTo !== undefined ? [operation.path, operation.moveTo] : [operation.path]))
+  return { card: 'diff', title: `Apply patch (${paths.size} ${paths.size === 1 ? 'file' : 'files'})`, diffs,
+    locations: [...paths].map(path => ({ path })),
   }
 }
 

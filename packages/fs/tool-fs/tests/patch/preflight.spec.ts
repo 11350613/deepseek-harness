@@ -93,33 +93,6 @@ it.each(['add', 'move'] as const)('attributes an unread %s destination to its re
   await expect(t.editIntent('b')).rejects.toMatchObject({ code: 'FS_NOT_OBSERVED' })
 })
 
-it('rejects every operation under read-only policy', async () => {
-  const t = await setup({ mode: 'read-only' })
-  await t.file('a', 'old\n')
-  const records = [t.record('add', 'b'), t.record('update', 'a', 1, 4), t.record('delete', 'a', 2, 8), t.record('move', 'a', 3, 9, 'c')]
-  expect(await t.run(patch(add('b'), update('a'), remove('a'), move('a', 'c')))).toEqual({ phase: 'preflight', refusals: records.map(operation => ({
-    operation, failure: { code: 'FS_SANDBOX_DENIED', message: expect.stringContaining('[sandbox: file access denied under read-only mode]') as string },
-  })) })
-  expect(await t.bytes('a')).toBe('old\n')
-  await expect(t.bytes('b')).rejects.toMatchObject({ code: 'ENOENT' })
-  expect(t.observations).toEqual([])
-  expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
-})
-
-it('prevents all writes when a move destination is outside writable roots', async () => {
-  const t = await setup({ mode: 'workspace-write' })
-  await t.file('a', 'old\n')
-  const outside = resolve(process.cwd(), 'patch-preflight-outside-root')
-  const a = t.record('move', 'a', 1, 4, outside)
-  expect(await t.run(patch(add('b'), move('a', outside)))).toEqual({ phase: 'preflight', refusals: [
-    { operation: a, failure: { code: 'FS_SANDBOX_DENIED', message: expect.stringContaining('[sandbox: file access denied under workspace-write mode]') as string } },
-  ] })
-  expect(await t.bytes('a')).toBe('old\n')
-  await expect(t.bytes('b')).rejects.toMatchObject({ code: 'ENOENT' })
-  expect(t.observations).toEqual([])
-  expect(await t.editIntent('a')).toEqual({ version: await t.version('a') })
-})
-
 it.each(['update', 'delete', 'add', 'move'] as const)('rejects non-regular %s targets with bare guards', async (kind) => {
   const t = await setup({ policy: false })
   await mkdir(resolve(t.workspace, 'directory'))
@@ -147,6 +120,18 @@ it.each(['update', 'add'] as const)('rejects a stale observed version before %s'
   expect(await t.bytes('a')).toBe('external edit\n')
   expect(t.observations).toEqual([])
   expect(await t.editIntent('a')).toEqual(observed)
+})
+
+it('rejects a NUL byte beyond the read sampling window before any write', async () => {
+  const t = await setup()
+  const binary = `${'text\n'.repeat(2048)}\0tail\n`
+  await t.file('a', binary)
+  expect(await t.run(patch(add('created'), '*** Update File: a\n@@\n-text\n+new'))).toEqual({ phase: 'preflight', refusals: [
+    { operation: t.record('update', 'a', 1, 4), failure: { code: 'FS_NOT_TEXT', message: `cannot patch "${resolve(t.workspace, 'a')}": binary file` } },
+  ] })
+  await expect(t.bytes('created')).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(await t.bytes('a')).toBe(binary)
+  expect(t.observations).toEqual([])
 })
 
 it.each(['FS_NOT_TEXT', 'FS_TOO_LARGE'] satisfies FsErrorCode[])('preserves a preflight read failure %s', async (code) => {
@@ -228,12 +213,4 @@ it('names the missing move source operation', async () => {
     phase: 'preflight', refusals: [{ operation: t.record('move', 'missing', 0, 2, 'destination'),
       failure: { code: 'FS_NOT_FOUND', message: `cannot move "${resolve(t.workspace, 'missing')}": not found` } }],
   })
-})
-
-it('resolves writable roots once while admitting multiple operations', async () => {
-  const t = await setup({ mode: 'workspace-write' })
-  const resolve = vi.spyOn(t.fs, 'resolve')
-  // A later unread source prevents provider commits, isolating admission's root lookups.
-  await t.run(patch(add('a'), add('b'), update('unread')))
-  expect(resolve.mock.calls.filter(([path]) => path === t.workspace)).toHaveLength(1)
 })

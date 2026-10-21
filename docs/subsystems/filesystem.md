@@ -2,7 +2,7 @@
 
 English | [中文](filesystem.zh.md)
 
-The optional filesystem capability composes these roles: [dsh-fs](../../packages/fs/fs) owns `ctx.fs` and guarded file mutations, [dsh-fs-local](../../packages/fs/fs-local) implements local disk, [dsh-fs-observation-policy](../../packages/fs/fs-observation-policy) records observed presence or absence and adds freshness rules through events rather than a service, and [dsh-tool-fs](../../packages/fs/tool-fs) directly executes model-facing read/write/edit calls and renders windows. It is outside the agent-loop spine; alternate backends do not change policy or tool schemas. The pure [dsh-fs-patch](../../packages/fs/fs-patch/README.md) library supplies patch parsing, text application, and affected-path collection.
+The optional filesystem capability composes these roles: [dsh-fs](../../packages/fs/fs) owns `ctx.fs` and guarded file mutations, [dsh-fs-local](../../packages/fs/fs-local) implements local disk, [dsh-fs-observation-policy](../../packages/fs/fs-observation-policy) records observed presence or absence and adds freshness rules through events rather than a service, and [dsh-tool-fs](../../packages/fs/tool-fs) directly executes model-facing read/write/edit calls and renders windows. It is outside the agent-loop spine; alternate backends do not change policy or tool schemas. The pure [dsh-fs-patch](../../packages/fs/fs-patch/README.md) library supplies patch parsing and text application.
 
 `dsh-fs-observation-policy` is optional. Without it, the `FileSystem` Service Definition, a provider, and the `dsh-tool-fs` Consumer form the complete, unconstrained filesystem seam: `write` unconditionally creates or overwrites, and `edit` unconditionally replaces literal text. The policy plugin changes these operations by deciding the `fs/*` waterfalls. Removing it does not break the tool because the tool calls `ctx.fs` and dispatches events; it does not call policy methods. A deployment that loads `dsh-tool-fs` is expected to also load `dsh-fs-observation-policy` so the default behavior is read-before-write/edit.
 
@@ -190,7 +190,7 @@ The same optional guard rules cover patches, deletion, and moves. Providers perf
 | `moveFile` source | `fs/edit-intent` | Source absent only when `sourceDeleted` is true. |
 | `moveFile` destination | `fs/write-intent` | Destination present at `destination.version`. |
 
-Patch, delete, and move sources must be regular files; missing or stale sources report `FS_STALE_VERSION`. Patch matching runs on LF-normalized text inside the mutation lock, and a mismatch reports `FS_PATCH_MISMATCH` with the patch hunk line and stage. Moves reject identical target keys with `FS_SAME_TARGET`, use write guards for their destination, and preserve source line endings and mode. Deletion and overwritten-destination bases are bounded nullable LF text. A move is two effects: the destination may be published while source removal fails. Cancellation is checked before local destination staging; after that, the provider completes both effects and reports their outcome.
+Patch, delete, and move sources must be regular files; missing or stale sources report `FS_STALE_VERSION`. Patch matching runs on LF-normalized text inside the mutation lock, and a mismatch reports `FS_PATCH_MISMATCH` with the patch hunk line and stage. Moves reject identical target keys with `FS_SAME_TARGET`, use write guards for their destination, and preserve source line endings and mode. Deletion, move-source, and overwritten-destination bases are bounded nullable LF text. A move is two effects: the destination may be published while source removal fails. Cancellation is checked before local destination staging; after that, the provider completes both effects and reports their outcome.
 
 Targets already follow symlinks, so a caller that rejects symlink sources inspects the path with `lstat` before `resolve`.
 
@@ -213,10 +213,10 @@ interface FsMoveSourceFailure {
 ```
 
 ```ts type-equiv
-/** Published destination and removal status; sourceBefore is the LF source text captured under the move lock. */
+/** Published destination and removal status; sourceBefore is the bounded LF source basis captured under the move lock. */
 type FsMoveOutcome =
-  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: true }
-  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
+  | { sourceBefore: string | null; destination: FsWriteOutcome; sourceDeleted: true }
+  | { sourceBefore: string | null; destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
 ```
 
 Both `writeText` and `editText` take their version guard OPTIONALLY: omit it for an unconditional (bare-provider) mutation, supply it to guard. `writeText`'s guard is an `FsWriteIntent` — `createIfAbsent` creates a missing target and rejects an existing one with `FS_NOT_OBSERVED`, including a target that appears after the provider's initial probe because publication itself must be no-replace; `replaceIfVersion` replaces only when the target exists at the observed version, else `FS_STALE_VERSION`. Omitting `expected` unconditionally creates-or-overwrites. The union itself carries only the two guarded intents; "no guard" is expressed by omission, so write and edit both use the same optional `expected` field.
@@ -349,7 +349,7 @@ Observed state is a `WeakMap<owner, Map<targetKey, FsObservation>>` held inside 
 
 ## Patch execution (consumer)
 
-The internal [tool-fs patch executor](../../packages/fs/tool-fs/README.md#understand-the-implementation) dispatches intent decisions in preflight without emitting observations, simulates preceding operations, and reacquires guards for each commit. Provider results determine which effects are recorded; executor details and failure guarantees belong to the package README.
+The internal [tool-fs patch executor](../../packages/fs/tool-fs/README.md#understand-the-implementation) dispatches intent decisions in preflight without emitting observations, simulates preceding operations, and reacquires guards for each commit. Sandbox containment stays with the provider at commit, as for `write` and `edit`. Provider results determine which effects are recorded; executor details and failure guarantees belong to the package README.
 
 | Operation | Preflight intent on first target use | Commit intent | Successful observation |
 |---|---|---|---|
@@ -358,7 +358,7 @@ The internal [tool-fs patch executor](../../packages/fs/tool-fs/README.md#unders
 | delete | `fs/delete-intent` | `fs/delete-intent` | target absent |
 | move | source `fs/edit-intent`; destination `fs/write-intent` | same two intents, freshly dispatched | destination present(version); source absent only when removed |
 
-The `apply_patch` tool returns strict commit values with per-operation diagnostics and full-text change inputs for rendering; persisted metadata holds diff hunks and a stopped flag. Syntax and preflight refusals set `isError: true`; commit reports retain `isError: false` even when stopped so known partial diffs reach Session presentation. The [tool README](../../packages/fs/tool-fs/README.md#use-this-package) owns formatting and recovery.
+The `apply_patch` tool returns strict commit values with per-operation diagnostics and full-text change inputs for rendering; persisted metadata holds diff hunks from the provider's bounded bases and a stopped flag. Syntax and preflight refusals set `isError: true`; commit reports retain `isError: false` even when stopped so known partial diffs reach Session presentation, except that a cancelled call receives the tool registry's abort result like every other tool. The [tool README](../../packages/fs/tool-fs/README.md#use-this-package) owns formatting and recovery.
 
 ## Error taxonomy (provider contract)
 
@@ -610,7 +610,7 @@ abstract deleteFile( target: FsTarget, expected?: { version: FsVersion }, signal
  * @param sandboxPolicy - the per-call mode and workspace root both paths run
  *   under; a sandboxing backend fences them, the bare backend ignores it.
  *   Omit to leave the backend its own default.
- * @returns the locked LF source text, the destination outcome, and the source-removal status.
+ * @returns the bounded LF source basis, the destination outcome, and the source-removal status.
  */
 abstract moveFile( source: FsTarget, destination: FsTarget, options: { hunks?: readonly PatchHunk[] expectedSource?: { version: FsVersion } expectedDestination?: FsWriteIntent }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsMoveOutcome>
 ```

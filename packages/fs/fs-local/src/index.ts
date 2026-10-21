@@ -232,14 +232,8 @@ export class LocalFileSystem extends FileSystem {
       const before = diffable
         ? await readTextForDiff(target.targetKey, this.config.diffBasisMaxBytes, signal)
         : null
-      await writeFileAtomic(
-        target.targetKey,
-        content,
-        existing?.mode,
-        signal,
-        this.internals,
-        expected?.kind === 'createIfAbsent' ? { displayPath: target.displayPath } : undefined,
-      )
+      await writeFileAtomic(target.targetKey, content, existing?.mode, signal, this.internals,
+        { displayPath: target.displayPath, createIfAbsent: expected?.kind === 'createIfAbsent' })
       const after = await probe(target.targetKey)
       return {
         operation: existing ? 'update' : 'create',
@@ -276,7 +270,7 @@ export class LocalFileSystem extends FileSystem {
       const original = await readForEdit(target.targetKey, target.displayPath, signal)
       const edited = applyLiteralEdit(original.content, edit.oldString, edit.newString, edit.replaceAll, target.displayPath)
       const content = restoreLineEndings(edited.content, original.lineEndings)
-      await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals)
+      await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath })
 
       const after = await probe(target.targetKey)
       return {
@@ -296,7 +290,8 @@ export class LocalFileSystem extends FileSystem {
       const existing = await this.requireFile(target, expected, 'patch')
       const original = await readForEdit(target.targetKey, target.displayPath, signal)
       const after = this.patchContent(target, original.content, hunks)
-      await writeFileAtomic(target.targetKey, restoreLineEndings(after, original.lineEndings), existing.mode, signal, this.internals)
+      await writeFileAtomic(target.targetKey, restoreLineEndings(after, original.lineEndings), existing.mode, signal, this.internals,
+        { displayPath: target.displayPath })
       return { version: this.versionAfterWrite(await probe(target.targetKey), target), before: original.content, after }
     })
   }
@@ -329,22 +324,24 @@ export class LocalFileSystem extends FileSystem {
       await this.internals.inspectBeforeMutation?.(source)
       if (signal?.aborted) throw new FsError('move aborted', 'FS_ABORTED')
       // After this checkpoint, complete both effects and report them even if cancellation arrives.
-      await writeFileAtomic(destination.targetKey, content, sourceInfo.mode, undefined, this.internals,
-        options.expectedDestination?.kind === 'createIfAbsent' ? { displayPath: destination.displayPath } : undefined,
-        existing !== null)
+      await writeFileAtomic(destination.targetKey, content, sourceInfo.mode, undefined, this.internals, {
+        displayPath: destination.displayPath,
+        createIfAbsent: options.expectedDestination?.kind === 'createIfAbsent',
+        existingDestination: existing !== null,
+      })
       const outcome: FsWriteOutcome = {
         operation: existing ? 'update' : 'create',
         version: this.versionAfterWrite(await probe(destination.targetKey), destination), before, after,
       }
+      const sourceBefore = Buffer.byteLength(original.content, 'utf8') < this.config.diffBasisMaxBytes ? original.content : null
       try {
         await removeFile(source.targetKey, source.displayPath, this.internals)
       } catch (error) {
         // removeFile maps I/O failures; unexpected defects must still reject.
         if (!(error instanceof FsError)) throw error
-        return { sourceBefore: original.content, destination: outcome, sourceDeleted: false,
-          sourceFailure: { code: error.code, message: error.message } }
+        return { sourceBefore, destination: outcome, sourceDeleted: false, sourceFailure: { code: error.code, message: error.message } }
       }
-      return { sourceBefore: original.content, destination: outcome, sourceDeleted: true }
+      return { sourceBefore, destination: outcome, sourceDeleted: true }
     })
   }
 

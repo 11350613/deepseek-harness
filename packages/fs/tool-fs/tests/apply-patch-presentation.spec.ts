@@ -6,16 +6,17 @@ import { renderPatch, patchPresentationMeta, type PatchToolValue } from '../src/
 import { stoppedFromMeta } from '../src/diff.ts'
 import { add, move, patch, remove, setup, update } from './patch/harness.ts'
 
-it('previews every operation using raw paths and both move endpoints', async () => {
-  const text = patch(add('a'), update('b'), remove('c'), move('d', 'e'), '*** Update File: empty\n@@\n+insert')
-  const expected = { card: 'diff', title: 'Apply patch (5 files)', diffs: [
+it('previews every operation using raw paths, counting distinct files including move endpoints', async () => {
+  const text = patch(add('a'), update('b'), remove('c'), move('d', 'e'), '*** Update File: empty\n@@\n+insert', update('b', 'new', 'last'))
+  const expected = { card: 'diff', title: 'Apply patch (6 files)', diffs: [
     { path: 'a', oldText: null, newText: 'new\n' }, { path: 'b', oldText: 'old', newText: 'new' },
-    { path: 'c', oldText: null, newText: '' }, { path: 'd', oldText: 'old', newText: 'new' },
-    { path: 'empty', oldText: null, newText: 'insert' },
+    { path: 'd', oldText: 'old', newText: 'new' }, { path: 'empty', oldText: null, newText: 'insert' },
+    { path: 'b', oldText: 'new', newText: 'last' },
   ], locations: ['a', 'b', 'c', 'd', 'e', 'empty'].map(path => ({ path })) }
   expect(presentPatchCall(text)).toEqual(expected)
   const t = await setup()
   expect(t.ctx.tools.get('apply_patch')?.presentCall?.({ patch: text })).toEqual(expected)
+  expect(presentPatchCall(patch(remove('only')))).toEqual({ card: 'diff', title: 'Apply patch (1 file)', diffs: [], locations: [{ path: 'only' }] })
   expect(presentPatchCall('invalid')).toBeUndefined()
 })
 
@@ -42,15 +43,17 @@ it.each([undefined, null, [], 'stopped', {}, { stopped: 'true' }, { stopped: fal
   expect(stoppedFromMeta(meta)).toBe(false)
 })
 
-it('presents nullable creation/deletion baselines and omits unavailable changes', () => {
+it('stores no diff for creations or for removals without a bounded basis', () => {
   const value: PatchToolValue = { phase: 'commit', cancelled: false, affectedPaths: ['a', 'b'], operations: [
     { index: 0, kind: 'delete', path: 'a', patchLine: 2, status: 'completed', changes: [{ path: 'a', before: null, after: null }] },
-    { index: 1, kind: 'update', path: 'b', patchLine: 3, status: 'failed', code: 'FS_PERMISSION_DENIED', message: 'denied' },
-    { index: 2, kind: 'add', path: 'c', patchLine: 7, status: 'skipped' },
+    { index: 1, kind: 'add', path: 'd', patchLine: 3, status: 'completed', changes: [{ path: 'd', before: null, after: 'created\n' }] },
+    { index: 2, kind: 'delete', path: 'e', patchLine: 5, status: 'completed', changes: [{ path: 'e', before: 'gone\n', after: null }] },
+    { index: 3, kind: 'update', path: 'b', patchLine: 6, status: 'failed', code: 'FS_PERMISSION_DENIED', message: 'denied' },
+    { index: 4, kind: 'add', path: 'c', patchLine: 7, status: 'skipped' },
   ] }
-  expect(patchPresentationMeta(value)).toEqual({ stopped: true, diffs: [{ path: 'a', oldText: null, newText: '' }] })
-  expect(renderPatch(value)).toBe('Patch stopped after 1 of 3 operations.\nCompleted:\nD a\nFailed:\n'
-    + '- operation 2 (update b, patch line 3): denied\nNot executed:\n- operation 3 (add c)')
+  expect(patchPresentationMeta(value)).toEqual({ stopped: true, diffs: [{ path: 'e', oldText: 'gone\n', newText: '' }] })
+  expect(renderPatch(value)).toBe('Patch stopped after 3 of 5 operations.\nCompleted:\nA d\nD a\nD e\nFailed:\n'
+    + '- operation 4 (update b, patch line 6): denied\nNot executed:\n- operation 5 (add c)')
 })
 
 it('reports cancellation and a move failure with no written destination', () => {

@@ -2,7 +2,7 @@
 
 [English](filesystem.md) | 中文
 
-可选的文件系统能力由以下角色组成：[dsh-fs](../../packages/fs/fs) 拥有 `ctx.fs` 和受防护的文件变更操作；[dsh-fs-local](../../packages/fs/fs-local) 实现本地磁盘后端；[dsh-fs-observation-policy](../../packages/fs/fs-observation-policy) 记录观测到的存在或缺失状态，并通过事件（而非服务）添加新鲜度规则；[dsh-tool-fs](../../packages/fs/tool-fs) 直接执行面向模型的 read/write/edit 调用并渲染窗口。它位于 agent loop（智能体循环）主干之外；替换后端不会改变策略或工具 schema。纯库 [dsh-fs-patch](../../packages/fs/fs-patch/README.zh.md) 提供补丁解析、文本应用与受影响路径收集。
+可选的文件系统能力由以下角色组成：[dsh-fs](../../packages/fs/fs) 拥有 `ctx.fs` 和受防护的文件变更操作；[dsh-fs-local](../../packages/fs/fs-local) 实现本地磁盘后端；[dsh-fs-observation-policy](../../packages/fs/fs-observation-policy) 记录观测到的存在或缺失状态，并通过事件（而非服务）添加新鲜度规则；[dsh-tool-fs](../../packages/fs/tool-fs) 直接执行面向模型的 read/write/edit 调用并渲染窗口。它位于 agent loop（智能体循环）主干之外；替换后端不会改变策略或工具 schema。纯库 [dsh-fs-patch](../../packages/fs/fs-patch/README.zh.md) 提供补丁解析与文本应用。
 
 `dsh-fs-observation-policy` 是可选插件。没有该插件时，`FileSystem` 服务定义、一个提供方和 `dsh-tool-fs` 消费方组成完整且不受约束的文件系统 seam：`write` 无条件创建或覆盖，`edit` 无条件替换字面文本。策略插件通过裁决 `fs/*` waterfall（瀑布式事件）来改变这些操作。移除该插件不会破坏工具，因为工具调用 `ctx.fs` 并分发事件，而不调用策略方法。加载了 `dsh-tool-fs` 的部署也应加载 `dsh-fs-observation-policy`，使默认行为为「先读后写/编辑」。
 
@@ -190,7 +190,7 @@ type ApplyHunksResult =
 | `moveFile` 源 | `fs/edit-intent` | 仅在 `sourceDeleted` 为 true 时记录源缺失。 |
 | `moveFile` 目标 | `fs/write-intent` | 目标存在于 `destination.version`。 |
 
-补丁、删除和移动的源必须是普通文件；源缺失或版本陈旧报告 `FS_STALE_VERSION`。补丁在变更锁内对 LF 规范化文本匹配，不匹配报告 `FS_PATCH_MISMATCH`，包含补丁 hunk 行号与阶段。移动以 `FS_SAME_TARGET` 拒绝相同目标 key，对目标使用写入防护，并保留源的行尾风格与模式。删除和被覆盖目标的基线是有界、可空的 LF 文本。移动是两个效果：目标可能已发布而源删除失败。本地移动在暂存目标前检查取消；随后提供方完成两端效果并报告结果。
+补丁、删除和移动的源必须是普通文件；源缺失或版本陈旧报告 `FS_STALE_VERSION`。补丁在变更锁内对 LF 规范化文本匹配，不匹配报告 `FS_PATCH_MISMATCH`，包含补丁 hunk 行号与阶段。移动以 `FS_SAME_TARGET` 拒绝相同目标 key，对目标使用写入防护，并保留源的行尾风格与模式。删除、移动源和被覆盖目标的基线是有界、可空的 LF 文本。移动是两个效果：目标可能已发布而源删除失败。本地移动在暂存目标前检查取消；随后提供方完成两端效果并报告结果。
 
 目标已跟随符号链接，因此拒绝符号链接源的调用方在 `resolve` 前用 `lstat` 检查路径。
 
@@ -213,10 +213,10 @@ interface FsMoveSourceFailure {
 ```
 
 ```ts type-equiv
-/** Published destination and removal status; sourceBefore is the LF source text captured under the move lock. */
+/** Published destination and removal status; sourceBefore is the bounded LF source basis captured under the move lock. */
 type FsMoveOutcome =
-  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: true }
-  | { sourceBefore: string; destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
+  | { sourceBefore: string | null; destination: FsWriteOutcome; sourceDeleted: true }
+  | { sourceBefore: string | null; destination: FsWriteOutcome; sourceDeleted: false; sourceFailure: FsMoveSourceFailure }
 ```
 
 `writeText` 和 `editText` 的版本守卫都是可选的：省略守卫时执行无条件的裸提供方变更，提供守卫时则执行相应的条件检查。`writeText` 的守卫是 `FsWriteIntent`：`createIfAbsent` 在目标缺失时创建，目标已存在时以 `FS_NOT_OBSERVED` 拒绝；即使目标在提供方初始探测后才出现，也必须拒绝，因为发布操作本身不得替换。`replaceIfVersion` 仅在目标存在且版本匹配时替换，否则报 `FS_STALE_VERSION`。省略 `expected` 则无条件创建或覆盖。联合类型本身只包含两种有守卫的意图；「无守卫」通过省略表达，因此 write 和 edit 都使用同一个可选的 `expected` 字段。
@@ -349,7 +349,7 @@ interface FileReadOutcome {
 
 ## 补丁执行（消费方）
 
-内部 [tool-fs 补丁执行器](../../packages/fs/tool-fs/README.zh.md#understand-the-implementation) 在预检时分发意图决策而不发出观察、模拟前序操作，并在每次提交时重新取得防护。提供方结果决定记录哪些效果；执行器细节与失败保证由包 README 维护。
+内部 [tool-fs 补丁执行器](../../packages/fs/tool-fs/README.zh.md#understand-the-implementation) 在预检时分发意图决策而不发出观察、模拟前序操作，并在每次提交时重新取得防护。沙箱围栏与 `write`、`edit` 一样由提供方在提交时判断。提供方结果决定记录哪些效果；执行器细节与失败保证由包 README 维护。
 
 | 操作 | 首次使用目标的预检意图 | 提交意图 | 成功观察 |
 |---|---|---|---|
@@ -358,7 +358,7 @@ interface FileReadOutcome {
 | delete | `fs/delete-intent` | `fs/delete-intent` | 目标 absent |
 | move | 源 `fs/edit-intent`；目标 `fs/write-intent` | 重新分发同一组意图 | 目标 present(version)；仅在源删除成功时记录 absent |
 
-`apply_patch` 工具返回严格的提交值，包含各操作诊断及用于渲染的完整文本变更输入；持久化元数据只保留 diff hunk 与停止标志。语法和预检拒绝为 `isError: true`；停止的提交报告仍为 `isError: false`，确保已知部分 diff 进入 Session 展示。[工具 README](../../packages/fs/tool-fs/README.zh.md#use-this-package) 维护格式与恢复规则。
+`apply_patch` 工具返回严格的提交值，包含各操作诊断及用于渲染的完整文本变更输入；持久化元数据只保留基于提供方有界基线的 diff hunk 与停止标志。语法和预检拒绝为 `isError: true`；停止的提交报告仍为 `isError: false`，确保已知部分 diff 进入 Session 展示，但被取消的调用与其他工具一样收到工具注册表的中止结果。[工具 README](../../packages/fs/tool-fs/README.zh.md#use-this-package) 维护格式与恢复规则。
 
 ## 错误分类体系（提供方约定）
 
@@ -610,7 +610,7 @@ abstract deleteFile( target: FsTarget, expected?: { version: FsVersion }, signal
  * @param sandboxPolicy - the per-call mode and workspace root both paths run
  *   under; a sandboxing backend fences them, the bare backend ignores it.
  *   Omit to leave the backend its own default.
- * @returns the locked LF source text, the destination outcome, and the source-removal status.
+ * @returns the bounded LF source basis, the destination outcome, and the source-removal status.
  */
 abstract moveFile( source: FsTarget, destination: FsTarget, options: { hunks?: readonly PatchHunk[] expectedSource?: { version: FsVersion } expectedDestination?: FsWriteIntent }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsMoveOutcome>
 ```

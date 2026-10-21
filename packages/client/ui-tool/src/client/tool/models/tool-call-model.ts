@@ -306,7 +306,8 @@ export function toolRowModel(toolName: string, block: ToolCallBlock, cwd?: strin
   const titleKey = toolTitleKey(toolName)
   const done = 'kind' in block
   const argsRaw = done ? block.call?.argsRaw ?? '' : block.phase === 'start' ? block.argsRaw : null
-  const patchStopped = toolName === 'apply_patch' && done && typeof block.meta === 'object' && block.meta !== null
+  // Result metadata marks a settled call that did not finish every requested effect.
+  const stopped = done && typeof block.meta === 'object' && block.meta !== null
     && !Array.isArray(block.meta) && (block.meta as Record<string, unknown>).stopped === true
   const primary = argumentSummary(variant, block.args, cwd, home)
   const argumentPath = primary.filePath ?? (argsRaw === null ? undefined : deriveFilePath(variant, argsRaw))
@@ -317,7 +318,7 @@ export function toolRowModel(toolName: string, block: ToolCallBlock, cwd?: strin
     : recordedPath ?? (canUseArgumentPath ? argumentPath : undefined)
   const state: ToolRowState = !done ? block.phase === 'preparing' ? 'preparing' : 'running'
     : block.error?.code === 'interrupted' ? 'stopped'
-      : block.isError || patchStopped ? 'error' : 'ok'
+      : block.isError || stopped ? 'error' : 'ok'
   // The argument view serves every stage; the raw text is the fallback when it carries nothing useful.
   const base = toolName === 'apply_patch' ? '' : primary.summary !== '' || argsRaw === null ? primary.summary
     : argsRaw === '' ? block.callId

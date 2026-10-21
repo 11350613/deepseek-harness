@@ -55,14 +55,15 @@ it('stops between operations after cancellation without undoing the first write'
   await expect(t.editIntent('b')).rejects.toMatchObject({ code: 'FS_NOT_OBSERVED' })
 })
 
-it('reports cancellation during staged writing as failed when stat confirms no change', async () => {
+it('reports cancellation during staged writing as unknown without a stat comparison', async () => {
   const t = await setup()
   let writes = 0
   t.fs.internals.inspectTemp = () => { if (++writes === 2) t.controller.abort() }
   const a = t.record('add', 'a')
+  // The staged file never reaches its target, so a stat comparison would have called this failed.
   expect(await t.run(patch(add('a'), add('b'), add('c')))).toEqual({ phase: 'commit', outcomes: [
     { status: 'completed', operation: a, changes: [{ path: a.path, before: null, after: 'new\n' }] },
-    { status: 'failed', operation: t.record('add', 'b', 1, 4), failure: { code: 'FS_ABORTED', message: 'write aborted' }, changes: [] },
+    { status: 'unknown', operation: t.record('add', 'b', 1, 4), failure: { code: 'FS_ABORTED', message: 'write aborted — re-read the affected files before retrying' } },
     { status: 'skipped', operation: t.record('add', 'c', 2, 6) },
   ], affectedPaths: [a.path], cancelled: true })
   expect(await t.bytes('a')).toBe('new\n')
@@ -187,4 +188,32 @@ it('reports the locked move source after an external edit following preflight', 
   ] }] })
   expect(reads).toHaveBeenCalledTimes(1)
   expect(await t.bytes('b')).toBe('new\nexternal\n')
+})
+
+it('stops at the first provider sandbox denial under read-only policy', async () => {
+  const t = await setup({ mode: 'read-only' })
+  await t.file('a', 'old\n')
+  const b = t.record('add', 'b')
+  expect(await t.run(patch(add('b'), update('a'), remove('a')))).toEqual({ phase: 'commit', outcomes: [
+    { status: 'failed', operation: b, failure: { code: 'FS_SANDBOX_DENIED', message: expect.stringContaining('[sandbox: file access denied under read-only mode]') as string }, changes: [] },
+    { status: 'skipped', operation: t.record('update', 'a', 1, 4) },
+    { status: 'skipped', operation: t.record('delete', 'a', 2, 8) },
+  ], affectedPaths: [], cancelled: false })
+  expect(await t.bytes('a')).toBe('old\n')
+  await expect(t.bytes('b')).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(t.observations).toEqual([])
+})
+
+it('retains earlier writes when the provider denies a move destination outside writable roots', async () => {
+  const t = await setup({ mode: 'workspace-write' })
+  await t.file('a', 'old\n')
+  const outside = resolve(process.cwd(), 'patch-commit-outside-root')
+  const b = t.record('add', 'b')
+  expect(await t.run(patch(add('b'), move('a', outside)))).toEqual({ phase: 'commit', outcomes: [
+    { status: 'completed', operation: b, changes: [{ path: b.path, before: null, after: 'new\n' }] },
+    { status: 'failed', operation: t.record('move', 'a', 1, 4, outside), failure: { code: 'FS_SANDBOX_DENIED', message: expect.stringContaining('[sandbox: file access denied under workspace-write mode]') as string }, changes: [] },
+  ], affectedPaths: [b.path], cancelled: false })
+  expect(await t.bytes('a')).toBe('old\n')
+  expect(await t.bytes('b')).toBe('new\n')
+  expect(t.observations.map(event => event.path)).toEqual([b.path])
 })

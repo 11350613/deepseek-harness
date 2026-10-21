@@ -19,7 +19,7 @@ export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController):
     name: 'tool:apply_patch', order: ctx.systemPrompt.getSectionOrder('TOOL_APPLY_PATCH'),
     text: ({ scope }) => ctx.tools.get('apply_patch', scope) === undefined ? ''
       : 'Prefer apply_patch over separate edit calls for changes across files or separated regions. '
-        + 'Read files before updating or deleting them when the observation policy is enabled. '
+        + 'Read a file before updating, deleting, or moving it (the default fs-observation-policy requires it), unless you just created or edited it in this session. '
         + 'Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.',
   })
   ctx.tools.register(defineTool({
@@ -32,7 +32,7 @@ export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController):
           + 'Use *** Add File: path with + lines; *** Update File: path, optionally followed by *** Move to: path, '
           + 'with @@ or @@ context and space-prefixed context, + added, or - removed lines; '
           + '*** End of File anchors the last hunk to the file end. Use *** Delete File: path to delete. '
-          + 'Paths are relative to the Session working directory. Read existing files before updating them.',
+          + 'Paths are relative to the Session working directory. Read existing files before updating, deleting, or moving them.',
       },
       ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
     },

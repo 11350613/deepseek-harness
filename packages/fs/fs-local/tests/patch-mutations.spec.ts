@@ -128,6 +128,15 @@ describe('moveFile', () => {
     if (process.platform !== 'win32') expect((await stat(join(root, 'nested/b'))).mode & 0o777).toBe(0o640)
   })
 
+  it('bounds the source basis by diffBasisMaxBytes while still publishing the whole text', async () => {
+    const { fs, file, bytes } = await setup(16)
+    const text = `${'x'.repeat(32)}\n`
+    const source = await file('large', text)
+    const result = await fs.moveFile(source, await file('moved'), {})
+    expect(result).toEqual({ sourceBefore: null, sourceDeleted: true, destination: { operation: 'create', version: expect.any(String) as string, before: null, after: text } })
+    expect(await bytes('moved')).toBe(text)
+  })
+
   it('creates missing parent directories and applies hunks before publication', async () => {
     const { fs, file, bytes } = await setup()
     const source = await file('a', 'old\r\n')

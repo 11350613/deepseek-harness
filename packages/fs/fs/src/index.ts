@@ -362,7 +362,7 @@ export abstract class FileSystem extends Service {
    * @param sandboxPolicy - the per-call mode and workspace root both paths run
    *   under; a sandboxing backend fences them, the bare backend ignores it.
    *   Omit to leave the backend its own default.
-   * @returns the locked LF source text, the destination outcome, and the source-removal status.
+   * @returns the bounded LF source basis, the destination outcome, and the source-removal status.
    */
   abstract moveFile(
     source: FsTarget,

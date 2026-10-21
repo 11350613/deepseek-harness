@@ -3,13 +3,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsInfo, FsTarget, FsTargetKey } from '@deepseek-ai/dsh-fs'
 import { applyHunks } from '@deepseek-ai/dsh-fs-patch'
-import { writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { FsSandboxController } from '../sandbox.ts'
 import { sessionResolveOptions } from '../session-cwd.ts'
-import { destinationIntent, mutationTargets, patchFailure, sourceIntent } from './plan.ts'
+import { destinationIntent, patchFailure, sourceIntent } from './plan.ts'
 import type { PatchFailure, PatchRefusal, PlannedOperation } from './types.ts'
 
 interface SimulatedFile {
@@ -20,12 +19,12 @@ interface SimulatedFile {
 }
 
 class Preflight {
-  failurePath = ''
-  private roots: Promise<FsTarget[]> | undefined
+  private failurePath = ''
   private readonly states = new Map<FsTargetKey, SimulatedFile>()
 
   constructor(
-    private readonly ctx: Context, private readonly exec: ToolExecution, private readonly policy: SandboxExecutionPolicy | undefined,
+    private readonly ctx: Context, private readonly sandbox: FsSandboxController, private readonly exec: ToolExecution,
+    private readonly policy: SandboxExecutionPolicy | undefined,
   ) {}
 
   private async state(target: FsTarget): Promise<SimulatedFile> {
@@ -35,17 +34,6 @@ class Preflight {
     const state = { exists: info !== undefined, info, touched: false }
     this.states.set(target.targetKey, state)
     return state
-  }
-
-  private async fence(operation: PlannedOperation): Promise<void> {
-    if (this.policy === undefined || this.policy.mode === 'danger-full-access') return
-    if (this.policy.mode === 'read-only') throw new FsError('filesystem mutations are denied', 'FS_SANDBOX_DENIED')
-    const roots = await (this.roots ??= Promise.all(writableRoots(this.policy).map(root => this.ctx.fs.resolve(root))))
-    for (const target of mutationTargets(operation)) {
-      if (!roots.some(root => this.ctx.fs.contains(root, target))) {
-        throw new FsError(`cannot modify "${target.displayPath}": outside writable roots`, 'FS_SANDBOX_DENIED')
-      }
-    }
   }
 
   private regular(state: SimulatedFile, target: FsTarget): void {
@@ -75,7 +63,12 @@ class Preflight {
   }
 
   private async content(state: SimulatedFile, target: FsTarget): Promise<string> {
-    if (state.content === undefined) state.content = (await this.ctx.fs.readText(target, this.exec.signal)).replace(/\r\n/g, '\n')
+    if (state.content === undefined) {
+      const text = await this.ctx.fs.readText(target, this.exec.signal)
+      // readText samples only a prefix for NUL bytes; the mutation path rejects any NUL.
+      if (text.includes('\0')) throw new FsError(`cannot patch "${target.displayPath}": binary file`, 'FS_NOT_TEXT')
+      state.content = text.replace(/\r\n/g, '\n')
+    }
     return state.content
   }
 
@@ -84,9 +77,16 @@ class Preflight {
       ...(content === undefined ? {} : { content }) })
   }
 
+  /** Simulate one operation; a filesystem refusal becomes the operation's failure. */
   async check(operation: PlannedOperation): Promise<PatchFailure | undefined> {
     this.failurePath = operation.target.displayPath
-    await this.fence(operation)
+    try { return await this.simulate(operation) } catch (error) {
+      if (!(error instanceof FsError)) throw error
+      return patchFailure(this.sandbox, this.policy, error, this.failurePath)
+    }
+  }
+
+  private async simulate(operation: PlannedOperation): Promise<PatchFailure | undefined> {
     if (operation.kind === 'move' && operation.target.targetKey === operation.destination.targetKey) {
       throw new FsError(`cannot move "${operation.target.displayPath}" to itself`, 'FS_SAME_TARGET')
     }
@@ -135,10 +135,11 @@ class Preflight {
 
 /**
  * Collect every independent preflight refusal while simulating only admitted operations.
+ * Sandbox containment is the provider's decision at commit, as for write and edit.
  * @param ctx - filesystem service owner; reads never emit observations.
  * @param sandbox - model-facing denial mapper.
  * @param exec - observation actor and cancellation signal.
- * @param policy - resolved confinement policy.
+ * @param policy - resolved confinement policy used to label refusals.
  * @param operations - complete resolved operation plan.
  * @returns refused operations in patch order; any refusal forbids the commit phase.
  */
@@ -146,14 +147,10 @@ export async function preflightPatch(
   ctx: Context, sandbox: FsSandboxController, exec: ToolExecution, policy: SandboxExecutionPolicy | undefined,
   operations: readonly PlannedOperation[],
 ): Promise<PatchRefusal[]> {
-  const preflight = new Preflight(ctx, exec, policy)
+  const preflight = new Preflight(ctx, sandbox, exec, policy)
   const refusals: PatchRefusal[] = []
   for (const operation of operations) {
-    let failure: PatchFailure | undefined
-    try { failure = await preflight.check(operation) } catch (error) {
-      if (!(error instanceof FsError)) throw error
-      failure = patchFailure(sandbox, policy, error, preflight.failurePath)
-    }
+    const failure = await preflight.check(operation)
     if (failure !== undefined) refusals.push({ operation: operation.record, failure })
   }
   return refusals

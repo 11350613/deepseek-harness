@@ -3,7 +3,7 @@ import { FsError } from '@deepseek-ai/dsh-fs'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { computeHunkDiffs } from './diff.ts'
 import type { FileDiff, InferValue } from '@deepseek-ai/dsh-tools'
-import type { PatchExecutionReport, PatchFailureCode } from './patch/types.ts'
+import type { PatchExecutionReport, PatchFailureCode, PatchRefusal } from './patch/types.ts'
 
 /** Strict canonical output; full file texts feed rendering and are excluded from presentation metadata. */
 export const patchOutputSchema = {
@@ -48,20 +48,29 @@ function rejection(code: PatchFailureCode, message: string): HarnessError {
     ? new PatchToolError(message, code) : new FsError(message, code)
 }
 
+function refusalError(first: PatchRefusal, ...rest: PatchRefusal[]): HarnessError {
+  const refusals = [first, ...rest]
+  const lines = refusals.map(({ operation, failure }) =>
+    `- operation ${operation.index + 1} (${operation.kind} ${operation.path}, patch line ${operation.patchLine}): ${failure.message}`)
+  return rejection(first.failure.code, `Patch rejected before any change (${refusals.length} problems):\n${lines.join('\n')}`)
+}
+
 /**
- * Convert a report into a commit value, or reject before any disk change.
+ * Convert a report into a commit value, or reject while no disk change exists.
+ * A commit whose first operation failed without any change, such as a provider sandbox
+ * denial, rejects like a preflight refusal so the error code reaches the same retry paths.
  * @param report - executor report.
  * @returns a flat, lossless JSON commit value, including partial failures.
- * @throws FsError or PatchToolError for syntax or preflight refusals.
+ * @throws FsError or PatchToolError for syntax, preflight, or first-operation refusals.
  */
 export function patchToolValue(report: PatchExecutionReport): PatchToolValue {
   if (report.phase === 'syntax') {
     throw rejection(report.failure.code, report.failure.message)
   }
-  if (report.phase === 'preflight') {
-    const lines = report.refusals.map(({ operation, failure }) =>
-      `- operation ${operation.index + 1} (${operation.kind} ${operation.path}, patch line ${operation.patchLine}): ${failure.message}`)
-    throw rejection(report.refusals[0].failure.code, `Patch rejected before any change (${report.refusals.length} problems):\n${lines.join('\n')}`)
+  if (report.phase === 'preflight') throw refusalError(...report.refusals)
+  const [first, ...rest] = report.outcomes
+  if (first?.status === 'failed' && first.changes.length === 0 && rest.every(outcome => outcome.status === 'skipped')) {
+    throw refusalError(first)
   }
   return { phase: 'commit', cancelled: report.cancelled, affectedPaths: report.affectedPaths,
     operations: report.outcomes.map(outcome => ({
@@ -120,7 +129,8 @@ export function renderPatch(value: PatchToolValue): string {
 
 /**
  * Derive hunks only from known completed effects, including a partial move destination.
- * @param value - canonical commit value containing whole-file baselines.
+ * Creations store no diff, as for `write`; a removal without a bounded basis stores none either.
+ * @param value - canonical commit value containing the provider's bounded baselines.
  * @returns serializable diff hunks and an explicit stopped flag; no whole-file change records.
  */
 export function patchPresentationMeta(value: PatchToolValue): {
@@ -130,7 +140,7 @@ export function patchPresentationMeta(value: PatchToolValue): {
   const diffs = value.operations.flatMap((operation) => {
     if (operation.status !== 'completed' && operation.status !== 'failed') return []
     return (operation.changes ?? []).flatMap(({ path, before, after }): FileDiff[] => {
-      if (before === null) return [{ path, oldText: null, newText: after ?? '' }]
+      if (before === null) return []
       if (after === null) return [{ path, oldText: before, newText: '' }]
       return computeHunkDiffs(path, before, after)
     })

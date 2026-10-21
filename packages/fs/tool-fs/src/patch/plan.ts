@@ -110,7 +110,7 @@ export function patchFailure(
 /**
  * List all targets the operation can mutate, with destination first for a move.
  * @param operation - resolved operation.
- * @returns targets requiring a sandbox check and uncertainty comparison.
+ * @returns targets whose versions the uncertainty comparison records.
  */
 export function mutationTargets(operation: PlannedOperation): FsTarget[] {
   return operation.kind === 'move' ? [operation.destination, operation.target] : [operation.target]

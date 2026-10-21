@@ -609,11 +609,11 @@ function writeIoError(path: string, error: unknown): unknown {
  * @param mode - POSIX mode to apply, or undefined to retain the new-file default.
  * @param signal - cancellation checked before final publication.
  * @param internals - Test hook for pinning temp names and observing the staged file.
- * @param createIfAbsent - when provided, publish with a hard-link no-replace
- * primitive; a concurrent creator's file is preserved and this write is
- * rejected with `FS_NOT_OBSERVED` using the supplied display path.
- * @param existingDestination - whether Windows must preserve destination security; defaults
- * to mode presence for ordinary writes. Moves pass destination presence separately from source mode.
+ * @param options - `displayPath` names the target in diagnostics (defaults to `absolutePath`);
+ * `createIfAbsent` publishes with a hard-link no-replace primitive, so a concurrent creator's
+ * file is preserved and this write is rejected with `FS_NOT_OBSERVED`; `existingDestination`
+ * states whether Windows must preserve destination security and defaults to mode presence,
+ * while moves pass destination presence separately from the source mode.
  */
 export async function writeFileAtomic(
   absolutePath: string,
@@ -621,12 +621,13 @@ export async function writeFileAtomic(
   mode: number | undefined,
   signal: AbortSignal | undefined,
   internals: FsIoInternals = {},
-  createIfAbsent?: { displayPath: string },
-  existingDestination = mode !== undefined,
+  options: { displayPath?: string; createIfAbsent?: boolean; existingDestination?: boolean } = {},
 ): Promise<void> {
+  const displayPath = options.displayPath ?? absolutePath
+  const existingDestination = options.existingDestination ?? mode !== undefined
   throwIfAborted(signal, 'write')
   const directory = dirname(absolutePath)
-  try { await mkdir(directory, { recursive: true }) } catch (error) { throw writeIoError(absolutePath, error) }
+  try { await mkdir(directory, { recursive: true }) } catch (error) { throw writeIoError(displayPath, error) }
 
   throwIfAborted(signal, 'write')
   const stagingDirName = internals.tempDirName?.(absolutePath) ?? `.${basename(absolutePath)}.${process.pid}.${randomUUID()}.tmpdir`
@@ -661,11 +662,11 @@ export async function writeFileAtomic(
     handle = undefined
 
     throwIfAborted(signal, 'write')
-    if (createIfAbsent !== undefined) {
+    if (options.createIfAbsent) {
       try {
         await linkFile(tempPath, absolutePath)
       } catch (error: unknown) {
-        await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
+        await throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget)
       }
     } else if (platform === 'win32' && existingDestination) {
       try {
@@ -686,7 +687,7 @@ export async function writeFileAtomic(
     }
   } catch (error: unknown) {
     /* v8 ignore next -- abort-mid-write needs a writeFile/signal race; the non-abort (rename/open) side is tested. */
-    let failure: unknown = isAbortError(error) ? new FsError('write aborted', 'FS_ABORTED') : writeIoError(absolutePath, error)
+    let failure: unknown = isAbortError(error) ? new FsError('write aborted', 'FS_ABORTED') : writeIoError(displayPath, error)
     /* v8 ignore next 8 -- reached only if writeFile/sync throws with the handle open (IO fault); close-failure is a double fault. */
     if (handle) {
       try {
