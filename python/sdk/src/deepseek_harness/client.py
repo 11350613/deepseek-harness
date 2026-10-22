@@ -15,7 +15,7 @@ from typing import Callable, TypeAlias, TypeVar
 from pydantic import BaseModel
 
 from .errors import JsonRpcError, SdkProtocolError, TransportClosedError
-from .models import IncomingRequest, InitializeResponse, JsonObject, JsonValue, Notification, UserQuestionAnswer, UserQuestionRequest
+from .models import CommandExecution, IncomingRequest, InitializeResponse, JsonObject, JsonValue, Notification, UserQuestionAnswer, UserQuestionRequest
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 NotificationFilter: TypeAlias = Callable[[Notification], bool]
@@ -37,6 +37,14 @@ class HarnessConfig:
     shutdown_timeout_seconds: float | None = 1.0
     # Callbacks run outside the reader; observe the Event to release work on cancellation.
     on_user_question: UserQuestionHandler | None = None
+
+
+@dataclass(slots=True)
+class _PendingRequest:
+    request_id: str
+    method: str
+    waiter: queue.Queue[JsonValue | BaseException]
+    deadline: float | None
 
 
 class HarnessClient:
@@ -225,6 +233,14 @@ class HarnessClient:
             response_model=_EmptyResponse,
         )
 
+    def session_command(self, session_id: str, line: str) -> CommandExecution:
+        """Execute an explicit command and return its handler result without waiting for a turn."""
+        return self.request(
+            "session/command",
+            {"sessionId": session_id, "line": line},
+            response_model=CommandExecution,
+        )
+
     def get_working_directory(self, session_id: str) -> str:
         """Read the effective directory, recovering a missing directory to the Session origin."""
         response = self.request(
@@ -324,15 +340,29 @@ class HarnessClient:
         notification_filter: NotificationFilter | None = None,
         notification_subscription: "NotificationSubscription | None" = None,
     ) -> JsonValue:
-        request_id = str(uuid.uuid4())
-        waiter: queue.Queue[JsonValue | BaseException] = queue.Queue(maxsize=1)
         temp_subscription: NotificationSubscription | None = None
         subscription = notification_subscription
-        with self._lock:
-            self._responses[request_id] = waiter
         if on_notification is not None and subscription is None:
             temp_subscription = self.subscribe_notifications(notification_filter)
             subscription = temp_subscription
+        try:
+            pending = self._begin_request(method, params, timeout_seconds=timeout_seconds)
+            return self._wait_request(pending, on_notification=on_notification, notification_subscription=subscription)
+        finally:
+            if temp_subscription is not None:
+                temp_subscription.close()
+
+    def _begin_request(
+        self,
+        method: str,
+        params: JsonObject | None = None,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> _PendingRequest:
+        request_id = str(uuid.uuid4())
+        waiter: queue.Queue[JsonValue | BaseException] = queue.Queue(maxsize=1)
+        with self._lock:
+            self._responses[request_id] = waiter
         try:
             message: JsonObject = {"jsonrpc": "2.0", "id": request_id, "method": method}
             if params is not None:
@@ -341,48 +371,59 @@ class HarnessClient:
         except BaseException:
             with self._lock:
                 self._responses.pop(request_id, None)
-            if temp_subscription is not None:
-                temp_subscription.close()
             raise
         timeout = self.config.request_timeout_seconds if timeout_seconds is None else timeout_seconds
         deadline = None if timeout is None else time.monotonic() + timeout
+        return _PendingRequest(request_id, method, waiter, deadline)
+
+    def _discard_request(self, pending: _PendingRequest, error: BaseException | None = None) -> None:
+        with self._lock:
+            if self._responses.get(pending.request_id) is pending.waiter:
+                self._responses.pop(pending.request_id)
+                if error is not None:
+                    pending.waiter.put_nowait(error)
+
+    def _wait_request(
+        self,
+        pending: _PendingRequest,
+        *,
+        on_notification: Callable[[Notification], None] | None = None,
+        notification_subscription: "NotificationSubscription | None" = None,
+    ) -> JsonValue:
+        subscription = notification_subscription
         try:
             while True:
                 if on_notification is not None and subscription is not None:
                     subscription.drain(on_notification)
+                try:
+                    item = pending.waiter.get_nowait()
+                    break
+                except queue.Empty:
+                    pass
                 wait_timeout = None
                 if on_notification is not None:
                     wait_timeout = 0.05
-                if deadline is not None:
-                    remaining = deadline - time.monotonic()
+                if pending.deadline is not None:
+                    remaining = pending.deadline - time.monotonic()
                     if remaining <= 0:
-                        with self._lock:
-                            self._responses.pop(request_id, None)
                         diagnostics = self._runtime_diagnostics()
                         suffix = f"\n{diagnostics}" if diagnostics else ""
                         raise TimeoutError(
-                            f"{method} timed out waiting for DeepSeek Harness runtime{suffix}"
+                            f"{pending.method} timed out waiting for DeepSeek Harness runtime{suffix}"
                         )
                     wait_timeout = remaining if wait_timeout is None else min(wait_timeout, remaining)
                 try:
-                    item = waiter.get(timeout=wait_timeout)
-                    if on_notification is not None and subscription is not None:
-                        subscription.drain(on_notification)
+                    item = pending.waiter.get(timeout=wait_timeout)
                     break
                 except queue.Empty:
                     continue
-        except BaseException:
-            with self._lock:
-                self._responses.pop(request_id, None)
-            if temp_subscription is not None:
-                temp_subscription.close()
-            raise
+            if on_notification is not None and subscription is not None:
+                subscription.drain(on_notification)
+            if isinstance(item, BaseException):
+                raise item
+            return item
         finally:
-            if temp_subscription is not None:
-                temp_subscription.close()
-        if isinstance(item, BaseException):
-            raise item
-        return item
+            self._discard_request(pending)
 
     def _write_message(self, message: JsonObject) -> None:
         proc = self._proc
@@ -675,8 +716,21 @@ class NotificationSubscription:
         self._closed = True
         self._client._unsubscribe_notifications(self._subscription_id)
 
+    def _cancel(self, error: BaseException) -> None:
+        self.close()
+        self._notifications.put(error)
+
     def next(self) -> Notification:
         item = self._notifications.get()
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    def _next_queued(self) -> Notification | None:
+        try:
+            item = self._notifications.get_nowait()
+        except queue.Empty:
+            return None
         if isinstance(item, BaseException):
             raise item
         return item

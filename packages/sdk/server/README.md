@@ -33,6 +33,10 @@ Set `initialize.approvalRequests` to `true` to send internal approvals as server
 
 The plugin publishes the `sdkSessionActivation` readiness marker once its reminder activation handler is installed; an SDK composition injects this marker into Schedule instead of the Web Session controller. Scheduled delivery uses this same SDK Session owner. Due startup reminders wait for successful SDK initialization, then resume with its provider, model, reasoning effort, and output limit. The client can resume a reminder-restored Session once; concurrent reminder and client restoration share one handle. Shutdown releases reminders waiting for initialization and drains accepted restorations.
 
+`session/query` is the unified text entry. Ordinary text retains its original content and uses the selected queue/steer operation; the default is supplied explicitly by the client. The SDK recognizes `/compact` and its registered Desktop alias, then reuses the native command path. `/compact extra`, unknown slash tokens and paths remain ordinary prompts. All other slash input, including registered commands not yet supported and UI names such as `/model`, `/file` and `/export`, keeps the existing ordinary-prompt behavior. If no compact command is composed, that input also remains ordinary text; a failure after compact has been selected never falls back to a prompt. Query does not change permissions. Inputs are text-only; `session/prompt` retains its existing content-block API.
+
+`session/command` accepts `{ sessionId, line }` and currently exposes `/compact` only. The full sdk profile already composes its native handler; profiles without that command reject the call. The server resolves its own live Agent and calls `commands.execute()` without queueing a prompt or waiting for idle. The command owns its model request, history replacement and checkpoint; an active Agent receives the native busy result. Shutdown cancels pending commands and drains SDK command waiters before releasing Agents. A timeout does not establish rollback, and clients must not retry automatically. See the [protocol](../protocol/README.md) for results and errors.
+
 `session/working-directory/get` accepts `{ sessionId }`; `session/working-directory/set` accepts `{ sessionId, path }`. Both return `{ cwd }` and create an unknown Session without starting a model turn. Reads recover missing directories through the working-directory service; changes preserve origin metadata and permissions, and reach the model through logged user context.
 
 ### Wiring
@@ -120,7 +124,7 @@ Read these pages when the plugin contract is not enough. They move from the wire
 
 #### What the model sees
 
-For each accepted `session/prompt`, text and durable content references enter one user message verbatim. Inline `SdkEncodedImageBlock` values are validated and committed through the composition's attachment store first, so the session log retains content-addressed image references rather than base64 bytes. This package adds no system-prompt prose or tool schema; those come from the other plugins in the composition.
+Ordinary `session/query` text and accepted `session/prompt` content enter a user message verbatim. Query delivery selects a queued turn or the next available step, without changing permissions. Inline `SdkEncodedImageBlock` values are validated and committed through the composition's attachment store first, so the session log retains content-addressed image references rather than base64 bytes. This package adds no system-prompt prose or tool schema; those come from the other plugins in the composition.
 
 #### Token effect
 
@@ -129,6 +133,20 @@ Data-dependent user-message tokens enter retained session history and are resent
 #### KV Cache effect
 
 Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV-cache entries.
+
+### Manual compaction
+
+#### What the model sees
+
+The command line and result stay outside model messages. The existing [compact command](../../compaction/command-compact/README.md#model-experience) issues the auxiliary summary request and replaces selected history with its logged checkpoint. It adds no ordinary turn.
+
+#### Token effect
+
+The compaction owner pays the summary request cost and reduces later history tokens; SDK framing adds none.
+
+#### KV Cache effect
+
+The replaced history changes the reusable prefix according to the native compactor. The SDK adds no separate invalidation.
 
 ## Known Limitations and Deferred Work
 

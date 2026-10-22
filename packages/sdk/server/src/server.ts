@@ -8,7 +8,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { resolve } from 'node:path'
 import { SdkUserQuestionBridge } from './user-questions.ts'
+import { queryCommand } from './query-input.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { admitEncodedImages, type EncodedImageAttachment, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, ReasoningEffortId, type ContentBlock, type LlmRuntime } from '@deepseek-ai/dsh-llm'
@@ -23,10 +25,14 @@ import type { SubagentRunEndInfo } from '@deepseek-ai/dsh-subagent'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import type {
   ApprovalRequestParams,
+  CommandExecution,
   InitializeParams,
   InitializeResult,
   JsonRpcTransportPeer,
   SessionEventNotification,
+  SessionCommandParams,
+  SessionQueryParams,
+  SessionQueryResult,
   SessionPromptParams,
   SessionPromptResult,
   SessionResumeParams,
@@ -94,6 +100,7 @@ export class HarnessSdkJsonRpcServer {
   private llmFiber: { dispose(): Promise<void> } | undefined
   private readonly sessions = new Map<string, SessionRecord>()
   private readonly sessionCreations = new Map<string, Promise<SessionRecord>>()
+  private readonly commandTasks = new Set<Promise<CommandExecution | undefined>>()
   private readonly disposers: (() => void)[] = []
   private shutdownTask: Promise<Record<string, never>> | undefined
   private shuttingDown = false
@@ -251,13 +258,19 @@ export class HarnessSdkJsonRpcServer {
    * @returns the durable message identity.
    */
   async prompt(params: SessionPromptParams): Promise<SessionPromptResult> {
+    return this.submitPrompt(params, 'queue')
+  }
+
+  private async submitPrompt(params: SessionPromptParams, delivery: 'queue' | 'steer'): Promise<SessionPromptResult> {
     if (!this.initialized) throw new Error('SDK server is not initialized')
     const rec = await this.getOrCreateSession(params.sessionId)
+    this.lifetime.signal.throwIfAborted()
     // An agent-loop-only reload disposes the loop's agents while this record
     // survives; a retained agent accepts followup() silently, so validate the
     // record against the live registry before delivery.
     this.assertLiveAgent(rec, params.sessionId)
     const content = await durablePromptContent(this.ctx, params.contentBlocks)
+    this.lifetime.signal.throwIfAborted()
     // Attachment admission crosses an async boundary where shutdown or an
     // agent-loop reload may detach the retained handle.
     this.assertLiveAgent(rec, params.sessionId)
@@ -265,8 +278,69 @@ export class HarnessSdkJsonRpcServer {
       content,
       source: { kind: 'user' },
     })
-    rec.handle.agent.followup(message)
+    if (delivery === 'steer') rec.handle.agent.steer(message)
+    else rec.handle.agent.followup(message)
     return { messageId: message.id }
+  }
+
+  /**
+   * Dispatch text as a Desktop-style input without changing Session permissions.
+   * @param params - text, receiving Session and ordinary-prompt delivery.
+   * @returns an enqueue receipt for text or the native command result for `/compact`.
+   * @throws on runtime failure; a recognized compact failure never falls back to a prompt.
+   */
+  async query(params: SessionQueryParams): Promise<SessionQueryResult> {
+    if (!this.initialized) throw new Error('SDK server is not initialized')
+    if (this.shuttingDown) throw new Error('SDK server is shutting down')
+    if (params.text.trim().startsWith('/')) {
+      const commands = this.ctx.get('commands')
+      if (commands !== undefined) {
+        const rec = await this.getOrCreateSession(params.sessionId)
+        this.lifetime.signal.throwIfAborted()
+        this.assertLiveAgent(rec, params.sessionId)
+        const line = queryCommand(params.text, commands.list(rec.handle.agent))
+        if (line !== undefined) {
+          return { kind: 'command', execution: await this.executeCommand({ sessionId: params.sessionId, line }) }
+        }
+      }
+    }
+    const receipt = await this.submitPrompt({
+      sessionId: params.sessionId,
+      contentBlocks: [{ type: 'text', text: params.text }],
+    }, params.delivery)
+    return { kind: 'prompt', ...receipt }
+  }
+
+  /**
+   * Execute `/compact` through the native command registry without enqueueing a prompt.
+   * @param params - target Session and complete command line.
+   * @returns the native handler result; command errors remain result values.
+   * @throws for unsupported input, unavailable commands, or runtime/transport failure.
+   */
+  async executeCommand(params: SessionCommandParams): Promise<CommandExecution> {
+    if (!this.initialized) throw new Error('SDK server is not initialized')
+    if (this.shuttingDown) throw new Error('SDK server is shutting down')
+    if (parseCommand(params.line)?.name !== 'compact') {
+      throw new TypeError('The SDK command endpoint supports only /compact')
+    }
+    const commands = this.ctx.get('commands')
+    if (commands === undefined) {
+      throw new Error('Commands are unavailable in this SDK profile')
+    }
+    const rec = await this.getOrCreateSession(params.sessionId)
+    this.lifetime.signal.throwIfAborted()
+    this.assertLiveAgent(rec, params.sessionId)
+    const task = commands.execute(rec.handle.agent, params.line, [], this.lifetime.signal)
+    this.commandTasks.add(task)
+    try {
+      const result = await task
+      if (result === undefined) {
+        throw new Error('/compact is unavailable in this SDK profile')
+      }
+      return result
+    } finally {
+      this.commandTasks.delete(task)
+    }
   }
 
   /**
@@ -385,6 +459,7 @@ export class HarnessSdkJsonRpcServer {
     this.initialization.resolve()
     const pendingCreations = [...this.sessionCreations.values()]
     await Promise.allSettled(pendingCreations)
+    await Promise.allSettled([...this.commandTasks])
     this.sessionCreations.clear()
     this.scheduledSessions.clear()
     const records = [...this.sessions.values()]
@@ -428,6 +503,23 @@ export class HarnessSdkJsonRpcServer {
         return this.initialize(params as unknown as InitializeParams)
       case 'session/prompt':
         return this.prompt(params as unknown as SessionPromptParams)
+      case 'session/query': {
+        if (typeof params?.sessionId !== 'string' || params.sessionId.length === 0
+          || typeof params.text !== 'string' || params.text.trim().length === 0
+          || (params.delivery !== 'queue' && params.delivery !== 'steer')
+          || Object.keys(params).some(key => key !== 'sessionId' && key !== 'text' && key !== 'delivery')) {
+          throw new TypeError('session/query requires only a non-empty sessionId, non-blank text and queue/steer delivery')
+        }
+        return this.query({ sessionId: brandString<SessionId>(params.sessionId), text: params.text, delivery: params.delivery })
+      }
+      case 'session/command': {
+        if (typeof params?.sessionId !== 'string' || params.sessionId.length === 0
+          || typeof params.line !== 'string'
+          || Object.keys(params).some(key => key !== 'sessionId' && key !== 'line')) {
+          throw new TypeError('session/command requires only a non-empty sessionId and a line string')
+        }
+        return this.executeCommand({ sessionId: brandString<SessionId>(params.sessionId), line: params.line })
+      }
       case 'session/resume': {
         const sessionId = params?.sessionId
         if (typeof sessionId !== 'string' || sessionId.length === 0) {

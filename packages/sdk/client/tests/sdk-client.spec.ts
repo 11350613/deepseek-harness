@@ -63,6 +63,52 @@ async function tempDir(prefix: string): Promise<string> {
 }
 
 describe('DeepSeekHarness', () => {
+  it('returns a command result without waiting for turn or idle notifications', async () => {
+    const harness = harnessWith()
+    await harness.start()
+    const session = harness.session('commands')
+    expect(await harness.client.executeCommand(session.id, ' /compact ')).toEqual({
+      commandId: 'command-1', result: { kind: 'success', text: ' /compact ' },
+    })
+    expect((await session.run('/compact')).finalResponse).toBe('hello from fake runtime')
+  })
+
+  it.each([
+    { kind: 'success' },
+    { kind: 'success', text: 'compacted', sourceEventSeq: 0 },
+    { kind: 'error', text: 'busy' },
+  ])('preserves the native command outcome %j', async (result) => {
+    const execution = { commandId: 'command-2', result }
+    const harness = harnessWith({ FAKE_COMMAND_RESULT: JSON.stringify(execution) })
+    await harness.start()
+    expect(await harness.client.executeCommand('commands', '/compact')).toEqual(execution)
+  })
+
+  it.each([
+    null,
+    {},
+    { commandId: '', result: { kind: 'success' } },
+    { commandId: 'c', result: { kind: 'unknown' } },
+    { commandId: 'c', result: { kind: 'success', text: 1 } },
+    { commandId: 'c', result: { kind: 'success', text: null } },
+    { commandId: 'c', result: { kind: 'success', sourceEventSeq: -1 } },
+    { commandId: 'c', result: { kind: 'success', sourceEventSeq: '1' } },
+    { commandId: 'c', result: { kind: 'success', sourceEventSeq: null } },
+    { commandId: 'c', result: { kind: 'success', sourceEventSeq: Number.MAX_SAFE_INTEGER + 1 } },
+    { commandId: 'c', result: { kind: 'error' } },
+    { commandId: 'c', result: { kind: 'error', text: '  ' } },
+  ])('rejects an invalid command response %j', async (result) => {
+    const harness = harnessWith({ FAKE_COMMAND_RESULT: JSON.stringify(result) })
+    await harness.start()
+    await expect(harness.client.executeCommand('commands', '/compact')).rejects.toThrow(SdkProtocolError)
+  })
+
+  it('propagates command rejection without submitting a prompt', async () => {
+    const harness = harnessWith({ FAKE_COMMAND_ERROR: '1', FAKE_HANG_PROMPT: '1' })
+    await harness.start()
+    await expect(harness.client.executeCommand('commands', '/plan')).rejects.toMatchObject({ code: -32603, message: 'command unavailable' })
+  })
+
   it('returns a restored handle that can run followups on the same identity', async () => {
     const harness = harnessWith()
     const session = await harness.resumeSession('saved-session')

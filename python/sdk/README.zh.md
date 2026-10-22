@@ -58,6 +58,17 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
     result = session.run("Continue the task.")
 ```
 
+<a id="query-and-response"></a>
+## 查询与接收
+
+调用 `session.query(text)` 发送文本，再迭代 `session.receive_response()` 观察结果。`query()` 发送后即返回 `None`，不等待运行时响应。运行时只将 `/compact` 拦截为命令；包括 `/plan` 和其他以斜杠开头的输入在内，其余文本仍作为普通提示词。此输入 API 只接受文本字符串。`delivery="queue"` 是默认值；`delivery="steer"` 将普通提示词交给下一个 step。命令执行时机仍由命令决定。
+
+`receive_response()` 按发送顺序领取下一次 query。它先等待路由响应，再逐个产出 `Notification`，最后产出一个终态值：普通提示词从收件箱回执到 idle 区间的 `RunResult`，或命令处理结束后的 `CommandExecution`。通知可以在开始接收前积累。不同接收器可以并行观察各自的 query，也可以在一个接收器等待期间发送另一个 `query()`。关闭未完成的迭代器只释放它自己的本地观察资源，不取消或回滚运行时操作。终态值产出前会释放资源。
+
+`CommandExecution` 包含 `command_id` 和以 `kind` 区分的 `result`。成功结果可以包含 `text` 和 `source_event_seq`；错误结果包含 `text`。处理器错误返回 `kind="error"`；路由、协议和传输失败在接收时抛出。发送失败从 `query()` 抛出。`request_timeout_seconds` 限制路由响应的等待时间，不限制后续提示词活动；已经到达的响应在期限过后仍可接收。
+
+完整 `sdk` profile 提供被拦截的 `/compact` 命令。它可能发起辅助模型请求，完成时不要求普通轮次或 idle 通知；空历史可以不生成摘要而成功返回。默认 `sdk-minimal` profile 不提供命令执行能力。`session.run("/compact")` 仍按普通提示词文本处理。底层阻塞式 `HarnessClient.session_command(session_id, line)` 仍可用于严格命令执行，并拒绝 `/compact` 之外的命令名。另见[完整 SDK 压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
+
 <a id="client-approvals"></a>
 ## 客户端审批
 

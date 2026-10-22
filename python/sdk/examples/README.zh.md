@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-基于唯一应用启动器 `dsh --profile sdk-minimal` 的可运行 Python SDK 示例。Python 客户端负责 JSON-RPC stdio；profile 负责 agent（智能体）组合、持久化、执行策略与插件。
+基于唯一应用启动器 `dsh` 的可运行 Python SDK 示例。Python 客户端负责 JSON-RPC stdio；所选 profile 负责 agent（智能体）组合、持久化、执行策略与插件。
 
 ## 运行极简 agent
 
@@ -28,6 +28,19 @@ python python/sdk/examples/minimal.py \
 该组合包不包含 `dsh-base`，因此每一个新增配置项都是显式 profile 变更。运行时上下文、文本文件工具、本地指令发现、设置、托管凭据、遥测、Web 工具、subagent 与完整默认工具清单均不存在。配置树保留 SDK 启动与 JSON-RPC 服务、一个由环境配置的 DeepSeek 适配器、本地执行和 JSONL 持久化。[自动上下文压缩](../../../packages/bundle/sdk-minimal/README.zh.md#model-experience)通过额外模型请求生成较早历史的摘要，同时保留完整日志。SDK 提示词文本不会执行斜杠命令。
 
 持久 PTY 可以修改运行时进程可访问的任何路径，因此只应在一次性 checkout 或容器中使用。
+
+<a id="compact-a-full-sdk-session"></a>
+## 压缩完整 SDK Session
+
+[压缩示例](compact.py)使用完整 `sdk` profile。它将所选工作区的 `README.md` 读入 `Session.query()` 输入，通过同一方法发送 `/compact`，随后使用保留的上下文继续提问。每次 query 都配对调用 `Session.receive_response()`。模型凭据和 `DSH_MODEL` 默认值与极简示例一致，并且要求显式指定 home：
+
+```sh
+python python/sdk/examples/compact.py \
+  --dsh-home /absolute/path/to/compact-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace
+```
+
+脚本消费通知，并将命令 id 和结果与模型回复分开打印。轮次或命令失败时，示例会停止。完成和错误行为见[查询与接收](../README.zh.md#query-and-response)；`minimal.py` 保留其 `run()` 入口，不启用命令执行。
 
 ## 添加插件
 

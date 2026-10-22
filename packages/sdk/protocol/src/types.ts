@@ -9,7 +9,8 @@
  */
 
 import type { ContentBlock, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { CommandExecution } from '@deepseek-ai/dsh-commands/types'
+import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { SubagentStopReason } from '@deepseek-ai/dsh-subagent'
 import type { AskUserQuestionAnswer, AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions/types'
 
@@ -88,6 +89,32 @@ export interface SessionPromptResult {
   /** Identity of the queued user message. */
   messageId: string
 }
+
+/** Strict command invocation; the SDK currently supports only `/compact`. */
+export interface SessionCommandParams {
+  /** SDK-owned Session identity; an unknown id creates its Agent. */
+  sessionId: SessionId
+  /** Complete command line; invalid arguments are handled by the native command. */
+  line: string
+}
+
+/** Text submitted through the SDK's ordinary-input and slash-command entry. */
+export interface SessionQueryParams {
+  /** SDK-owned Session identity; an unknown id creates its Agent. */
+  sessionId: SessionId
+  /** Non-blank input text, retained verbatim when it is an ordinary prompt. */
+  text: string
+  /** Ordinary prompt delivery; commands keep their native execution timing. */
+  delivery: 'queue' | 'steer'
+}
+
+/** A prompt's enqueue receipt or a settled native command; neither means all Session work ended. */
+export type SessionQueryResult =
+  | ({ kind: 'prompt' } & SessionPromptResult)
+  | { kind: 'command'; execution: CommandExecution }
+
+/** Native command outcome, including its logged lifecycle identity. */
+export type { CommandExecution }
 
 /** Restore a persisted session without enqueueing a prompt. */
 export interface SessionResumeParams {
@@ -177,6 +204,8 @@ export interface HarnessSdkNotificationMap {
 export interface HarnessSdkRequestMap {
   'initialize': { params: InitializeParams; result: InitializeResult }
   'session/prompt': { params: SessionPromptParams; result: SessionPromptResult }
+  'session/command': { params: SessionCommandParams; result: CommandExecution }
+  'session/query': { params: SessionQueryParams; result: SessionQueryResult }
   'session/resume': { params: SessionResumeParams; result: Record<string, never> }
   'session/wait': { params: SessionWaitParams; result: Record<string, never> }
   'session/working-directory/get': { params: SessionWorkingDirectoryParams; result: SessionWorkingDirectoryResult }

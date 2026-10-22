@@ -58,6 +58,17 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
     result = session.run("Continue the task.")
 ```
 
+<a id="query-and-response"></a>
+## Query and response
+
+Call `session.query(text)` to send text, then iterate `session.receive_response()` to observe its result. `query()` returns `None` after sending, without waiting for the runtime's response. The runtime intercepts only `/compact` as a command; all other text, including `/plan` and other slash-prefixed input, remains an ordinary prompt. This input API accepts text strings only. `delivery="queue"` is the default; `delivery="steer"` directs an ordinary prompt to the next step. Command timing remains owned by the command.
+
+`receive_response()` claims the next query in send order. It first waits for the routing response, then yields `Notification` objects followed by one terminal value: `RunResult` for the prompt's inbox-receipt-to-idle interval, or `CommandExecution` after the command settles. Notifications can accumulate before receiving begins. Separate receivers can observe their queries concurrently, and another `query()` can be sent while a receiver waits. Close an unfinished iterator to release only its local observation; this does not cancel or roll back runtime work. Resources are released before yielding the terminal value.
+
+`CommandExecution` contains `command_id` and a `result` discriminated by `kind`. Success may include `text` and `source_event_seq`; an error includes `text`. Handler errors return `kind="error"`; routing, protocol and transport failures raise during receiving. Sending failures raise from `query()`. `request_timeout_seconds` bounds waiting for the routing response, not later prompt activity; an already-arrived response remains receivable after that deadline.
+
+The full `sdk` profile provides the intercepted `/compact` command. It can make an auxiliary model request and completes without requiring a normal turn or idle notification; empty history can succeed without a summary. The default `sdk-minimal` profile does not provide command execution. `session.run("/compact")` remains ordinary prompt text. The lower-level blocking `HarnessClient.session_command(session_id, line)` remains available for strict command execution and rejects command names other than `/compact`. See the [full SDK compaction example](examples/README.md#compact-a-full-sdk-session).
+
 <a id="client-approvals"></a>
 ## Client approvals
 

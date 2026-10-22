@@ -33,6 +33,10 @@ kind: "package-reference"
 
 插件在注册提醒激活处理方后发布 `sdkSessionActivation` 就绪标记；SDK 组合让 Schedule 依赖此标记，而非 Web Session controller。定时提醒也通过同一个 SDK Session 所有者投递。启动时已到期的提醒等待 SDK 成功初始化，再使用初始化指定的提供方、模型、推理强度和输出上限恢复会话。客户端可以首次接管提醒恢复的 Session；并发的提醒与客户端恢复共用一个 handle。关闭时释放等待初始化的提醒，并等待已经接纳的恢复完成。
 
+`session/query` 是统一文本入口。普通文本保留原文，使用选定 queue/steer 操作，默认值由客户端显式发送。SDK 识别 `/compact` 及绑定到其当前定义的 Desktop 别名，再复用原生命令路径。`/compact extra`、未知 slash token 和路径仍为普通 prompt。其他 slash 输入，包括已注册但尚不支持的命令及 `/model`、`/file`、`/export` 等 UI 名称，保持原有普通 prompt 行为。未组成 compact 命令时，该输入也保留为普通文本；一旦选中 compact，执行失败不会再回退为 prompt。Query 不改变权限。此入口仅接受文本，`session/prompt` 保留已有内容块 API。
+
+`session/command` 接受 `{ sessionId, line }`，目前仅开放 `/compact`。完整 sdk profile 已组成其原生 handler，缺少该命令的 profile 会拒绝调用。服务端解析自己拥有的存活 Agent，并调用 `commands.execute()`，不排入普通 prompt，也不等待 idle。模型请求、历史替换和 checkpoint 由命令所有者处理；活动 Agent 返回原生 busy 结果。Shutdown 取消待决命令，在释放 Agent 前排空 SDK 命令等待者。超时不代表回滚，客户端不能自动重试。结果和错误见[协议](../protocol/README.zh.md)。
+
 `session/working-directory/get` 接收 `{ sessionId }`；`session/working-directory/set` 接收 `{ sessionId, path }`。两者均返回 `{ cwd }`，并可创建未知 Session，而不启动模型轮次。读取通过工作目录服务恢复缺失目录；修改保留起始目录元数据与权限，并通过已记录的用户上下文告知模型。
 
 ### 组装
@@ -120,7 +124,7 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 
 #### 模型看到什么
 
-对于每个已接受的 `session/prompt`，文本和持久内容引用会原样进入一条用户消息。内联 `SdkEncodedImageBlock` 会先通过组合中的附件存储完成校验与提交，因此会话日志保留内容寻址的图片引用而不是 base64 字节。此包不会添加系统提示词文本或工具 schema；这些内容来自组合中的其他插件。
+普通 `session/query` 文本和已接受的 `session/prompt` 内容原样进入用户消息。Query 递送选择排队的新 turn 或下个可用 step，不改变权限。内联 `SdkEncodedImageBlock` 会先通过组合中的附件存储完成校验与提交，因此会话日志保留内容寻址的图片引用而不是 base64 字节。此包不会添加系统提示词文本或工具 schema；这些内容来自组合中的其他插件。
 
 #### Token 影响
 
@@ -129,6 +133,20 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 #### KV Cache 影响
 
 仅追加；新可见内容位于可复用请求前缀之后，不会使现有 KV Cache 条目失效。
+
+### 手动压缩
+
+#### 模型看到什么
+
+命令行和结果不进入模型消息。现有[compact 命令](../../compaction/command-compact/README.zh.md#model-experience)发起辅助摘要请求，并将选定历史替换为已记录的 checkpoint，不增加普通 turn。
+
+#### Token 影响
+
+摘要请求成本和后续历史 token 减少由压缩所有者决定，SDK 分帧不增加模型 token。
+
+#### KV Cache 影响
+
+历史替换按原生压缩器规则改变可复用前缀，SDK 不增加独立失效。
 
 ## 已知限制与延期工作
 

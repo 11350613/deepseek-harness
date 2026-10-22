@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import uuid
+import threading
+from collections import deque
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
-from .client import HarnessClient, HarnessConfig, UserQuestionHandler
-from .errors import SdkProtocolError
-from .models import JsonObject, Notification
+from .client import HarnessClient, HarnessConfig, NotificationSubscription, UserQuestionHandler, _PendingRequest
+from .errors import SdkProtocolError, TransportClosedError
+from .models import CommandExecution, JsonObject, Notification
 
 
 @dataclass(slots=True)
@@ -46,6 +49,113 @@ class RunResult:
     finish_reason: str | None
     events: list[JsonObject]
     notifications: list[Notification]
+
+
+class _QueryResponseIterator(Iterator[Notification | RunResult | CommandExecution]):
+    def __init__(
+        self, client: HarnessClient, session_id: str, request: _PendingRequest,
+        subscription: NotificationSubscription,
+    ) -> None:
+        self._client = client
+        self._session_id = session_id
+        self._request = request
+        self._subscription = subscription
+        self._lock = threading.Lock()
+        self._closed = False
+        self._released = False
+        self._routed = False
+        self._received = False
+        self._message_id = ""
+        self._notifications: list[Notification] = []
+        self._events: list[JsonObject] = []
+        self._buffer: deque[Notification] = deque()
+        self._terminal: RunResult | CommandExecution | None = None
+
+    def _release(self, error: BaseException | None = None) -> None:
+        with self._lock:
+            if self._released:
+                return
+            self._released = True
+        self._client._discard_request(self._request, error)
+        if error is None:
+            self._subscription.close()
+        else:
+            self._subscription._cancel(error)
+
+    def close(self) -> None:
+        """Stop observing this query; the runtime operation is not cancelled."""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        self._release(TransportClosedError("query response iterator closed"))
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise StopIteration
+
+    def __next__(self) -> Notification | RunResult | CommandExecution:
+        try:
+            self._ensure_open()
+            if not self._routed:
+                response = self._client._wait_request(self._request)
+                self._ensure_open()
+                self._routed = True
+                if not isinstance(response, dict):
+                    raise SdkProtocolError("session/query response must be a JSON object")
+                if response.get("kind") == "command":
+                    self._terminal = CommandExecution.model_validate(response.get("execution"))
+                    self._release()
+                    while True:
+                        try:
+                            notification = self._subscription._next_queued()
+                        except TransportClosedError:
+                            break
+                        if notification is None:
+                            break
+                        self._buffer.append(notification)
+                        if _is_command_done(notification, self._session_id, self._terminal.command_id):
+                            break
+                elif response.get("kind") == "prompt" and isinstance(response.get("messageId"), str) and response["messageId"]:
+                    self._message_id = response["messageId"]
+                else:
+                    raise SdkProtocolError("session/query requires a prompt messageId or command execution result")
+            self._ensure_open()
+            if self._buffer:
+                return self._buffer.popleft()
+            if self._terminal is not None:
+                terminal = self._terminal
+                self._terminal = None
+                self._release()
+                self._closed = True
+                return terminal
+            while True:
+                notification = self._subscription.next()
+                self._ensure_open()
+                if not self._received:
+                    if not _is_inbox_receipt(notification, self._session_id, self._message_id):
+                        continue
+                    self._received = True
+                self._notifications.append(notification)
+                if notification.method == "session.event" and notification.payload.get("sessionId") == self._session_id:
+                    event = notification.payload.get("event")
+                    if isinstance(event, dict):
+                        self._events.append(event)
+                if (notification.method == "session.status"
+                    and notification.payload.get("sessionId") == self._session_id
+                    and notification.payload.get("status") == "idle"):
+                    self._terminal = RunResult(
+                        session_id=self._session_id, final_response=final_response(self._events),
+                        finish_reason=finish_reason(self._events), events=self._events, notifications=self._notifications,
+                    )
+                    self._release()
+                return notification
+        except BaseException as error:
+            locally_closed = self._closed
+            self.close()
+            if locally_closed and isinstance(error, (TransportClosedError, StopIteration)):
+                raise StopIteration
+            raise
 
 
 class DeepSeekHarness:
@@ -148,6 +258,41 @@ class Session:
     def __init__(self, harness: DeepSeekHarness, session_id: str) -> None:
         self.harness = harness
         self.id = session_id
+        self._queries: deque[_QueryResponseIterator] = deque()
+        self._query_lock = threading.Lock()
+
+    def query(self, text: str, *, delivery: Literal["queue", "steer"] = "queue") -> None:
+        """Send text for runtime prompt or command routing without waiting for the response.
+
+        Pair each call with receive_response(). Delivery selects where ordinary
+        prompts enter the inbox; commands retain their native execution timing.
+        """
+        if not isinstance(text, str):
+            raise TypeError("query text must be a string")
+        if delivery not in ("queue", "steer"):
+            raise ValueError("query delivery must be queue or steer")
+        self.harness.start()
+        client = self.harness.client
+        with self._query_lock:
+            subscription = client.subscribe_session_notifications(self.id)
+            try:
+                request = client._begin_request("session/query", {"sessionId": self.id, "text": text, "delivery": delivery})
+            except BaseException:
+                subscription.close()
+                raise
+            self._queries.append(_QueryResponseIterator(client, self.id, request, subscription))
+
+    def receive_response(self) -> _QueryResponseIterator:
+        """Claim the next query in send order and iterate its notifications and terminal result.
+
+        Prompts collect the inbox-receipt-to-idle interval used by run(); commands
+        finish on their RPC result. Close an unfinished iterator to release its
+        local observation resources without cancelling the runtime operation.
+        """
+        with self._query_lock:
+            if not self._queries:
+                raise RuntimeError("receive_response requires a preceding query")
+            return self._queries.popleft()
 
     def get_working_directory(self) -> str:
         """Read the effective directory, recovering a missing directory to the Session origin."""
@@ -223,6 +368,16 @@ def _is_inbox_receipt(notification: Notification, session_id: str, message_id: s
     return isinstance(inserted, list) and any(
         isinstance(message, dict) and message.get("id") == message_id for message in inserted
     )
+
+
+def _is_command_done(notification: Notification, session_id: str, command_id: str) -> bool:
+    if notification.method != "session.event" or notification.payload.get("sessionId") != session_id:
+        return False
+    event = notification.payload.get("event")
+    if not isinstance(event, dict) or event.get("type") != "command/done":
+        return False
+    data = event.get("data")
+    return isinstance(data, dict) and data.get("commandId") == command_id
 
 
 def normalize_input(input: str | list[JsonObject]) -> list[JsonObject]:

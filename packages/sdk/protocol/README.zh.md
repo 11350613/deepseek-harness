@@ -41,6 +41,8 @@ kind: "package-library"
 |---|---|---|
 | client→server | `initialize` | `InitializeParams` → `InitializeResult` |
 | client→server | `session/prompt` | `SessionPromptParams` → `SessionPromptResult`（持久入队回执） |
+| client→server | `session/query` | `SessionQueryParams` → `SessionQueryResult` |
+| client→server | `session/command` | `SessionCommandParams` → `CommandExecution` |
 | client→server | `session/resume` | `SessionResumeParams` → `{}` |
 | client→server | `session/wait` | `SessionWaitParams` → `{}` |
 | 客户端→服务端 | `session/working-directory/get` | `SessionWorkingDirectoryParams` → `SessionWorkingDirectoryResult` |
@@ -57,6 +59,10 @@ kind: "package-library"
 `HarnessSdkRequestMap`、`HarnessSdkClientRequestMap`、`HarnessSdkHostRequestMap` 与 `HarnessSdkNotificationMap` 按方法名索引这些结构；包根与传输一起导出它们。
 
 `session/wait` 接受已有 SDK 会话的 `{ sessionId }`，在根 Agent 持续空闲且活跃的受管理后代工作结束后返回 `{}`。带有停放输入的空闲后代保持驻留，不阻塞这次等待。未知 id，以及没有后续终止事件记录的 Agent 运行时错误，都会使请求失败。等待期间提交的通知在同一传输上先于响应到达；原始 `session.status` 转换仍表示整个 Agent 的状态。
+
+`session/query` 接受且仅接受 `{ sessionId, text, delivery }`，text 不能全为空白，delivery 为 `queue` 或 `steer`。普通输入返回 `{ kind: "prompt", messageId }`，受支持命令结束后返回 `{ kind: "command", execution }`。Prompt 回执不是模型结果，命令完成也不要求 inbox 回执或 idle 通知。识别规则及受支持命令由 [SDK 服务端](../server/README.zh.md)定义。
+
+`session/command` 在初始化后接受且仅接受 `{ sessionId, line }`，通过已组成的原生命令注册器执行 `/compact`。Handler 结束后返回原生 `CommandExecution`，业务失败以 `result.kind: "error"` 返回；命令不可用、不受支持或请求格式错误时返回 JSON-RPC 错误。不回退为普通 prompt，也不接受附件。命令生命周期通知在响应前到达，不要求 inbox 回执或普通 turn。`session/prompt` 保持不变。
 
 `session/resume` 接受非空的持久化 `{ sessionId }`，恢复该会话后返回 `{}`。它要求先完成初始化并使用原持久化存储，不发送新输入；会话缺失、不可读、不兼容或被占用时，请求失败且不创建替代会话。历史事件保留在存储日志中，通知只报告新提交的事件。
 

@@ -6,7 +6,7 @@
  */
 
 import type { ContentBlock, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { SdkPromptContentBlock, SdkUserQuestionAnswer, SdkUserQuestionRequest } from '@deepseek-ai/dsh-sdk-protocol'
+import type { CommandExecution, SdkPromptContentBlock, SdkUserQuestionAnswer, SdkUserQuestionRequest } from '@deepseek-ai/dsh-sdk-protocol'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
 /** One server-to-client notification as received off the wire. */
@@ -82,7 +82,11 @@ export interface RunResult {
   notifications: HarnessNotification[]
 }
 
+/** One query observation: notifications followed by a final activity or native command result. */
+export type QueryMessage = HarnessNotification | RunResult | CommandExecution
+
 /** Re-exported content-block alias so SDK callers need no extra import. */
 export type { ContentBlock }
+export type { CommandExecution }
 export type { SdkPromptContentBlock }
 export type { SdkUserQuestionAnswer, SdkUserQuestionRequest }

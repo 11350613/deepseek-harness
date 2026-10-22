@@ -50,6 +50,8 @@
  * - `FAKE_STDERR_NO_NEWLINE`: write this to stderr WITHOUT a newline (buffer-flush probe).
  * - `FAKE_APPROVAL`: send one server approval request after initialization and echo its response as a notification.
  * - `FAKE_RECORD_INIT`: append each `initialize` params JSON to this file (handshake probe).
+ * - `FAKE_COMMAND_RESULT`: command response JSON; omission echoes the requested line.
+ * - `FAKE_COMMAND_ERROR`: reject a command with a JSON-RPC error.
  */
 
 import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
@@ -258,7 +260,7 @@ reader.on('line', (line) => {
     return
   }
   if (frame.method === undefined || frame.id === undefined) return
-  const respond = (result: object): void => { write({ jsonrpc: '2.0', id: frame.id, result }) }
+  const respond = (result: unknown): void => { write({ jsonrpc: '2.0', id: frame.id, result }) }
   switch (frame.method) {
     case 'initialize':
       if (typeof frame.params?.cwd === 'string') originCwd = frame.params.cwd
@@ -315,6 +317,17 @@ reader.on('line', (line) => {
         : previous
       workingDirectories.set(sessionId, cwd)
       respond({ cwd })
+      return
+    }
+    case 'session/command': {
+      if (env.FAKE_COMMAND_ERROR !== undefined) {
+        write({ jsonrpc: '2.0', id: frame.id, error: { code: -32603, message: 'command unavailable' } })
+      } else {
+        const result: unknown = env.FAKE_COMMAND_RESULT === undefined
+          ? { commandId: 'command-1', result: { kind: 'success', text: frame.params?.line } }
+          : JSON.parse(env.FAKE_COMMAND_RESULT)
+        respond(result)
+      }
       return
     }
     case 'session/prompt': {

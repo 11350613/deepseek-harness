@@ -41,6 +41,8 @@ Both wire ends share one method set: client-to-server requests, opt-in server-to
 |---|---|---|
 | client→server | `initialize` | `InitializeParams` → `InitializeResult` |
 | client→server | `session/prompt` | `SessionPromptParams` → `SessionPromptResult` (durable enqueue receipt) |
+| client→server | `session/query` | `SessionQueryParams` → `SessionQueryResult` |
+| client→server | `session/command` | `SessionCommandParams` → `CommandExecution` |
 | client→server | `session/resume` | `SessionResumeParams` → `{}` |
 | client→server | `session/wait` | `SessionWaitParams` → `{}` |
 | client→server | `session/working-directory/get` | `SessionWorkingDirectoryParams` → `SessionWorkingDirectoryResult` |
@@ -57,6 +59,10 @@ Both wire ends share one method set: client-to-server requests, opt-in server-to
 `HarnessSdkRequestMap`, `HarnessSdkClientRequestMap`, `HarnessSdkHostRequestMap`, and `HarnessSdkNotificationMap` index these shapes by method name; the package root exports them together with the transport.
 
 `session/wait` accepts `{ sessionId }` for an existing SDK-owned session and returns `{}` after the root stays idle and progressing managed descendant work finishes. Idle descendants with parked input remain resident without blocking this wait. Unknown ids and live Agent failures without a newer committed terminal are rejected. Notifications committed during the wait precede its response on the same transport; raw `session.status` transitions retain their whole-agent meaning.
+
+`session/query` accepts exactly `{ sessionId, text, delivery }`, where text is non-blank and delivery is `queue` or `steer`. The runtime replies with `{ kind: "prompt", messageId }` for an ordinary input, or `{ kind: "command", execution }` after a supported command settles. A prompt receipt is not a model result; command completion does not require an inbox receipt or idle notification. Recognition and the supported command set belong to the [SDK server](../server/README.md).
+
+`session/command` accepts exactly `{ sessionId, line }` after initialization and executes only `/compact` through the composed native command registry. It returns the native `CommandExecution` after the handler settles, including business failures as `result.kind: "error"`; unavailable or unsupported commands and malformed requests reject with a JSON-RPC error. There is no ordinary-prompt fallback or attachment input. Command lifecycle notifications precede the response; no inbox receipt or ordinary turn is required. `session/prompt` remains unchanged.
 
 `session/resume` accepts a non-empty persisted `{ sessionId }` and returns `{}` after restoring that exact session. It requires initialization and the original persistence store, sends no new input, and rejects missing, unreadable, incompatible, or occupied sessions without creating a replacement. Historical events remain in the stored log; notifications report newly committed events.
 

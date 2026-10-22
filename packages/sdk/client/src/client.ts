@@ -16,12 +16,17 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import {
   JsonRpcLineTransport,
   JsonRpcResponseError,
+  type CommandExecution,
   type InitializeParams,
   type InitializeResult,
   type SessionPromptParams,
+  type SessionCommandParams,
+  type SessionQueryParams,
+  type SessionQueryResult,
   type SdkPromptContentBlock,
   type SdkUserQuestionRequest,
 } from '@deepseek-ai/dsh-sdk-protocol'
+import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { disposeRuntimeProcess } from './dispose.ts'
 import { resolveDshLaunch, type RuntimeProcessOptions } from './launch.ts'
 import type { HarnessClientOptions, HarnessNotification, NotificationFilter } from './types.ts'
@@ -357,6 +362,46 @@ export class HarnessClient {
   }
 
   /**
+   * Execute a strict command without waiting for an inbox receipt or Agent idle.
+   * @param sessionId - target Session; an unknown id creates it.
+   * @param line - complete command line; currently only `/compact` is supported.
+   * @returns the native command result, including a business error when the handler refuses it.
+   * @throws on protocol rejection, malformed response, timeout or transport loss; never retries.
+   */
+  async executeCommand(sessionId: string, line: string): Promise<CommandExecution> {
+    const params: SessionCommandParams = { sessionId: SessionId(sessionId), line }
+    const value = await this.request('session/command', { ...params })
+    return commandExecution(value, 'session/command')
+  }
+
+  /**
+   * Send text for runtime prompt-or-command routing and await its receipt.
+   * @param sessionId - target Session; an unknown id creates it.
+   * @param text - complete input text, without client-side command interpretation.
+   * @param delivery - ordinary prompt delivery; commands retain their own admission rules.
+   * @param signal - abandons this client's wait without cancelling runtime work.
+   * @returns the prompt receipt or native command execution.
+   */
+  async query(
+    sessionId: string,
+    text: string,
+    delivery: SessionQueryParams['delivery'],
+    signal?: AbortSignal,
+  ): Promise<SessionQueryResult> {
+    const params: SessionQueryParams = { sessionId: SessionId(sessionId), text, delivery }
+    const value = await this.request('session/query', params, undefined, signal)
+    if (isRecord(value)) {
+      if (value.kind === 'prompt' && typeof value.messageId === 'string' && value.messageId.length > 0) {
+        return { kind: 'prompt', messageId: value.messageId }
+      }
+      if (value.kind === 'command') {
+        return { kind: 'command', execution: commandExecution(value.execution, 'session/query') }
+      }
+    }
+    throw new SdkProtocolError(`session/query returned an invalid routing result: ${JSON.stringify(value)}`)
+  }
+
+  /**
    * Restore persisted history without sending a prompt; failures propagate without creating a session.
    * @param sessionId - persisted identity in this runtime's configured persistence store.
    * @returns after the session is ready for prompts.
@@ -397,11 +442,13 @@ export class HarnessClient {
    * @param method - the wire method name.
    * @param params - the params object; omitted params send `{}`.
    * @param timeoutMs - per-call override of {@link HarnessClientOptions.requestTimeoutMs}.
+   * @param signal - abandon only this local request wait; no cancellation is sent to the runtime.
    * @returns the raw result; rejects with {@link JsonRpcResponseError} on a
    * protocol error response, {@link RequestTimeoutError} on timeout, and
    * {@link TransportClosedError} when the runtime is gone.
    */
-  async request(method: string, params?: object, timeoutMs?: number): Promise<unknown> {
+  async request(method: string, params?: object, timeoutMs?: number, signal?: AbortSignal): Promise<unknown> {
+    signal?.throwIfAborted()
     this.start()
     // A dead runtime cannot answer; fail with process context instead of
     // writing into a destroyed pipe and hanging until the timeout.
@@ -414,7 +461,7 @@ export class HarnessClient {
     if (transport === undefined) throw new TransportClosedError('DeepSeek Harness runtime is not running')
     const timeout = timeoutMs ?? this.runtime.requestTimeoutMs
     try {
-      if (timeout === undefined) return await transport.request(method, params ?? {})
+      if (timeout === undefined) return await transport.request(method, params ?? {}, signal)
       // The abort signal makes the timeout an abandonment: the transport drops
       // its pending entry, so repeated bounded requests against a hung method
       // retain no per-call state (the server-side work still runs to close).
@@ -424,12 +471,13 @@ export class HarnessClient {
         abandon.abort(new RequestTimeoutError(`${method} timed out after ${timeout}ms waiting for ${this.runtime.description}${stderr}`))
       }, timeout)
       try {
-        return await transport.request(method, params ?? {}, abandon.signal)
+        return await transport.request(method, params ?? {}, signal === undefined
+          ? abandon.signal : AbortSignal.any([signal, abandon.signal]))
       } finally {
         clearTimeout(timer)
       }
     } catch (error) {
-      if (error instanceof JsonRpcResponseError || error instanceof RequestTimeoutError) throw error
+      if (error instanceof JsonRpcResponseError || error instanceof RequestTimeoutError || signal?.aborted) throw error
       // Transport-level failures gain process context: exit code + stderr tail.
       await this.settleStreams()
       throw this.closedError(errorMessage(error))
@@ -583,6 +631,27 @@ export function createProcessHarnessClient(options: RuntimeProcessOptions): Harn
  */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Decode the native command result shared by strict execution and unified input. */
+function commandExecution(value: unknown, method: string): CommandExecution {
+  if (isRecord(value) && typeof value.commandId === 'string' && value.commandId.length > 0 && isRecord(value.result)) {
+    const commandId = value.commandId as CommandExecution['commandId']
+    const { kind, text, sourceEventSeq } = value.result
+    if (kind === 'success' && (text === undefined || typeof text === 'string')
+      && (sourceEventSeq === undefined || (typeof sourceEventSeq === 'number'
+        && Number.isSafeInteger(sourceEventSeq) && sourceEventSeq >= 0))) {
+      return { commandId, result: {
+        kind,
+        ...text === undefined ? {} : { text },
+        ...sourceEventSeq === undefined ? {} : { sourceEventSeq: SessionSeq(sourceEventSeq) },
+      } }
+    }
+    if (kind === 'error' && typeof text === 'string' && text.trim().length > 0) {
+      return { commandId, result: { kind, text } }
+    }
+  }
+  throw new SdkProtocolError(`${method} returned an invalid command result: ${JSON.stringify(value)}`)
 }
 
 /** The message of a thrown value (the transport only throws `Error`s; `String` covers the rest). */

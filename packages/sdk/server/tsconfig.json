@@ -46,6 +46,9 @@
     },
     {
       "path": "../../interaction/user-approval"
+    },
+    {
+      "path": "../../interaction/commands"
     }
   ]
 }

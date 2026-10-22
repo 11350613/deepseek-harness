@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Runnable Python SDK example over the sole application launcher, `dsh --profile sdk-minimal`. The Python client owns JSON-RPC stdio; the profile owns the agent composition, persistence, execution policy, and plugins.
+Runnable Python SDK examples over the sole application launcher, `dsh`. The Python client owns JSON-RPC stdio; the selected profile owns the agent composition, persistence, execution policy, and plugins.
 
 ## Run the minimal agent
 
@@ -28,6 +28,19 @@ The shipped [`@deepseek-ai/dsh-sdk-minimal` bundle](../../../packages/bundle/sdk
 The bundle does not include `dsh-base`, so every additional row is an explicit profile change. Runtime context, text file tools, local instruction discovery, settings, managed credentials, telemetry, Web tools, subagents, and the full default tool roster are absent. The tree retains SDK startup and JSON-RPC serving, one environment-configured DeepSeek adapter, local execution, and JSONL persistence. [Automatic context compaction](../../../packages/bundle/sdk-minimal/README.md#model-experience) summarizes older history through an additional model request while preserving the complete log. SDK prompt text does not execute slash commands.
 
 The persistent PTY can modify any path available to the runtime process, so use a disposable checkout or container.
+
+<a id="compact-a-full-sdk-session"></a>
+## Compact a full SDK Session
+
+The [compaction example](compact.py) uses the full `sdk` profile. It reads `README.md` from the selected workspace into a `Session.query()` prompt, sends `/compact` through the same method, then asks a follow-up using the retained context. Each query is paired with `Session.receive_response()`. It uses the same model credentials and `DSH_MODEL` default as the minimal example, and requires an explicit home:
+
+```sh
+python python/sdk/examples/compact.py \
+  --dsh-home /absolute/path/to/compact-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace
+```
+
+The script consumes notifications and prints the command id and outcome separately from the model's responses. A failed turn or command stops the example. See [Query and response](../README.md#query-and-response) for completion and error behavior; `minimal.py` retains its `run()` entry and does not enable command execution.
 
 ## Add plugins
 

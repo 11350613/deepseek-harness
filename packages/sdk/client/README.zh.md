@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-`dsh-sdk-client` 让 TypeScript 程序通过 stdio JSON-RPC 启动并驱动完整的 DeepSeek Harness 运行时。使用 `DeepSeekHarness` 可打开会话、发送文本或图像提示词、收集事件与通知流，并在运行时进入 idle 后取得最后提交的助手响应；使用 `HarnessClient` 可直接发送协议请求和订阅通知。调用方可以提供 `dshBin`；否则客户端解析同版本的 `@deepseek-ai/dsh` 可执行文件。客户端跨多次运行持有子进程，公开类型化的传输与协议错误，并在 `close()` 或 `await using` 时回收进程。它适用于调用方能够选择运行时 profile 和启动设置的场景。
+`dsh-sdk-client` 让 TypeScript 程序通过 stdio JSON-RPC 驱动完整的 DeepSeek Harness 运行时。使用 `query()` 与 `receiveResponse()` 可分开发送文本或 slash 输入与接收通知及结果；使用 `run()` 可收集模型活动区间。`HarnessClient` 提供直接协议访问。调用方可以提供 `dshBin`；否则客户端解析同版本的 `@deepseek-ai/dsh` 可执行文件。客户端持有子进程，报告类型化错误，并在 `close()` 或 `await using` 时回收进程。
 
 ## 目录
 
@@ -53,7 +53,29 @@ console.log(result.finalResponse)
 
 子进程在首次使用时惰性启动，并在多次 `run()` 调用之间持续归实例所有；请调用 `close()`（或使用 `await using`），子进程才总能被回收。`start()` 会记忆化有界的 `initialize` 握手，其中包含工作区 cwd、提供方／模型路由、可选且由适配器持有的 `reasoningEffort`，以及可选的正整数 `maxTokens` 输出上限。服务器会在接受提示词前校验该确切路由；省略推理强度时保留模型自身的默认值。`initializeTimeoutMs` 默认 10 秒，诊断会写明所选 profile 并附带保留的 stderr 尾部。`run(input, { sessionId?, onNotification? })` 接受文本或 `SdkPromptContentBlock[]`；内联栅格图像块携带规范 base64 与 `mimeType`，并在运行时内变成持久附件。该调用拥有一个活动区间：它将提示词排入队列，等待其消息 id 出现在持久入队回执中，然后持续收集到整个 agent 下一次进入 `idle`。它返回 `RunResult { sessionId, finalResponse, events, notifications }`，其中 `finalResponse` 是该区间内根会话最后提交的助手文本——并非因果上归属于该提示词的响应，因为 steering（中途引导）、注入的上下文和其他排队工作都可能在 idle 前参与其中。`session(id?)` 打开具名或全新的会话句柄。握手失败且清理成功时，实例会换入全新客户端，使后续调用用新进程重试，直到终结性的 `close()`；如果初始化和清理均失败，`start()` 会返回保留两个原因的有序 `AggregateError`，并继续保留失败的客户端，避免在原进程退出尚未得到证明时启动另一个进程。`maxTokens` 限制每个根 agent 请求的输出量，并由进程内后代继承；压缩（compaction）插件单独持有摘要上限。
 
+### 发送输入与接收响应
+
+`await session.query(text, { delivery: 'queue' })` 在需要时启动运行时、发送文本，然后返回，不等待运行时的路由或执行结果。delivery 默认为 `queue`；对普通输入，`steer` 指向下一个可用步骤。运行时只接管裸 `/compact`；包括 `/plan` 和 `/compact extra` 在内的其他文本保留普通提示词行为。`run("/compact")` 也仍是普通提示词。query 只接受文本，内容块提示词请使用 `run()`。
+
+```ts
+import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
+
+await using harness = new DeepSeekHarness({ profile: 'sdk' })
+const session = harness.session()
+await session.query('/compact')
+for await (const message of session.receiveResponse()) {
+  if ('commandId' in message) console.log(message.result)
+  else if ('finalResponse' in message) console.log(message.finalResponse)
+}
+```
+
+每次 `receiveResponse()` 调用取出最早待接收的 query，并返回独立的 `AsyncIterableIterator<QueryMessage>`。它先产出缓冲通知，再产出最终结果：命令返回 `CommandExecution`，普通提示词返回 `RunResult`。提示词观察从其入队回执开始，到根 agent 下一次 idle 结束；命令观察不需要 turn 或 idle。路由、协议及传输错误在接收时报告，命令业务拒绝仍为 `result.kind === "error"`。已完成的命令保留 `commandId` 及可选摘要 `sourceEventSeq`，而不是助手回复。
+
+多个接收器可以并行运行，因此等待模型响应时仍可发送并接收 `/compact` 的原生 busy 结果。订阅在发送前建立，在最终结果产出前释放。对不再使用的迭代器调用 `return()`，即使尚未调用第一次 `next()`，也会丢弃缓冲事件并放弃本地 RPC 等待。该操作不发送运行时取消，也不允许自动重试。请持续服务 Session，直到其工作结束，或关闭 harness；命令完成不代表独立模型活动结束。
+
 ### 用 HarnessClient 做低层控制
+
+`client.query(sessionId, text, delivery, signal?)` 等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 是高级用法的严格命令入口，当前支持 `/compact`；它等待原生 handler，包括辅助摘要工作。需要通知时，应在调用前订阅。`request()` 的可选第四个参数接受 `AbortSignal`，仅放弃本地等待；超时或本地放弃后，运行时工作仍可继续。
 
 `HarnessClient` 是运行 API 之下的协议客户端：显式 `start()`、`initialize()`、`prompt()`、`request()` 与 `close()`，外加通知订阅。`prompt()` 在运行时接受排队消息后立即返回该消息的 id，绝不等待 agent 活动。`subscribe(filter?)` 返回 `NotificationSubscription`（可等待的 `next()`、非阻塞 `tryNext()`、异步迭代）；`subscribeSessionTree(id)` 把范围限定到一个会话及从 `subagent.started` 血缘边发现的后代——运行时对上下文内每个会话都发通知，范围限定在客户端完成，与 Python SDK 完全一致。
 
@@ -86,10 +108,10 @@ console.log(result.finalResponse)
 
 | 文件 | 职责 |
 |---|---|
-| [`src/api.ts`](src/api.ts) | `DeepSeekHarness` + `HarnessSession`：自有运行、从回执到 idle 的收集、`finalResponse` |
+| [`src/api.ts`](src/api.ts) | `DeepSeekHarness` + `HarnessSession`：待接收 query、独立接收器、自有运行与 `finalResponse` |
 | [`src/client.ts`](src/client.ts) | `HarnessClient`：spawn、握手、请求、订阅扇出、类型化错误 |
 | [`src/dispose.ts`](src/dispose.ts) | 私有关闭阶梯：stdin EOF → SIGTERM → SIGKILL 直到真正退出 |
-| [`src/types.ts`](src/types.ts) | 启动与超时选项、通知结构、`RunResult` |
+| [`src/types.ts`](src/types.ts) | 启动与超时选项、通知、`QueryMessage` 与 `RunResult` |
 | [`src/index.ts`](src/index.ts) | 消费方接口：两层客户端与面向调用方的类型 |
 
 ### 自有活动流程
@@ -134,8 +156,8 @@ console.log(result.finalResponse)
 这些限制说明本客户端何时不合适或需要特别注意。它们是当前包约束，不是与其他 SDK 客户端的对比或任务积压。
 
 - **无捆绑运行时解析**——客户端解析同版本 `@deepseek-ai/dsh` 包（或调用方提供的 `dshBin`）；打包可执行文件的发现留在 Python 侧，直到出现 TypeScript 发行版消费方。
-- **无轮次中取消**——协议层没有提示词取消方法；放弃轮次意味着关闭运行时（见[协议限制](../protocol/README.zh.md#known-limitations-and-deferred-work)）。
-- **没有逐提示词结果**——低层 `prompt()` 只返回入队回执；高层 `run()` 负责从回执到 idle 的收集，放弃该过程意味着关闭运行时。
+- **无运行时取消请求**——关闭接收器只放弃本地观察，不停止执行。停止运行时工作需要关闭 harness（见[协议限制](../protocol/README.zh.md#known-limitations-and-deferred-work)）。
+- **无独占模型响应**——提示词结果涵盖从回执到 idle 的活动，可能包含 steering 或其他排队工作。query 接收器共享 Session 的实际事件流；命令结果不独占后续 turn。
 - **回调必须释放自己的资源**——SDK 通过 `AbortSignal` 发出取消；忽略它的应用工作可能在 SDK 停止等待答案后继续运行。
 
 <a id="dev-note"></a>
