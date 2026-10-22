@@ -436,7 +436,9 @@ it('overlays the conversation and closes after navigation without losing its sid
         await page.emulateMedia({ reducedMotion: 'reduce' })
         await posture.send('Emulation.clearDevicePostureOverride')
         await expect.poll(async () => (await main.boundingBox())?.x).toBe(280)
-        expect(await wideFrame.evaluate(el => el.getAnimations({ subtree: true }).length)).toBe(0)
+        // Scroll-driven text fades remain registered even with reduced motion.
+        expect(await wideFrame.evaluate(el => el.getAnimations({ subtree: true })
+          .filter(animation => animation.timeline === document.timeline).length)).toBe(0)
         await posture.send('Emulation.setDevicePostureOverride', { posture: { type: 'folded' } })
         await expect.poll(async () => (await main.boundingBox())?.x).toBe(475.5)
         await page.emulateMedia({ reducedMotion: 'no-preference' })
