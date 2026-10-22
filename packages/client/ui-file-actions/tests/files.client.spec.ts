@@ -48,7 +48,7 @@ describe('file actions', () => {
   it('saves the original encoded bytes and only retains successfully returned native references', async () => {
     vi.stubGlobal('Blob', NodeBlob)
     const bridge = native(), actions = new BrowserFileActions(bridge)
-    const source = { url: 'https://images.example/chart', name: 'chart.png' }
+    const source = { url: 'https://images.example/chart', name: 'chart.png', mediaType: 'image/png' }
     expect(actions.savedFile(source.url)).toBeUndefined()
     await actions.save(source, 'download')
     expect(bridge.save).toHaveBeenCalledWith({ bytes: new Uint8Array([1, 2, 3]), name: 'chart.webp', mode: 'download' })
@@ -124,8 +124,8 @@ describe('file actions', () => {
     vi.stubGlobal('URL', class extends URL { static override createObjectURL = create; static override revokeObjectURL = revoke })
     const actions = new BrowserFileActions(undefined)
     expect(actions.canSaveAs).toBe(false)
-    await actions.save({ url: 'https://images.example/original.gif' }, 'download')
-    await actions.save({ url: 'https://images.example/original.gif' }, 'download')
+    await expect(actions.save({ url: 'https://images.example/original.gif' }, 'download')).resolves.toEqual({ status: 'requested' })
+    await expect(actions.save({ url: 'https://images.example/original.gif' }, 'download')).resolves.toEqual({ status: 'requested' })
     expect(create).toHaveBeenCalledWith(blob)
     expect(click).toHaveBeenCalledTimes(2)
     expect(revoke).toHaveBeenCalledWith('blob:first')
@@ -199,5 +199,16 @@ it('releases an object URL when the source image cannot decode', async () => {
     await expect(actions.copyImage({ url: 'identity', read: async () => new Blob([], { type: 'image/gif' }) }))
       .rejects.toThrow('Decode failed')
     expect(vi.mocked(URL).revokeObjectURL).toHaveBeenCalledWith('blob:conversion')
+  } finally { actions.dispose() }
+})
+
+it.each([['image/png', 'image.png'], [undefined, 'image']])('uses suggested MIME only when the original carrier omitted it', async (mediaType, name) => {
+  vi.stubGlobal('Blob', NodeBlob)
+  const bridge = native()
+  vi.mocked(bridge.readImage).mockResolvedValue({ bytes: new Uint8Array([1]), mediaType: '' })
+  const actions = new BrowserFileActions(bridge)
+  try {
+    await actions.save({ url: 'https://example.com/image', ...mediaType === undefined ? {} : { mediaType } }, 'download')
+    expect(bridge.save).toHaveBeenCalledWith({ bytes: new Uint8Array([1]), name, mode: 'download' })
   } finally { actions.dispose() }
 })

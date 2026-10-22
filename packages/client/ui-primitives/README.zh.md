@@ -126,7 +126,7 @@ kind: "package-library"
 
 这些原子组件无法读取应用 locale，因此每段面向用户的文案都必须通过 label prop 提供。`HoverCard`、`TerminalBlock`、`JsonTree`、`CodeBlock`、`MarkdownText`、`JsonBlock`、`ConnectionIndicator`、`Modal`、`DiffBlock`、`ReadBlock`、`SearchBlock`、`WebBlock` 与 `ZoomControls` 接收完整的本地化 label。本包不拥有语言回退；遗漏会导致类型检查失败，各功能会把带类型的 `t` 席位映射到 primitive 的 label 接口。
 
-`Menu.contextual` 从指针位置定位而不避让顶部栏，按分隔线组对齐图标，并在弹窗内右键时关闭。`exiting` 在淡出期间保留不可交互的弹窗；`returnFocus` 在异步准备后恢复原控件焦点。`MenuSurface.phase` 分别对材质层、直接内容和 macOS 背景淡入淡出，让材质层继续模糊页面。普通下拉菜单保留原有时序。
+`Menu.contextual` 从指针位置定位而不避让顶部栏，按分隔线组对齐图标，并在弹窗内右键时关闭。`exiting` 在淡出期间保留不可交互的弹窗；`returnFocus` 在异步准备后恢复原控件焦点。`MenuSurface.phase` 分别对材质层、直接内容和 macOS 背景淡入淡出，让材质层继续模糊页面。`MENU_TRANSITION_MS` 同时提供 CSS 动画与弹窗生命周期计时。`menuPoint(event)` 将键盘右键事件定位到触发元素。普通下拉菜单保留原有时序。
 
 -----
 

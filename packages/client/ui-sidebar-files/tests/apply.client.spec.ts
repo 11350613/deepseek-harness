@@ -11,6 +11,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { ShortcutCommand } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { FilesBodyProps } from '../src/client/FilesBody.tsx'
 import { FILES_ID, FILES_KIND } from '../src/client/definition.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -64,7 +66,7 @@ async function boot() {
   ctx.provide('remote.workspaceFiles', workspaceFiles as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { tabs, registered, dictionaries, fiber, sidebar, commands }
+  return { ctx, tabs, registered, dictionaries, fiber, sidebar, commands }
 }
 
 describe('ui-sidebar-files apply', () => {
@@ -72,6 +74,7 @@ describe('ui-sidebar-files apply', () => {
     const h = await boot()
     try {
       const command = h.commands[0]!
+      expect(command.label()).toBe('guide.title')
       const input = { region: 'page', modal: null, target: null } as const
       expect(command.resolve(input)).toEqual({ status: 'blocked', reason: 'shortcut.noSession' })
       const target = { sessionId: 'files-session' }
@@ -113,4 +116,17 @@ describe('ui-sidebar-files apply', () => {
     expect(registered).toEqual([])
     expect(dictionaries.size).toBe(0)
   })
+})
+
+
+it('carries the file tree path and pane into its menu gesture', async () => {
+  const h = await boot()
+  try {
+    const injectBody = h.registered[0]!.inject as (id: import('@deepseek-ai/dsh-session/types').SessionId, actions: never) => Pick<FilesBodyProps, 'openContextMenu'>
+    const face = injectBody(SessionId('tree-menu'), {} as never)
+    face.openContextMenu('src/file.ts', 'pane' as never, { x: 45, y: 67 })
+    expect(vi.spyOn(h.ctx.menus, 'open')).toHaveBeenCalledWith({ kind: 'file', value: {
+      sessionId: 'tree-menu', path: 'src/file.ts', paneId: 'pane',
+    } }, { x: 45, y: 67 })
+  } finally { await h.fiber.dispose() }
 })

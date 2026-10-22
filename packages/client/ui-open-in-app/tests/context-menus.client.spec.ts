@@ -52,7 +52,7 @@ it('offers image actions on file targets, copies absolute paths, and keeps save 
     await downloading.ready
     downloading.select('open-in-app.file/download')
     downloading.dispose()
-    await vi.waitFor(() => { expect(notify).toHaveBeenCalledWith('menu.downloadStarted', true) })
+    await vi.waitFor(() => { expect(notify).toHaveBeenCalledWith('menu.downloaded', true) })
     const source = save.mock.calls[0]?.[0]
     expect(source).toMatchObject({ name: 'original.svg', mediaType: 'image/svg+xml' })
     expect(await (await source!.read!(new AbortController().signal)).text()).toBe('<svg/>')

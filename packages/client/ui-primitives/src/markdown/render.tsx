@@ -1,3 +1,4 @@
+import { menuPoint } from '../menu-point.ts'
 /**
  * Direct mdast→React markdown renderer. Replaces the react-markdown /
  * remark-rehype pipeline with one switch over parsed nodes so streaming can
@@ -336,7 +337,7 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
               data-file-path={mention.title}
               onClick={mention.open}
               onContextMenu={mention.openMenu === undefined ? undefined : (event) => {
-                event.preventDefault(); event.stopPropagation(); mention.openMenu?.({ x: event.clientX, y: event.clientY })
+                event.preventDefault(); event.stopPropagation(); mention.openMenu?.(menuPoint(event))
               }}
             >
               <LinkIconMedium kind={classifyLinkPath(value)} className={css.linkIcon} />
@@ -575,7 +576,7 @@ function MarkdownAnchor({ href, glyph, children }: {
       href={href}
       onContextMenu={!external || openContextMenu === undefined ? undefined : (event) => {
         event.preventDefault(); event.stopPropagation()
-        openContextMenu({ kind: 'url', url: href }, { x: event.clientX, y: event.clientY })
+        openContextMenu({ kind: 'url', url: href }, menuPoint(event))
       }}
       {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
       onClick={open === undefined ? undefined : (event) => {
@@ -616,9 +617,9 @@ function MarkdownFileLink({ file, glyph, children }: {
       title={src === undefined ? file.path : undefined}
       onContextMenu={openContextMenu === undefined ? undefined : (event) => {
         event.preventDefault(); event.stopPropagation()
-        openContextMenu({ kind: 'file', ...file }, { x: event.clientX, y: event.clientY })
+        openContextMenu({ kind: 'file', ...file }, menuPoint(event))
       }}
-      data-file-path={file.path}
+      data-file-path={file.path} data-file-line={file.line}
       onClick={() => { openFile(file.path, file.line === undefined ? undefined : { line: file.line }) }}
     >
       {glyph && <LinkIconMedium kind={classifyLinkPath(file.path)} className={css.linkIcon} />}
@@ -682,7 +683,7 @@ function LoadedMarkdownImage({ src, alt, destination, preview }: {
     event.preventDefault(); event.stopPropagation()
     const file = parseFileLink(destination)
     openContextMenu({ kind: 'image', url: src, ...(file === undefined ? {} : { path: file.path }) },
-      { x: event.clientX, y: event.clientY })
+      menuPoint(event))
   }
   const imageProps = { className: css.image, src, alt, onContextMenu, onError: () => { setFailed(true) },
     loading: 'lazy' as const, decoding: 'async' as const, referrerPolicy: 'no-referrer' as const }

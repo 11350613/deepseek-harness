@@ -108,6 +108,7 @@ export interface SidebarRightInjected {
   /** Toggle the dock panel using its current display mode. */
   readonly toggleFullscreen: () => void
   readonly hooks: {
+    readonly menuTarget: HostObservable<import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget | null>
     readonly shortcuts: HostObservable<readonly ShortcutCatalogEntry[]>
     readonly tabTypes: HostObservable<readonly SidebarRightTabDefinition[]>
   }
@@ -136,6 +137,7 @@ interface PanelProps {
   readonly openTab: SidebarRightInjected['openTab']
   readonly closeTab: SidebarRightInjected['closeTab']
   readonly openTabMenu: SidebarRightInjected['openTabMenu']
+  readonly tabMenuOpen: boolean
   readonly splitPane: SidebarRightInjected['splitPane']
   readonly toggleFullscreen: SidebarRightInjected['toggleFullscreen']
   readonly shortcuts: readonly ShortcutCatalogEntry[]
@@ -347,7 +349,7 @@ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<H
           renderTabTitle={titlesFor(panel)}
           active={panel.active}
           keepMounted={tab => types.find(type => type.kind === tab.kind)?.keepMounted === true}
-          openTabMenu={panel.openTabMenu}
+          openTabMenu={panel.openTabMenu} tabMenuOpen={panel.tabMenuOpen}
           chrome={<PanelChrome
             sessionId={sessionId} fullscreen={fullscreen} actions={actions} t={t}
             shortcuts={panel.shortcuts} toggleFullscreen={panel.toggleFullscreen}
@@ -368,9 +370,11 @@ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<H
  */
 export function RightbarSeat({
   sessionId, width, viewportWidth, canShow, useStore, actions, t, renderSlot, syncPresentation, measureRoom, reportAutoFullscreen,
-  openTab, closeTab, openTabMenu, useTabTypes, useTabNavigation, occurrence, retainTab, active, useShortcuts, splitPane, toggleFullscreen,
+  openTab, closeTab, openTabMenu, useMenuTarget, useTabTypes, useTabNavigation, occurrence, retainTab,
+  active, useShortcuts, splitPane, toggleFullscreen,
 }: RightbarSeatProps): ReactNode {
   // One store instance per session, so this map holds this session's surface.
+  const tabMenuOpen = useMenuTarget(target => target?.kind === 'tab' && target.value.sessionId === sessionId)
   const shortcuts = useShortcuts(entries => entries)
   const surface = useStore(state => state.bySession[sessionId])
   const shown = active && surface !== undefined && surface.layout.expanded
@@ -433,7 +437,8 @@ export function RightbarSeat({
 
   if (surface === undefined) return null
   const panel: PanelProps = {
-    sessionId, actions, t, renderSlot, surface, openTab, closeTab, openTabMenu, useTabTypes, useTabNavigation, useStore, occurrence,
+    sessionId, actions, t, renderSlot, surface, openTab, closeTab, openTabMenu, tabMenuOpen, useTabTypes, useTabNavigation,
+    useStore, occurrence,
     fullscreen, autoFullscreen, reportRoom, active, retainTab, shortcuts, splitPane, toggleFullscreen,
   }
   return <SidebarPanel {...panel} width={width} panelRef={panelRef} />

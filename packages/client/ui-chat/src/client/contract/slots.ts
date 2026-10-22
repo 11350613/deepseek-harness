@@ -301,6 +301,7 @@ export interface PerformanceUsageInjected {
 export interface ChatViewInjected {
   /** File preparation and failure callbacks owned by the file-drag plugin. */
   readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions
+  /** Open the captured reference without navigating or changing Session selection. */
   openContextMenu: NonNullable<MarkdownDelegate['openContextMenu']>
   /** Dispatch one gesture to the Conversation plugin registry. */
   dispatchInteraction: (gesture: TextInteractionGesture) => string | null

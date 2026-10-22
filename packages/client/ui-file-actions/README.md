@@ -31,11 +31,13 @@ The Web application bundle mounts this Client plugin without configuration field
 
 Pass an original URL, optional filename and MIME, or an authorized `read(signal)` callback for Session-owned files. Saves preserve bytes. MIME determines the suffix when it conflicts with the supplied name; compatible and unknown suffixes remain. Suggested names exclude platform-reserved characters and device names and fit a 255-byte filename.
 
-`save(source, mode)` distinguishes cancellation from a completed save request. Browser save-as requires the browser file picker and is disabled when unavailable. A regular browser download reports only that the download was requested. It returns no local reference. Native saves return an opaque ID, which `savedFile(url)` remembers for reveal. IDs are scoped to the originating window and expire on reload or close.
+`save(source, mode)` returns `cancelled`, `requested` for a browser download, or `saved` after a native or browser-picker write completes. Browser save-as requires the browser file picker and is disabled when unavailable. A regular browser download reports only that the download was requested. It returns no local reference. Native saves return an opaque ID, which `savedFile(url)` remembers for reveal. IDs are scoped to the originating window and expire on reload or close.
 
 Filename and MIME normalization reuse the file-drag utility, so saving and dragging retain the same original format and filename policy.
 
-Image copying decodes the original into PNG for clipboard interoperability. Downloads and save-as never use that conversion. Callers own localized success and failure feedback. Rejected reads do not start writes; native download writes reserve a unique filename and remove partial files on failure. Explicit replacements write a sibling temporary file before renaming. Plugin disposal aborts browser reads, discards references, and releases object URLs.
+Response MIME takes precedence over a suggested filename or media type when naming downloaded originals. Image copying decodes the original into PNG for clipboard interoperability. Downloads and save-as never use that conversion. Callers own localized success and failure feedback. Rejected reads do not start writes; native download writes reserve a unique filename and remove partial files on failure. Explicit replacements write a sibling temporary file before renaming. Plugin disposal aborts browser reads, discards references, and releases object URLs.
+
+Desktop remote reads follow HTTP(S) redirects without credentials or referrers, rejecting the application Host at every hop. Other destinations use the machine’s network policy. The configured byte limit also bounds native clipboard input before decoding. Ordinary Web reads require the remote server to allow browser CORS; a denied response produces failure feedback without starting a save.
 
 -----
 

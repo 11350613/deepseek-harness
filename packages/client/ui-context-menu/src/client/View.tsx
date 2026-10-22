@@ -1,12 +1,12 @@
 /** Shared Web renderer; contributions remain independent of React. */
-import { Menu, Toast, IconCopyOutlineRegular, IconDownloadOutlineRegular, IconFolderOpenOutlineRegular, IconPanelLeftOutlineRegular, IconRightUpOutlineRegular, IconCloseOutlineRegular, IconArchiveOutlineRegular, IconChevronRightOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { MenuEntry, MenuItem } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Menu, Toast, IconCopyOutlineRegular, IconDownloadOutlineRegular, IconSaveOutlineRegular, IconFolderOpenOutlineRegular, IconPanelLeftOutlineRegular, IconRightUpOutlineRegular, IconCloseOutlineRegular, IconArchiveOutlineRegular, IconChevronRightOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsStore, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createMenuStore } from './store.ts'
 import type { MenuActionView } from './types.ts'
 
 const SYMBOLS = {
-  copy: IconCopyOutlineRegular, download: IconDownloadOutlineRegular, save: IconDownloadOutlineRegular,
+  copy: IconCopyOutlineRegular, download: IconDownloadOutlineRegular, save: IconSaveOutlineRegular,
   folder: IconFolderOpenOutlineRegular, sidebar: IconPanelLeftOutlineRegular, external: IconRightUpOutlineRegular,
   close: IconCloseOutlineRegular, closeOthers: IconArchiveOutlineRegular, closeRight: IconChevronRightOutlineRegular,
 } satisfies Record<NonNullable<MenuActionView['symbol']>, typeof IconCopyOutlineRegular>
@@ -20,7 +20,7 @@ export function menuEntries(actions: readonly MenuActionView[]): MenuEntry[] {
       ...(action.danger === undefined ? {} : { danger: action.danger }),
       ...(action.icon !== undefined ? { icon: <img src={action.icon} width={14} height={14} alt="" /> }
         : Symbol === undefined ? {} : { icon: <Symbol /> }),
-      ...(action.children === undefined ? {} : { submenu: menuEntries(action.children).filter((item): item is MenuItem => !('type' in item)) }),
+      ...(action.children === undefined ? {} : { submenu: menuEntries(action.children) }),
     }
     return action.separatorBefore ? [{ type: 'separator', id: `${action.id}:separator` }, item] : [item]
   })

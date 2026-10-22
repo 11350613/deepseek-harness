@@ -292,10 +292,14 @@ describe('ImageGallery', () => {
     })
     const view = runtime.renderRoot()
     const image = view.getByAltText('preview.png')
+    fireEvent.contextMenu(image, { clientX: 7, clientY: 8 })
+    expect(vi.spyOn(runtime.ctx.menus, 'open')).toHaveBeenCalledWith({ kind: 'image', value: { url: 'blob:labels', name: 'preview.png' } }, { x: 7, y: 8 })
     const frame = view.getByRole('button', { name: 'preview.png，点击查看原图' })
     expect(frame.getAttribute('title')).toBe(labels.open)
     fireEvent.click(frame)
     expect(view.getByRole('dialog', { name: labels.lightbox.dialog })).toBeTruthy()
+    fireEvent.contextMenu(view.getByRole('dialog').querySelector('img')!, { clientX: 13, clientY: 14 })
+    expect(vi.spyOn(runtime.ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'image', value: { url: 'blob:labels', name: 'preview.png' } }, { x: 13, y: 14 })
     fireEvent.click(view.getByRole('button', { name: labels.lightbox.close }))
     fireEvent.click(view.getByRole('button', { name: 'Default labels' }))
     const defaultFrame = view.getByRole('button', { name: 'preview.png, click to view original' })
@@ -332,6 +336,8 @@ describe('ImageGallery', () => {
     expect(view.getByRole('button', { name: 'history.png，点击查看原图' })).toBeTruthy()
     expect(container.querySelector('[data-align="end"]')).not.toBeNull()
     expect(loadImage).toHaveBeenCalledWith(attachment)
+    fireEvent.contextMenu(view.getByAltText('history.png'), { clientX: 9, clientY: 10 })
+    expect(vi.spyOn(runtime.ctx.menus, 'open')).toHaveBeenCalledWith({ kind: 'image', value: { url: 'blob:slot-image', name: 'history.png', mediaType: 'image/png' } }, { x: 9, y: 10 })
     expect(view.getByRole('button', { name: 'history.png，点击查看原图' }).getAttribute('data-variant')).toBe('single')
     for (const [compact, thumbnail, variant] of [
       [true, false, 'tile'],
@@ -348,3 +354,15 @@ describe('ImageGallery', () => {
 })
 
 const fileDrag = { prepare: vi.fn(async () => ({ start: () => true, release: () => {} })), reportFailure: vi.fn() }
+
+it('opens image menus from the thumbnail and lightbox using the original source', async () => {
+  const openImageMenu = vi.fn()
+  const view = render(<MessageImage fileDrag={fileDrag} image={{ attachment }} load={vi.fn(async () => 'blob:original')}
+    variant="single" labels={labels} openImageMenu={openImageMenu} />)
+  const image = await view.findByAltText('history.png')
+  fireEvent.contextMenu(image, { clientX: 18, clientY: 29 })
+  expect(openImageMenu).toHaveBeenLastCalledWith(expect.objectContaining({ url: 'blob:original', name: 'history.png' }), { x: 18, y: 29 })
+  fireEvent.click(image)
+  fireEvent.contextMenu(view.getByRole('dialog').querySelector('img')!, { clientX: 31, clientY: 42 })
+  expect(openImageMenu).toHaveBeenLastCalledWith(expect.objectContaining({ url: 'blob:original' }), { x: 31, y: 42 })
+})

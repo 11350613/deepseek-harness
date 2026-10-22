@@ -1,0 +1,191 @@
+// @vitest-environment jsdom
+/** Original-byte actions and feedback survive the menu that initiated them. */
+import { Blob as NodeBlob } from 'node:buffer'
+import { Context } from '@deepseek-ai/cordis'
+import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
+import type { MenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
+import type { FileActionSource, FileSaveResult, SavedFileId } from '@deepseek-ai/dsh-client-ui-file-actions/client'
+import { OpenInAppPathController } from '../src/client/open-path.ts'
+import { OpenInAppController } from '../src/client/controller.ts'
+import { registerContextMenus } from '../src/client/context-menus.ts'
+
+const sessionId = SessionId('menu-actions')
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
+async function boot() {
+  vi.stubGlobal('Blob', NodeBlob)
+  const ctx = new Context()
+  const notify = vi.fn(), failure = vi.fn(), writeText = vi.fn(async () => {})
+  vi.stubGlobal('navigator', { clipboard: { writeText } })
+  const registry = new MenuRegistry(failure)
+  const remote = {
+    session: {
+      canOpenWorkspacePath: vi.fn(async () => ({ ok: true as const, value: true })),
+      workspacePathApplications: vi.fn(async () => ({ ok: true as const, value: [
+        { id: 'preview', name: 'Preview', default: true, icon: 'data:image/png;base64,a' },
+      ] })),
+      openWorkspacePath: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    },
+    workspaceFiles: {
+      stat: vi.fn(async () => ({ ok: true as const, value: { absolutePath: '/workspace/file.svg' } })),
+      readBytes: vi.fn(async () => ({ ok: true as const, value: { data: [...new TextEncoder().encode('<svg/>')] } })),
+    },
+  }
+  const save = vi.fn<(source: FileActionSource, mode: 'download' | 'saveAs') => Promise<FileSaveResult>>()
+    .mockResolvedValue({ status: 'saved' })
+  const copyImage = vi.fn<(source: FileActionSource) => Promise<void>>().mockResolvedValue()
+  const savedFile = vi.fn<(url: string) => SavedFileId | undefined>()
+  const reveal = vi.fn(async () => {})
+  const fileActions = { save, copyImage, savedFile, reveal, canSaveAs: true }
+  const sessions = createSnapshotStore({ byId: { [sessionId]: { cwd: '/workspace' } } })
+  const sidebar = { openResourceIn: vi.fn(), openTabIn: vi.fn() }
+  const browserTab = vi.fn(() => ({}))
+  const directoryFetch = vi.fn(async () => new Response(JSON.stringify({ apps: ['vscode', 'finder'] })))
+  const directories = new OpenInAppController(directoryFetch)
+  const paths = new OpenInAppPathController(remote)
+  ctx.provide('remote', remote as never)
+  ctx.provide('menus', { register: registry.register.bind(registry), notify } as never)
+  ctx.provide('sessions', { list: sessions } as never)
+  ctx.provide('fileActions', fileActions as never)
+  ctx.provide('sidebarRight', sidebar as never)
+  ctx.provide('sidebarRightTabs', { get: browserTab } as never)
+  const fiber = ctx.plugin({ apply: (plugin: Context) => { registerContextMenus(plugin, paths, key => key, directories) } })
+  await fiber.await()
+  onTestFinished(async () => { registry.dispose(); await ctx.fiber.dispose() })
+  const resolve = async (target: MenuTarget) => {
+    const menu = registry.resolve(target)
+    await menu.ready
+    return menu
+  }
+  const choose = async (target: MenuTarget, id: string) => {
+    const menu = await resolve(target)
+    const action = menu.source.getSnapshot().find(item => item.id === id)
+    expect(action?.disabled).not.toBe(true)
+    expect(action).toBeDefined()
+    menu.select(id)
+    menu.dispose()
+    await vi.waitFor(() => { expect(save.mock.settledResults.every(result => result.type !== 'incomplete')).toBe(true) })
+    return action
+  }
+  return { registry, resolve, choose, remote, fileActions, paths, directories, directoryFetch, sessions,
+    sidebar, browserTab, notify, failure, writeText }
+}
+
+it('reveals only sessions with a directory and an installed file manager', async () => {
+  const h = await boot()
+  await h.choose({ kind: 'session', value: { sessionId, displayTitle: 'Session' } }, 'open-in-app.session/reveal')
+  await vi.waitFor(() => { expect(h.directoryFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+    method: 'POST', body: JSON.stringify({ app: 'finder', path: '/workspace' }),
+  })) })
+  const withoutDirectory = await h.resolve({ kind: 'session', value: { sessionId: SessionId('absent'), displayTitle: 'Absent' } })
+  expect(withoutDirectory.source.getSnapshot()[0]).toMatchObject({ disabled: true, label: 'menu.finder' })
+  h.directories.apps.set(['vscode'])
+  const unavailable = await h.resolve({ kind: 'session', value: { sessionId, displayTitle: 'Session' } })
+  expect(unavailable.source.getSnapshot()[0]).toMatchObject({ disabled: true, label: 'menu.reveal' })
+  h.directories.apps.set(null)
+  expect((await h.resolve({ kind: 'session', value: { sessionId, displayTitle: 'Session' } })).source.getSnapshot()[0]?.disabled).toBe(true)
+})
+
+it('routes file actions through the captured pane, line, native association and original bytes', async () => {
+  const h = await boot()
+  const file = { kind: 'file', value: { sessionId, path: 'file.svg', paneId: 'pane' as never, line: 24 } } as const
+  await h.choose(file, 'open-in-app.file/sidebar')
+  expect(h.sidebar.openResourceIn).toHaveBeenCalledWith(sessionId, expect.stringContaining('file.svg'),
+    { paneId: 'pane', params: { line: 24 } })
+  await h.choose(file, 'open-in-app.file/open')
+  expect(h.remote.session.openWorkspacePath).toHaveBeenCalledWith({ path: '/workspace/file.svg', application: 'preview' })
+  await h.choose(file, 'open-in-app.file/reveal')
+  expect(h.remote.session.openWorkspacePath).toHaveBeenCalledWith({ path: '/workspace/file.svg', action: 'reveal' })
+  await h.choose(file, 'open-in-app.file/copyImage')
+  await vi.waitFor(() => { expect(h.notify).toHaveBeenCalledWith('menu.copied', true) })
+  const source = h.fileActions.copyImage.mock.calls[0]![0]
+  expect(await (await source.read!(new AbortController().signal)).text()).toBe('<svg/>')
+  h.remote.workspaceFiles.readBytes.mockResolvedValueOnce({ ok: false } as never)
+  await expect(source.read!(new AbortController().signal)).rejects.toThrow('Original file unavailable')
+  await h.choose(file, 'open-in-app.file/saveAs')
+  await vi.waitFor(() => { expect(h.notify).toHaveBeenCalledWith('menu.saved', true) })
+  const simple = { kind: 'file', value: { sessionId: SessionId('absent'), path: '/file.unknown' } } as const
+  h.remote.session.workspacePathApplications.mockResolvedValueOnce({ ok: true, value: [] })
+  const menu = await h.resolve(simple)
+  expect(menu.source.getSnapshot().find(item => item.id.endsWith('/open'))?.disabled).toBe(true)
+  expect(menu.source.getSnapshot().some(item => item.id.endsWith('/copyImage'))).toBe(false)
+  menu.select('open-in-app.file/sidebar')
+  expect(h.sidebar.openResourceIn).toHaveBeenLastCalledWith(SessionId('absent'), expect.any(String), {})
+})
+
+it('keeps copy-path available on failed metadata and reports native action failures', async () => {
+  const h = await boot()
+  const file = { kind: 'file', value: { sessionId, path: 'file.svg' } } as const
+  h.remote.workspaceFiles.stat.mockResolvedValueOnce({ ok: false } as never)
+  const menu = await h.resolve(file)
+  expect(menu.source.getSnapshot().find(item => item.id.endsWith('/saveAs'))?.disabled).toBe(true)
+  menu.select('open-in-app.file/copyPath')
+  expect(h.writeText).toHaveBeenCalledWith('/workspace/file.svg')
+  h.remote.workspaceFiles.stat.mockRejectedValueOnce(new Error('offline'))
+  expect((await h.resolve(file)).source.getSnapshot().find(item => item.id.endsWith('/sidebar'))?.disabled).toBe(true)
+  h.remote.session.openWorkspacePath.mockResolvedValueOnce({ ok: false } as never)
+  await h.choose(file, 'open-in-app.file/reveal')
+  await vi.waitFor(() => { expect(h.notify).toHaveBeenCalledWith('path.revealError') })
+  h.remote.session.workspacePathApplications.mockResolvedValueOnce({ ok: false } as never)
+  expect((await h.resolve(file)).source.getSnapshot().find(item => item.id.endsWith('/open'))?.disabled).toBe(true)
+  h.paths.desktop.set(false)
+  h.fileActions.canSaveAs = false
+  const web = await h.resolve(file)
+  expect(web.source.getSnapshot().filter(item => ['/open', '/reveal', '/saveAs'].some(suffix => item.id.endsWith(suffix)))
+    .every(item => item.disabled)).toBe(true)
+})
+
+it('opens links in the registered browser, externally, and on the clipboard', async () => {
+  const h = await boot()
+  const target = { kind: 'url', value: { sessionId, url: 'https://example.com/page' } } as const
+  await h.choose(target, 'open-in-app.url/sidebar')
+  expect(h.sidebar.openTabIn).toHaveBeenCalledWith(sessionId, 'browser', { params: { url: target.value.url } })
+  const external = vi.spyOn(window, 'open').mockReturnValue(null)
+  await h.choose(target, 'open-in-app.url/external')
+  expect(external).toHaveBeenCalledWith(target.value.url, '_blank', 'noopener,noreferrer')
+  await h.choose(target, 'open-in-app.url/copy')
+  expect(h.writeText).toHaveBeenCalledWith(target.value.url)
+  h.browserTab.mockReturnValueOnce(undefined as never)
+  expect((await h.resolve(target)).source.getSnapshot()[0]?.disabled).toBe(true)
+})
+
+it('distinguishes completed, requested and cancelled saves and surfaces rejected saves', async () => {
+  const h = await boot()
+  const image = { kind: 'image', value: { url: 'https://example.com/original' } } as const
+  for (const [status, notice] of [['saved', 'menu.downloaded'], ['requested', 'menu.downloadStarted'], ['cancelled', undefined]] as const) {
+    h.fileActions.save.mockResolvedValueOnce({ status })
+    h.notify.mockClear()
+    await h.choose(image, 'open-in-app.image/download')
+    if (notice === undefined) expect(h.notify).not.toHaveBeenCalled()
+    else await vi.waitFor(() => { expect(h.notify).toHaveBeenCalledWith(notice, true) })
+  }
+  h.fileActions.save.mockRejectedValueOnce(new Error('disk full'))
+  await h.choose(image, 'open-in-app.image/saveAs')
+  await vi.waitFor(() => { expect(h.failure).toHaveBeenCalledWith('menu.saveFailed') })
+})
+
+it('uses original image reads and enables reveal only for an actual local or saved file', async () => {
+  const h = await boot()
+  const local = { kind: 'image', value: { sessionId, path: 'file.svg', url: 'https://example.com/file', mediaType: 'image/svg+xml' } } as const
+  await h.choose(local, 'open-in-app.image/copy')
+  const source = h.fileActions.copyImage.mock.calls[0]![0]
+  expect(source.name).toBe('file.svg')
+  expect((await source.read!(new AbortController().signal)).type).toBe('image/svg+xml')
+  h.remote.workspaceFiles.readBytes.mockResolvedValueOnce({ ok: false } as never)
+  await expect(source.read!(new AbortController().signal)).rejects.toThrow('Original image unavailable')
+  await h.choose(local, 'open-in-app.image/reveal')
+  expect(h.remote.session.openWorkspacePath).toHaveBeenCalledWith({ path: '/workspace/file.svg', action: 'reveal' })
+  const saved = 'saved-image' as SavedFileId
+  h.fileActions.savedFile.mockReturnValueOnce(saved)
+  await h.choose({ kind: 'image', value: { url: 'https://example.com/file.png', name: 'image.png' } }, 'open-in-app.image/reveal')
+  expect(h.fileActions.reveal).toHaveBeenCalledOnce()
+  const unknown = { kind: 'image', value: { sessionId, path: 'file.unknown', url: 'data:image/png;base64,eA==' } } as const
+  await h.choose(unknown, 'open-in-app.image/saveAs')
+  expect((await h.fileActions.save.mock.calls.at(-1)![0].read!(new AbortController().signal)).type).toBe('')
+  h.fileActions.canSaveAs = false
+  const remote = await h.resolve({ kind: 'image', value: { url: 'https://example.com/file.png' } })
+  expect(remote.source.getSnapshot().filter(item => item.id.endsWith('/saveAs') || item.id.endsWith('/reveal')).every(item => item.disabled)).toBe(true)
+})

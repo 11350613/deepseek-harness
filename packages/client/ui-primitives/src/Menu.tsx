@@ -24,7 +24,7 @@ export interface MenuItem {
   /** Destructive row: error-colored text/icon and danger hover fill. */
   danger?: boolean
   /** Nested card opened to the right on hover/focus. */
-  submenu?: readonly MenuItem[]
+  submenu?: readonly MenuEntry[]
 }
 
 /** Hairline between item groups (not selectable). */
@@ -499,21 +499,23 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
         </button>
         {subOpen && entry.submenu !== undefined && (
           <MenuSurface compact={compact} className={clsx(css.submenu, compact && css.compactList)} role="menu">
-            {entry.submenu.map(sub => (
-              <button
-                key={sub.id}
-                type="button"
-                role="menuitem"
-                className={css.item}
-                disabled={sub.disabled}
-                aria-keyshortcuts={sub.shortcut?.aria}
-                onClick={() => { onSelect?.(sub.id); refocusAfterSelection() }}
-              >
-                {sub.icon !== undefined && <span className={css.itemIcon}>{sub.icon}</span>}
-                <span className={css.itemLabel}>{sub.label}</span>
-                {sub.shortcut !== undefined && <span aria-hidden="true" className={css.shortcut}><ShortcutKeys keys={sub.shortcut.keys} className={css.shortcutKeys} /></span>}
-              </button>
-            ))}
+            {entry.submenu.map(sub => isSeparator(sub)
+              ? <div key={sub.id} className={css.separator} role="separator" />
+              : isLabel(sub) ? <div key={sub.id} className={css.label}>{sub.text}</div> : (
+                <button
+                  key={sub.id}
+                  type="button"
+                  role="menuitem"
+                  className={css.item}
+                  disabled={sub.disabled}
+                  aria-keyshortcuts={sub.shortcut?.aria}
+                  onClick={() => { onSelect?.(sub.id); refocusAfterSelection() }}
+                >
+                  {sub.icon !== undefined && <span className={css.itemIcon}>{sub.icon}</span>}
+                  <span className={css.itemLabel}>{sub.label}</span>
+                  {sub.shortcut !== undefined && <span aria-hidden="true" className={css.shortcut}><ShortcutKeys keys={sub.shortcut.keys} className={css.shortcutKeys} /></span>}
+                </button>
+              ))}
           </MenuSurface>
         )}
       </div>

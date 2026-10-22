@@ -25,7 +25,8 @@ export function registerContextMenus(ctx: Context, paths: OpenInAppPathControlle
   const fileManager = () => t(directories.apps.getSnapshot()?.includes('finder') ? 'menu.finder' : 'menu.reveal')
   const save = async (source: FileActionSource, mode: 'download' | 'saveAs'): Promise<void> => {
     const result = await ctx.fileActions.save(source, mode)
-    if (result.status === 'saved') ctx.menus.notify(t(mode === 'download' ? 'menu.downloadStarted' : 'menu.saved'), true)
+    if (result.status !== 'cancelled') ctx.menus.notify(t(result.status === 'requested'
+      ? 'menu.downloadStarted' : mode === 'download' ? 'menu.downloaded' : 'menu.saved'), true)
   }
   const open = async (path: string, action: 'open' | 'reveal', application?: string): Promise<void> => {
     const failure = await paths.openPath(path, action, application)
@@ -50,7 +51,7 @@ export function registerContextMenus(ctx: Context, paths: OpenInAppPathControlle
       const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
       const manager = directories.apps.getSnapshot()?.find(id => ['finder', 'explorer', 'filemanager'].includes(id))
       return [{ id: 'reveal', symbol: 'folder', afterContent: true, label: fileManager(), disabled: !cwd || manager === undefined,
-        run: () => cwd && manager ? directories.launch(manager, cwd) : undefined }]
+        ...cwd && manager ? { run: () => directories.launch(manager, cwd) } : {} }]
     },
   }), 'open-in-app: Session context menu')
   ctx.effect(() => ctx.menus.register({
@@ -66,7 +67,7 @@ export function registerContextMenus(ctx: Context, paths: OpenInAppPathControlle
       const application = apps?.find(app => app.default)
       const url = fileMediaUrl(document.baseURI, absolutePath ?? path)
       const mediaType = mime.getType(path) ?? ''
-      const source: FileActionSource = { url: url ?? path, name: path.split(/[\\/]/u).pop() ?? 'file', mediaType,
+      const source: FileActionSource = { url: url ?? path, name: path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1), mediaType,
         read: async (signal) => {
           const result = await ctx.remote.workspaceFiles.readBytes(sessionId, path, {}, signal)
           if (!result.ok) throw new Error('Original file unavailable')
@@ -81,10 +82,11 @@ export function registerContextMenus(ctx: Context, paths: OpenInAppPathControlle
               ...(paneId === undefined ? {} : { paneId }), ...(line === undefined ? {} : { params: { line } }),
             })
           } },
-        { id: 'reveal', symbol: 'folder', label: fileManager(), disabled: !desktop, run: () => open(absolutePath ?? path, 'reveal') },
+        { id: 'reveal', symbol: 'folder', label: fileManager(), disabled: !desktop,
+          ...absolutePath === undefined ? {} : { run: () => open(absolutePath, 'reveal') } },
         { id: 'open', symbol: 'external', label: application ? t('open.title', { app: application.name }) : t('menu.defaultApp'),
           ...(application?.icon ? { icon: application.icon } : {}), disabled: application === undefined,
-          run: () => open(absolutePath ?? path, 'open', application?.id) },
+          ...absolutePath === undefined || application === undefined ? {} : { run: () => open(absolutePath, 'open', application.id) } },
         { id: 'copyPath', symbol: 'copy', failureLabel: t('menu.copyFailed'), label: t('menu.copyPath'),
           run: async () => {
             const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
@@ -140,11 +142,8 @@ export function registerContextMenus(ctx: Context, paths: OpenInAppPathControlle
         { id: 'download', symbol: 'download', failureLabel: t('menu.saveFailed'), label: t('menu.download'), run: () => save(source, 'download') },
         { id: 'saveAs', symbol: 'save', failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'), disabled: !ctx.fileActions.canSaveAs,
           run: () => save(source, 'saveAs') },
-        { id: 'reveal', symbol: 'folder', label: t('menu.reveal'), disabled: !local && saved === undefined,
-          run: async () => {
-            if (saved !== undefined) await ctx.fileActions.reveal(saved)
-            else if (local !== undefined) await open(local, 'reveal')
-          } },
+        { id: 'reveal', symbol: 'folder', label: fileManager(), disabled: !local && saved === undefined,
+          ...saved !== undefined ? { run: () => ctx.fileActions.reveal(saved) } : local !== undefined ? { run: () => open(local, 'reveal') } : {} },
       ]
     },
   }), 'open-in-app: image context menu')

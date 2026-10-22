@@ -1080,7 +1080,7 @@ describe('web e2e: shipped right Sidebar', () => {
       expect(await column.locator('[data-dockkit-tab-close]').count()).toBe(0)
       expect(await column.locator('[data-dockkit-tab-quiet]').count()).toBe(1)
       await column.locator('[data-dockkit-tab]').first().click({ button: 'right' })
-      expect(await page.locator('[data-dockkit-tab-menu]').isVisible()).toBe(false)
+      expect(await page.locator('[data-context-menu][role="menu"]').isVisible()).toBe(false)
       expect(await page.getByRole('menu').count()).toBe(0)
 
       // Any other tab standing alone closes together with the column. Open the
@@ -1183,13 +1183,10 @@ describe('web e2e: shipped right Sidebar', () => {
       // is the secondary press.
       expect(await column.locator('[data-dockkit-tab-more]').count()).toBe(0)
       await column.locator('[data-dockkit-tab]').filter({ hasText: 'Start' }).click({ button: 'right' })
-      const menu = page.locator('[data-dockkit-tab-menu]')
+      const menu = page.locator('[data-context-menu][role="menu"]')
       await expect.poll(async () => await menu.count()).toBe(1)
 
-      // The kit's one item; the extension seat is declared and rendered, and
-      // with no registrant it contributes nothing, which is what "declared, not
-      // speculative" looks like from the outside.
-      await expect.poll(async () => await menu.getByRole('menuitem').allInnerTexts()).toEqual(['Close'])
+      await expect.poll(async () => await menu.getByRole('menuitem').allInnerTexts()).toEqual(['Close', 'Close Other Tabs'])
       // The menu hangs below the strip that clips its overflow. Its pixels are
       // its own: a hit test at its centre lands on it, not on whatever the
       // strip would have shown through a clipped box.

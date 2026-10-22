@@ -19,7 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { FILES_ID, filesDefinition } from './definition.tsx'
 import { createList, createWatch, filesFace } from './face.ts'
-import { FilesBody } from './FilesBody.tsx'
+import { FilesBody, type FilesBodyInjected } from './FilesBody.tsx'
 import { FilesTitle } from './FilesTitle.tsx'
 import { en, ja, zh } from './locales.ts'
 import { createFilesStore } from './store.ts'
@@ -86,8 +86,8 @@ export function apply(ctx: ClientContext): void {
   const inject = filesFace(createList(ctx.remote), createWatch(ctx.remote))
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     {
-      name: 'sidebar.right.pane.tab', key: FILES_ID, locale: NS, store, inject: (sessionId, actions) => ({ ...inject(sessionId, actions),
-        openContextMenu: (path: string, paneId: import('@deepseek-ai/dsh-client-ui-dockkit').PaneId, point: { x: number; y: number }) => { ctx.menus.open({ kind: 'file', value: { sessionId, path, paneId } }, point) },
+      name: 'sidebar.right.pane.tab', key: FILES_ID, locale: NS, store, inject: (sessionId, actions): FilesBodyInjected => ({ ...inject(sessionId, actions),
+        openContextMenu: (path, paneId, point) => { ctx.menus.open({ kind: 'file', value: { sessionId, path, paneId } }, point) },
       }),
       children: { 'sidebar.right.tab.files.actions': { kind: 'list', scope: 'session' } },
     },

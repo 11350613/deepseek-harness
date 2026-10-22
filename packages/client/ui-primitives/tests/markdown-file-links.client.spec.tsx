@@ -188,3 +188,16 @@ it('captures link targets and line numbers without activating them; linked image
   expect(openFile).not.toHaveBeenCalled()
   expect(openExternalLink).not.toHaveBeenCalled()
 })
+
+it('passes keyboard-positioned produced-file menus and local image identities to their owners', () => {
+  const openMenu = vi.fn(), openContextMenu = vi.fn()
+  const view = render(<MarkdownDelegateProvider openContextMenu={openContextMenu}>
+    <MarkdownText text={'`report.svg` ![local](out/report.svg)'}
+      fileMentions={{ resolve: () => ({ title: 'out/report.svg', label: 'Report', open: vi.fn(), openMenu }) }}
+      pathImages={{ resolve: () => 'blob:local' }} />
+  </MarkdownDelegateProvider>)
+  fireEvent.contextMenu(view.getByRole('button', { name: 'Report' }), { clientX: 5, clientY: 6 })
+  expect(openMenu).toHaveBeenCalledWith({ x: 5, y: 6 })
+  fireEvent.contextMenu(view.getByRole('img'))
+  expect(openContextMenu).toHaveBeenCalledWith({ kind: 'image', url: 'blob:local', path: 'out/report.svg' }, { x: 0, y: 0 })
+})

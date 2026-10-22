@@ -14,7 +14,13 @@ function show(event: SyntheticEvent<HTMLElement>, open: ChatViewInjected['openCo
   const rect = source.getBoundingClientRect()
   const position = point ?? { x: rect.left, y: rect.bottom }
   source.focus({ preventScroll: true })
-  if (path) open({ kind: 'file', path }, position)
+  if (path) {
+    const line = Number(source.getAttribute('data-file-line'))
+    open({ kind: 'file', path,
+      ...(Number.isSafeInteger(line) && line > 0 ? { line } : {}),
+      ...(source.getAttribute('data-file-base') === 'workspace' ? { base: 'workspace' as const } : {}),
+    }, position)
+  }
   else if (url) open({ kind: 'url', url }, position)
 }
 

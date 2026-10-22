@@ -283,7 +283,7 @@ export function apply(ctx: Context): void {
             const current = session.projections.faceOf('workingDirectory').getSnapshot() as string | null | undefined
             const path = (value: string) => resolveWorkspacePath(current ?? cwd, value)
             switch (target.kind) {
-              case 'file': ctx.menus.open({ kind: 'file', value: { sessionId, path: path(target.path),
+              case 'file': ctx.menus.open({ kind: 'file', value: { sessionId, path: target.base === 'workspace' ? resolveWorkspacePath(cwd, target.path) : path(target.path),
                 ...(target.line === undefined ? {} : { line: target.line }) } }, point); break
               case 'url': ctx.menus.open({ kind: 'url', value: { sessionId, url: target.url } }, point); break
               case 'image': ctx.menus.open({ kind: 'image', value: { sessionId, url: target.url,

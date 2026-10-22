@@ -1,3 +1,4 @@
+import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
 /** Strict per-session header/body content inserted into the resident conversation layout. */
 
 import { useState } from 'react'
@@ -130,7 +131,7 @@ export function ConversationSessionHeader({
                   return (
                     <span key={summary.id} className={css.crumbSeg} onContextMenu={(event) => {
                       event.preventDefault(); event.stopPropagation()
-                      openSessionMenu(summary.id, summary.displayTitle, { x: event.clientX, y: event.clientY })
+                      openSessionMenu(summary.id, summary.displayTitle, menuPoint(event))
                     }}>
                       {index > 0 && <span className={css.crumbSep}>/</span>}
                       {lineage

@@ -1,3 +1,4 @@
+import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
 /**
  * Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
  * all data and callbacks arrive via props. Hover swaps (folder->chevron,
@@ -625,7 +626,7 @@ export function SessionNodeItem({
       onContextMenu={(event) => {
         if (row.blank) return
         event.preventDefault(); event.stopPropagation()
-        openSessionMenu(node.id, row.title, { x: event.clientX, y: event.clientY })
+        openSessionMenu(node.id, row.title, menuPoint(event))
       }}
       onClick={() => { onOpen(node.id) }}
       onKeyDown={(event) => {

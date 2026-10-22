@@ -11,7 +11,7 @@ export type MarkdownExternalLinkHandler = (href: string) => void
 
 /** Explicit object and viewport coordinates from the element owning a context gesture. */
 export type MarkdownMenuTarget =
-  | { kind: 'file'; path: string; line?: number }
+  | { kind: 'file'; path: string; line?: number; base?: 'workspace' | 'workingDirectory' }
   | { kind: 'url'; url: string }
   | { kind: 'image'; url: string; path?: string; name?: string; mediaType?: string }
 

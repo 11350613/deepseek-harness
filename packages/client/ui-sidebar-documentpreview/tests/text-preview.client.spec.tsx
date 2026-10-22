@@ -700,3 +700,20 @@ describe('TextPreview — header controls', () => {
     expect(h.instance.getSnapshot().byTab[TAB_ID]).toBeUndefined()
   })
 })
+
+
+it('opens a path menu with the preview pane and requested line', async () => {
+  const h = harness({ 1: page(1, ['first'], true) })
+  const openFileMenu = vi.fn()
+  const view = render(<TextPreview {...h.props({ revision: 1, params: { line: 1 } })} openFileMenu={openFileMenu} />)
+  await settle()
+  fireEvent.contextMenu(view.container.querySelector('[data-textpreview-path]')!, { clientX: 33, clientY: 44 })
+  expect(openFileMenu).toHaveBeenCalledWith(ABSOLUTE_PATH, { x: 33, y: 44 }, 1, 'pane-1')
+  const p = h.props()
+  const info = p.useTabInfo()
+  view.rerender(<TextPreview {...p} openFileMenu={openFileMenu} useDocumentPreviews={selector => selector([])}
+    useTabInfo={() => ({ ...info, tab: { ...info.tab, contentId: 'dsh-resource://file/session/s/archive.zip',
+      navigation: { address: 'dsh-resource://file/session/s/archive.zip', revision: 2, params: undefined } } })} />)
+  fireEvent.contextMenu(view.container.querySelector('[data-textpreview-path]')!, { clientX: 55, clientY: 66 })
+  expect(openFileMenu).toHaveBeenLastCalledWith(ABSOLUTE_PATH, { x: 55, y: 66 }, undefined, 'pane-1')
+})

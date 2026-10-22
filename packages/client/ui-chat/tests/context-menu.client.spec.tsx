@@ -8,11 +8,11 @@ afterEach(cleanup)
 it('copies the recorded path target rather than a tool or reference display label, and preserves URL query and fragment', () => {
   const open = vi.fn()
   const view = render(<div onContextMenu={(event) => { openChatContextMenu(event, open) }}>
-    <button data-file-path="/workspace/output.txt">output.txt:42</button>
+    <button data-file-path="/workspace/output.txt" data-file-line="42">output.txt:42</button>
     <a href="https://example.com/path?q=1#fragment">Website</a>
   </div>)
   fireEvent.contextMenu(view.getByRole('button'), { clientX: 50, clientY: 70 })
-  expect(open).toHaveBeenLastCalledWith({ kind: 'file', path: '/workspace/output.txt' }, { x: 50, y: 70 })
+  expect(open).toHaveBeenLastCalledWith({ kind: 'file', path: '/workspace/output.txt', line: 42 }, { x: 50, y: 70 })
   fireEvent.contextMenu(view.getByRole('link'), { clientX: 80, clientY: 90 })
   expect(open).toHaveBeenLastCalledWith({ kind: 'url', url: 'https://example.com/path?q=1#fragment' }, { x: 80, y: 90 })
 })

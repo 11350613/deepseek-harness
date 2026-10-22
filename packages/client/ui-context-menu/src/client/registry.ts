@@ -15,7 +15,7 @@ export class MenuRegistry {
   private readonly providers = new Map<string, Provider>()
   private readonly occurrences = new Set<() => void>()
   private disposed = false
-  constructor(private readonly failed: (message?: string) => void) {}
+  constructor(private readonly failed: (message?: string) => void, private readonly timeoutMs?: number) {}
 
   /**
    * Register actions for subsequent openings.
@@ -66,7 +66,8 @@ export class MenuRegistry {
     this.occurrences.add(dispose)
     const pending: Promise<void>[] = []
     for (const provider of providers) {
-      const signal = AbortSignal.any([lifetime.signal, provider.lifetime.signal])
+      const deadline = new AbortController()
+      const signal = AbortSignal.any([lifetime.signal, provider.lifetime.signal, deadline.signal])
       const accept = (actions: readonly MenuAction[]): void => {
         if (signal.aborted) return
         const next = new Map<string, MenuAction>()
@@ -88,7 +89,10 @@ export class MenuRegistry {
         const result = provider.resolve(target, signal)
         if (result instanceof Promise) {
           pending.push(new Promise<void>((settle) => {
-            const finish = (): void => { signal.removeEventListener('abort', finish); settle() }
+            const timer = this.timeoutMs === undefined ? undefined : setTimeout(() => {
+              deadline.abort(); this.failed()
+            }, this.timeoutMs)
+            const finish = (): void => { clearTimeout(timer); signal.removeEventListener('abort', finish); settle() }
             signal.addEventListener('abort', finish, { once: true })
             void result.then(accept).catch(() => { if (!signal.aborted) this.failed() }).finally(finish)
           }))

@@ -327,3 +327,14 @@ describe('failureLine', () => {
     expect(failureLine(t, failure)).toBe('读取失败：socket closed')
   })
 })
+
+
+it('opens the clicked file menu in its pane without activating the file', async () => {
+  const h = mountBody()
+  await act(() => h.script.watches.ready(ROOT))
+  await act(() => h.script.settle({ ok: true, value: ROOT_LEVEL }))
+  const row = h.view.container.querySelector(`[data-files-path="${ROOT}/README.md"] button`)!
+  fireEvent.contextMenu(row, { clientX: 45, clientY: 56 })
+  expect(h.shared.openContextMenu).toHaveBeenCalledWith(`${ROOT}/README.md`, 'pane-1', { x: 45, y: 56 })
+  expect(h.tabActions.openResource).not.toHaveBeenCalled()
+})

@@ -158,3 +158,36 @@ it('keeps trigger focus through replacement and ignores non-dismissal events and
   } finally { trigger.remove(); menu.remove(); await fiber.dispose() }
   notify('late')
 })
+
+it('dispatches keyboard menus at focused triggers and leaves unhandled shortcuts available', async () => {
+  const ctx = new Context()
+  ctx.provide('slots', { inject: () => () => {} } as never)
+  ctx.provide('locale', { register: () => () => {}, bind: () => (key: string) => key } as never)
+  const fiber = ctx.plugin({ inject, apply })
+  await fiber.await()
+  const trigger = document.createElement('button')
+  document.body.append(trigger)
+  const gesture = vi.fn((event: MouseEvent) => { event.preventDefault() })
+  trigger.addEventListener('contextmenu', gesture)
+  try {
+    for (const input of [{ key: 'ContextMenu' }, { key: 'F10', shiftKey: true }]) {
+      const key = new KeyboardEvent('keydown', { ...input, bubbles: true, cancelable: true })
+      trigger.dispatchEvent(key)
+      expect(key.defaultPrevented).toBe(true)
+    }
+    expect(gesture).toHaveBeenCalledTimes(2)
+    expect(gesture.mock.calls[0]?.[0]).toMatchObject({ clientX: 0, clientY: 0 })
+    for (const extra of [{ repeat: true }, { isComposing: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ContextMenu', bubbles: true, ...extra }))
+    }
+    expect(gesture).toHaveBeenCalledTimes(2)
+    const prevented = new KeyboardEvent('keydown', { key: 'ContextMenu', bubbles: true, cancelable: true })
+    prevented.preventDefault(); trigger.dispatchEvent(prevented)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ContextMenu', bubbles: true }))
+    expect(gesture).toHaveBeenCalledTimes(2)
+    trigger.removeEventListener('contextmenu', gesture)
+    const unhandled = new KeyboardEvent('keydown', { key: 'ContextMenu', bubbles: true, cancelable: true })
+    trigger.dispatchEvent(unhandled)
+    expect(unhandled.defaultPrevented).toBe(false)
+  } finally { trigger.remove(); await fiber.dispose() }
+})

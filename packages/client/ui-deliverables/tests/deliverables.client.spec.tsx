@@ -912,12 +912,16 @@ describe('plugin registration', () => {
       for (const text of ['report.docx', 'out/report.docx']) {
         const mention = mentions?.resolve(text)
         expect(mention?.label).toBe('Open out/report.docx in sidebar')
+        mention?.openMenu?.({ x: 41, y: 52 })
+        expect(vi.spyOn(ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'file', value: { sessionId: 'child-session', path: 'out/report.docx' } }, { x: 41, y: 52 })
         mention?.open()
       }
     }
     expect(preview.mock.calls).toEqual(Array.from({ length: 4 }, () => ['out/report.docx']))
     expect(fetcher).not.toHaveBeenCalled()
     const face = entry!.inject!(SessionId('child-session') as never) as unknown as DeliverablesInjected
+    face.openFileMenu(SessionId('child-session'), 'report.png', { x: 53, y: 64 })
+    expect(vi.spyOn(ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'file', value: { sessionId: 'child-session', path: 'report.png' } }, { x: 53, y: 64 })
     fetcher.mockResolvedValueOnce(Response.json({ name: 'desktop', available: true, fileManager: 'finder' }))
     await face.reloadPresentedHost()
     expect(face.hooks.presentedHost.getSnapshot()).toMatchObject({ name: 'desktop' })
@@ -948,6 +952,8 @@ describe('plugin registration', () => {
     expect(fetcher).toHaveBeenCalledTimes(readsAfterHover)
     expect(tabFace.hooks.changesDiff.getSnapshot()['api/changes.diff?sessionId=child-session&seq=5&index=1']).toEqual({ kind: 'binary', path: 'src/a.ts', display: 'src/a.ts' })
     expect(tabFace.hooks.presentedHost).toBe(face.hooks.presentedHost)
+    face.openFileMenu(SessionId('child-session'), 'report.png', { x: 53, y: 64 })
+    expect(vi.spyOn(ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'file', value: { sessionId: 'child-session', path: 'report.png' } }, { x: 53, y: 64 })
     fetcher.mockResolvedValueOnce(Response.json({ name: 'desktop', available: true, fileManager: 'finder' }))
     await tabFace.reloadPresentedHost()
     fetcher.mockResolvedValueOnce(new Response(null, { status: 204 }))
@@ -1016,6 +1022,8 @@ describe('presented files', () => {
     const props = openProps()
     props.openPresented.mockResolvedValue(null)
     const view = render(<Deliverables {...props} matched={matched} openFile={owner.openFile} sessionId={SessionId('child-session')} t={makeTranslate(en)} />)
+    fireEvent.contextMenu(view.getByRole('button', { name: 'Preview report-0.docx in sidebar' }), { clientX: 18, clientY: 29 })
+    expect(props.openFileMenu).toHaveBeenCalledWith(SessionId('child-session'), 'report-0.docx', { x: 18, y: 29 })
     expect(view.container.querySelectorAll('[data-presented-file]')).toHaveLength(4)
     const expand = view.getByRole('button', { name: 'Show all 8 delivered files' })
     expect(expand.getAttribute('aria-expanded')).toBe('false')

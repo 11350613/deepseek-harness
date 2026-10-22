@@ -145,8 +145,8 @@ export function apply(ctx: ClientContext): void {
       }
       return [
         { id: 'close', symbol: 'close', label: t('menu.close'), disabled: !tabs.close, run: () => { if (controller.menuTabs(sessionId, paneId, tabId).close) controller.closeIn(sessionId, tabId) } },
-        { id: 'others', symbol: 'closeOthers', label: t('menu.closeOthers'), disabled: tabs.all.length === 0, run: () => { closeMany(tabs.all) } },
-        ...tabs.right.length === 0 ? [] : [{ id: 'right', symbol: 'closeRight' as const, label: t('menu.closeRight'), run: () => { closeMany(tabs.right) } }],
+        { id: 'others', label: t('menu.closeOthers'), disabled: tabs.all.length === 0, run: () => { closeMany(tabs.all) } },
+        ...tabs.right.length === 0 ? [] : [{ id: 'right', label: t('menu.closeRight'), run: () => { closeMany(tabs.right) } }],
       ]
     },
   }), 'sidebar: menu actions')
@@ -221,6 +221,7 @@ export function apply(ctx: ClientContext): void {
       toggleFullscreen: () => { const target = controller.commandTarget(); if (target !== undefined) controller.toggleFullscreen(target) },
       openTab: (kind, options) => { controller.openTab(kind, options) },
       hooks: {
+        menuTarget: ctx.menus.active,
         shortcuts: ctx.shortcuts.catalog,
         tabTypes: { subscribe: listener => tabs.subscribe(listener), getSnapshot: () => tabs.entries() },
       },

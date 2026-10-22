@@ -95,7 +95,7 @@ it.each([false, true])('keeps workspace and archived search actions reachable wi
   expect(await shortcut.count()).toBe(1)
   expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(hasTouch)
   expect(await shortcut.isVisible()).toBe(!hasTouch)
-  for (const key of ['ArrowDown', 'Tab']) {
+  for (const key of ['ArrowDown', 'Home']) {
     await page.keyboard.press(key)
     expect(await page.locator('html').getAttribute('data-input-modality')).toBe('keyboard')
     expect(await page.getByRole('menu').evaluate(menu => menu.contains(document.activeElement))).toBe(true)

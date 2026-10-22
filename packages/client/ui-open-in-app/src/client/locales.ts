@@ -54,6 +54,7 @@ export const zh = {
   'menu.copyFailed': '无法复制，请检查内容是否可用后重试',
   'menu.saved': '已保存',
   'menu.downloadStarted': '已开始下载',
+  'menu.downloaded': '下载完成',
 
   'open.title': '用 {app} 打开',
   'path.appDefault': '{app}（默认）',
@@ -90,6 +91,7 @@ export const en: Record<OpenInAppKey, string> = {
   'menu.copyFailed': 'Could not copy. Check that the content is available, then retry.',
   'menu.saved': 'Saved',
   'menu.downloadStarted': 'Download started',
+  'menu.downloaded': 'Download complete',
 
   'open.title': 'Open in {app}',
   'path.appDefault': '{app} (default)',
@@ -129,6 +131,7 @@ export const ja = {
   'menu.copyFailed': 'コピーできません。内容を確認して再試行してください。',
   'menu.saved': '保存しました',
   'menu.downloadStarted': 'ダウンロードを開始しました',
+  'menu.downloaded': 'ダウンロードしました',
 
   ...PRODUCT_NAMES,
   'open.title': '{app}で開く',

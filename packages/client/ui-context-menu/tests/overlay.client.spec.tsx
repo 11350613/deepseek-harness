@@ -56,6 +56,7 @@ it('renders disabled, grouped and nested data actions and keeps feedback after m
   fireEvent.click(view.getByRole('menuitem', { name: 'Open' }))
   expect(select).toHaveBeenCalledWith('plain')
   fireEvent.click(view.getByRole('menuitem', { name: 'Export' }))
+  expect(view.getAllByRole('separator')).toHaveLength(2)
   fireEvent.click(view.getByRole('menuitem', { name: 'Original' }))
   expect(select).toHaveBeenCalledWith('child')
   act(() => { store.actions.exit(true) })

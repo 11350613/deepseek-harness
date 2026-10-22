@@ -44,6 +44,7 @@ function props(path = 'asset.png', data: Uint8Array<ArrayBuffer> = new Uint8Arra
   }
   return {
     fileDrag,
+    openImageMenu: vi.fn(),
     resourceAddress: `dsh-resource://file/session/image/${path}`,
     content: { kind: 'bytes', data },
     wrap: false,
@@ -154,3 +155,12 @@ describe('ImageBody', () => {
 })
 
 const fileDrag = { prepare: vi.fn(async () => ({ start: () => true, release: () => {} })), reportFailure: vi.fn() }
+
+
+it('opens the original image menu from the preview', async () => {
+  const p = props('asset.svg')
+  render(<ImageBody {...p} />)
+  const image = await screen.findByRole('img', { hidden: true })
+  fireEvent.contextMenu(image, { clientX: 35, clientY: 46 })
+  expect(p.openImageMenu).toHaveBeenLastCalledWith('asset.svg', 'blob:https://preview.invalid/1', 'image/svg+xml', { x: 35, y: 46 })
+})

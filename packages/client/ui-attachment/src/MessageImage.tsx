@@ -1,3 +1,4 @@
+import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuTargetMap, MenuPoint } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
@@ -140,7 +141,7 @@ export function MessageImage({ image, load, variant, labels, fileDrag, openImage
         onContextMenu={src === null || openImageMenu === undefined ? undefined : (event) => {
           event.preventDefault(); event.stopPropagation()
           openImageMenu({ url: src, name: label, ...(attachment === undefined ? {} : { mediaType: attachment.mediaType }) },
-            { x: event.clientX, y: event.clientY })
+            menuPoint(event))
         }}
         onClick={() => { if (src !== null) setOpen(true) }}
       >
@@ -157,7 +158,7 @@ export function MessageImage({ image, load, variant, labels, fileDrag, openImage
         onContextMenu={openImageMenu === undefined ? undefined : (event) => {
           event.preventDefault(); event.stopPropagation()
           openImageMenu({ url: src, name: label, ...(attachment === undefined ? {} : { mediaType: attachment.mediaType }) },
-            { x: event.clientX, y: event.clientY })
+            menuPoint(event))
         }} />}
     </>
   )

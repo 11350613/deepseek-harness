@@ -41,7 +41,7 @@ export function ImageLightbox({ src, alt, labels, onClose, onContextMenu }: {
     closeRef.current?.focus()
     const onKeyDown = (event: globalThis.KeyboardEvent): void => {
       // A portaled image menu owns Escape and Tab until it returns focus.
-      if (document.activeElement?.closest('[role="menu"]')) return
+      if (event.defaultPrevented || document.activeElement?.closest('[role="menu"]')) return
       if (event.key === 'Escape') { event.stopPropagation(); onClose() }
       if (event.key === 'Tab') { event.preventDefault(); closeRef.current?.focus() }
     }

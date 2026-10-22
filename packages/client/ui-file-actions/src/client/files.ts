@@ -39,7 +39,7 @@ export class BrowserFileActions implements FileActions {
     if (this.desktop !== undefined && ['http:', 'https:'].includes(url.protocol) && url.origin !== location.origin) {
       const content = await this.desktop.readImage(url.href)
       this.lifetime.signal.throwIfAborted()
-      return new Blob([new Uint8Array(content.bytes)], { type: source.mediaType || content.mediaType })
+      return new Blob([new Uint8Array(content.bytes)], { type: content.mediaType || source.mediaType || '' })
     }
     const response = await fetch(source.url, { signal: this.lifetime.signal, referrerPolicy: 'no-referrer' })
     if (!response.ok) throw new Error('Original file unavailable')
@@ -58,7 +58,7 @@ export class BrowserFileActions implements FileActions {
     if (handle === null) return { status: 'cancelled' }
     const blob = await this.read(source)
     this.lifetime.signal.throwIfAborted()
-    const name = exportName(suggested, source.mediaType || blob.type)
+    const name = exportName(suggested, blob.type || source.mediaType || '')
     if (this.desktop !== undefined) {
       const result = await this.desktop.save({ bytes: new Uint8Array(await blob.arrayBuffer()), name, mode })
       if (result.status === 'saved' && result.fileId !== undefined) this.saved.set(source.url, result.fileId)
@@ -75,6 +75,7 @@ export class BrowserFileActions implements FileActions {
       const anchor = document.createElement('a')
       anchor.href = url; anchor.download = name
       document.body.append(anchor); anchor.click(); anchor.remove()
+      return { status: 'requested' }
     }
     return { status: 'saved' }
   }

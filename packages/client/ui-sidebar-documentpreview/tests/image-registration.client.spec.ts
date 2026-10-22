@@ -7,7 +7,8 @@ import { DocumentPreviewRegistry } from '../src/client/document/registry.ts'
 import { ImageBody } from '../src/client/image/ImageBody.tsx'
 import { apply, BINARY_IMAGE_EXTENSIONS, IMAGE_BODY_ID, IMAGE_EXTENSIONS, imageBodyDefinition } from '../src/client/image/index.ts'
 import { en, ja, zh } from '../src/client/image/locales.ts'
-import type { ZoomInjected, ZoomStore } from '../src/client/zoom/store.ts'
+import type { ImageBodyInjected } from '../src/client/image/ImageBody.tsx'
+import type { ZoomStore } from '../src/client/zoom/store.ts'
 
 let dispose: (() => Promise<void>) | undefined
 afterEach(async () => { await dispose?.(); dispose = undefined })
@@ -39,7 +40,7 @@ describe('image registration', () => {
       key: string
       locale: string
       store: ZoomStore
-      inject: (sessionId: SessionId, actions: ReturnType<ZoomStore['create']>['actions']) => ZoomInjected
+      inject: (sessionId: SessionId, actions: ReturnType<ZoomStore['create']>['actions']) => ImageBodyInjected
     }
     const entries: Options[] = []
     const register = vi.fn((options: Options, body: unknown) => {
@@ -48,6 +49,7 @@ describe('image registration', () => {
       return () => { bodies.delete(options.key); entries.splice(entries.indexOf(options), 1) }
     })
     ctx.provide('fileDrag', { actions: fileDrag, read: () => undefined })
+    ctx.provide('menus', { open: vi.fn() } as never)
     ctx.provide('documentPreviews', registry)
     ctx.provide('slots', { inject: (_key: string, callback: () => () => void) => callback(), register } as never)
     ctx.provide('locale', {
@@ -72,6 +74,8 @@ describe('image registration', () => {
     expect(typeof entries[0]?.inject).toBe('function')
     const instance = entries[0]!.store.create()
     const face = entries[0]!.inject('image-session' as SessionId, instance.actions)
+    face.openImageMenu('/image.svg', 'blob:original', 'image/svg+xml', { x: 23, y: 34 })
+    expect(vi.spyOn(ctx.menus, 'open')).toHaveBeenCalledWith({ kind: 'image', value: { sessionId: 'image-session', path: '/image.svg', url: 'blob:original', mediaType: 'image/svg+xml' } }, { x: 23, y: 34 })
     const controller = new AbortController()
     face.retainTab('image-tab' as TabId, controller.signal)
     instance.actions.zoom('image-tab' as TabId, { kind: 'fixed', scale: 1.5 })

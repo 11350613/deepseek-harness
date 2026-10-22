@@ -1,3 +1,4 @@
+import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
 /** File identity, Sidebar preview, and contributed native actions for one delivery. */
 import type { ReactNode } from 'react'
 import { resolveWorkspacePath } from '@deepseek-ai/dsh-util-workspace-path'
@@ -40,7 +41,7 @@ export function PresentedFileCard({ file, cwd, phase, host, onPreview, onMenu, a
   return <div className={css.file} data-presented-file>
     <button type="button" className={css.cardPreview} title={resolveWorkspacePath(cwd, file.path)}
       aria-label={t('presented.previewCard', { name: file.path })} onClick={onPreview}
-      onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onMenu({ x: event.clientX, y: event.clientY }) }} />
+      onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onMenu(menuPoint(event)) }} />
     <span className={css.fileIcon}><FileTypeIcon path={file.path} size={20} /></span>
     <div className={css.fileBody}>
       <div className={css.details}>

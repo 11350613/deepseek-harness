@@ -860,9 +860,15 @@ describe('workspace browser rows', () => {
     render(<SessionNodeItem node={node} currentId={sid('other')} now={0} onOpen={onOpen} openSessionMenu={openSessionMenu} t={t} />)
     fireEvent.contextMenu(screen.getByRole('treeitem'), { clientX: 31, clientY: 47 })
     expect(openSessionMenu).toHaveBeenLastCalledWith(node.id, 'One', { x: 31, y: 47 })
+    fireEvent.pointerDown(screen.getByRole('button', { name: '会话“One”的操作' }))
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     expect(openSessionMenu).toHaveBeenLastCalledWith(node.id, 'One', { x: 0, y: 0 }, 'toggle')
     expect(onOpen).not.toHaveBeenCalled()
+    cleanup()
+    render(<SessionNodeItem node={{ ...node, blank: true }} currentId={sid('other')} now={0} onOpen={onOpen} openSessionMenu={openSessionMenu} t={t} />)
+    openSessionMenu.mockClear()
+    fireEvent.contextMenu(screen.getByRole('treeitem'))
+    expect(openSessionMenu).not.toHaveBeenCalled()
   })
 
   it('renders the row action list inside the actions area after the menu trigger', () => {

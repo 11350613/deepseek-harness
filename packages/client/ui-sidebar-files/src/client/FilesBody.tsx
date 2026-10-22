@@ -1,3 +1,4 @@
+import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
 /**
  * The file tree's body: the session's workspace root, listed one level at a time.
  *
@@ -10,6 +11,7 @@
  */
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
+import type { PaneId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import clsx from 'clsx'
 import type { RemoteFailure } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
@@ -27,13 +29,23 @@ import type {} from './locales.ts'
 import type { FilesTabState, createFilesStore } from './store.ts'
 import css from './FilesBody.module.css'
 
+/** File-tree readers and actions supplied by its registration. */
+export interface FilesBodyInjected extends FilesInjected {
+  /**
+   * Open actions for the captured file and pane.
+   * @param path - workspace file path.
+   * @param paneId - pane containing the tree.
+   * @param point - viewport position of the menu gesture.
+   */
+  openContextMenu(this: void, path: string, paneId: PaneId, point: { x: number; y: number }): void
+}
+
 /** The body's composed props: the tab it draws, its store, its face, and its copy. */
 export type FilesBodyProps =
   & PropsRuntime<'sidebar.right.pane.tab'>
   & PropsRenderSlots<'sidebar.right.tab.files.actions'>
   & PropsStore<ReturnType<typeof createFilesStore>>
-  & FilesInjected
-  & { openContextMenu(this: void, path: string, paneId: import('@deepseek-ai/dsh-client-ui-dockkit').PaneId, point: { x: number; y: number }): void }
+  & FilesBodyInjected
   & PropsLocale<'sidebarFiles'>
 
 /** Natural, case-insensitive name order, so `file2` precedes `file10`. */
@@ -100,7 +112,7 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
         <button type="button" className={css.row} onClick={() => { tree.onOpen(path) }}
           onContextMenu={(event) => {
             event.preventDefault(); event.stopPropagation()
-            tree.onMenu(path, { x: event.clientX, y: event.clientY })
+            tree.onMenu(path, menuPoint(event))
           }}>
           <FileTypeIcon kind={classifyFileType(entry.name)} size={16} className={css.fileIcon} />
           <span className={css.name}>{entry.name}</span>

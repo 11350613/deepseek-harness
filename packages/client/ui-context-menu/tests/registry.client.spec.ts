@@ -127,3 +127,23 @@ describe('menu contribution lifecycle', () => {
     registry.dispose()
   })
 })
+
+it('omits a provider that misses its deadline and ignores its late result', async () => {
+  vi.useFakeTimers()
+  const failed = vi.fn(), registry = new MenuRegistry(failed, 50)
+  const waiting = deferred<readonly MenuAction[]>()
+  let signal!: AbortSignal
+  registry.register({ id: 'slow', target: 'extension', order: 0, resolve: (_target, value) => { signal = value; return waiting.promise } })
+  registry.register({ id: 'ready', target: 'extension', order: 1, resolve: () => [{ id: 'copy', label: 'Copy' }] })
+  const menu = registry.resolve(target)
+  try {
+    await vi.advanceTimersByTimeAsync(50)
+    await menu.ready
+    expect(signal.aborted).toBe(true)
+    expect(menu.source.getSnapshot().map(item => item.label)).toEqual(['Copy'])
+    expect(failed).toHaveBeenCalledOnce()
+    waiting.resolve([{ id: 'late', label: 'Late' }])
+    await waiting.promise
+    expect(menu.source.getSnapshot().map(item => item.label)).toEqual(['Copy'])
+  } finally { registry.dispose(); vi.useRealTimers() }
+})

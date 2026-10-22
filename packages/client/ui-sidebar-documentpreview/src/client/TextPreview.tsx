@@ -1,3 +1,4 @@
+import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
 /**
  * The text preview's body: a file's content, or the reason it is not showing.
  *
@@ -206,7 +207,7 @@ export function TextPreview({
           <PathLabel path={displayPath} className={css.path} data-textpreview-path
             onContextMenu={(event) => {
               event.preventDefault(); event.stopPropagation()
-              openFileMenu(displayPath, { x: event.clientX, y: event.clientY }, line, panel.id)
+              openFileMenu(displayPath, menuPoint(event), line, panel.id)
             }} />
           {fileOwner !== undefined && renderSlot('sidebar.right.tab.document.actions', fileOwner)}
         </div>
@@ -272,7 +273,7 @@ export function TextPreview({
         <PathLabel path={displayPath} className={css.path} data-textpreview-path
           onContextMenu={(event) => {
             event.preventDefault(); event.stopPropagation()
-            openFileMenu(displayPath, { x: event.clientX, y: event.clientY }, line, panel.id)
+            openFileMenu(displayPath, menuPoint(event), line, panel.id)
           }} />
         {candidates.length > 1
           && (

@@ -13,6 +13,7 @@ export interface FileActionSource {
 }
 /** Result of an explicit save gesture. Cancellation is not a failure. */
 export type FileSaveResult = { readonly status: 'cancelled' }
+  | { readonly status: 'requested' }
   | { readonly status: 'saved'; readonly fileId?: SavedFileId }
 /** Desktop-owned operations exposed only to the trusted application frame. */
 export interface DesktopFileActions {

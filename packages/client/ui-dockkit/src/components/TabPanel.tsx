@@ -1,3 +1,4 @@
+import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
 /**
  * One pane: its tab strip (drag source, drop target, split control) and the
  * active tab's body with the dock preview overlay. Presentational; every gesture
@@ -320,7 +321,7 @@ export function TabStrip({ state, pane, callbacks }: TabPanelProps): ReactNode {
                   event.preventDefault()
                   event.stopPropagation()
                   if (callbacks.openTabMenu !== undefined) {
-                    callbacks.openTabMenu(tab, pane.id, { x: event.clientX, y: event.clientY })
+                    callbacks.openTabMenu(tab, pane.id, menuPoint(event))
                     return
                   }
                   const anchor = event.currentTarget
@@ -329,7 +330,7 @@ export function TabStrip({ state, pane, callbacks }: TabPanelProps): ReactNode {
               >
                 <TabTitle>{callbacks.renderTabTitle?.(tab) ?? tab.title}</TabTitle>
                 {closable && (
-                  <Tooltip disabled={menu !== undefined} label={callbacks.labels.closeTab} shortcutKeys={callbacks.labels.closeTabKeys} side="bottom" delayMs={500}>
+                  <Tooltip disabled={menu !== undefined || callbacks.tabMenuOpen === true} label={callbacks.labels.closeTab} shortcutKeys={callbacks.labels.closeTabKeys} side="bottom" delayMs={500}>
                     <button
                       type="button"
                       className={css.tabClose}

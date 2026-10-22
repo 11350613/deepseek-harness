@@ -17,6 +17,7 @@ import { TEXTPREVIEW_ID, TEXTPREVIEW_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { OfficeFontAction } from '../src/client/office/OfficeFontAction.tsx'
 import { OfficeBody } from '../src/client/office/OfficeBody.tsx'
+import type { TextPreviewInjected } from '../src/client/TextPreview.tsx'
 import { TextPreview } from '../src/client/TextPreview.tsx'
 import { TextTitle } from '../src/client/TextTitle.tsx'
 import { TextBody } from '../src/client/text/TextBody.tsx'
@@ -161,4 +162,18 @@ describe('ui-sidebar-documentpreview apply', () => {
     await expect.poll(() => instance.getSnapshot().byTab[TAB_ID]?.failure).toMatchObject({ code: 'workspace-file/not-found', message: 'File missing' })
     expect(instance.getSnapshot().byTab[TAB_ID]?.complete).toBeUndefined()
   })
+})
+
+
+it('passes optional line and pane coordinates from preview actions to the file menu', async () => {
+  const h = await boot()
+  const entry = h.registered.find(entry => entry.component === TextPreview)!
+  const store = (entry.store as TextStore).create()
+  const face = (entry.inject as (id: typeof SESSION, actions: typeof store.actions) => TextPreviewInjected)(SESSION, store.actions)
+  face.openFileMenu('/file.txt', { x: 4, y: 5 })
+  expect(vi.spyOn(h.ctx.menus, 'open')).toHaveBeenCalledWith({ kind: 'file', value: { sessionId: SESSION, path: '/file.txt' } }, { x: 4, y: 5 })
+  face.openFileMenu('/file.txt', { x: 6, y: 7 }, 21, 'pane' as never)
+  expect(vi.spyOn(h.ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'file', value: {
+    sessionId: SESSION, path: '/file.txt', line: 21, paneId: 'pane',
+  } }, { x: 6, y: 7 })
 })

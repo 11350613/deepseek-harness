@@ -316,9 +316,30 @@ describe('Chat inject API', () => {
   it('resolves relative file paths against the Session\'s current working directory', async () => {
     const b = await bench()
     const { injected } = b.chatViewApi(b.rootReference)
+    vi.spyOn(b.runtime.ctx.menus, 'open')
     await b.runtime.sessions.setProjection(ROOT, 'workingDirectory', '/proj/.agents/worktrees/w')
     await injected.openFile('src/a.ts')
     expect(b.sidebarRight.openResource).toHaveBeenLastCalledWith('dsh-resource://file/session/root-1/.agents/worktrees/w/src/a.ts')
+    injected.openContextMenu({ kind: 'file', path: 'src/a.ts', line: 7 }, { x: 1, y: 2 })
+    expect(vi.spyOn(b.runtime.ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'file', value: {
+      sessionId: ROOT, path: '/proj/.agents/worktrees/w/src/a.ts', line: 7,
+    } }, { x: 1, y: 2 })
+    injected.openContextMenu({ kind: 'file', path: 'src/a.ts', base: 'workspace' }, { x: 3, y: 4 })
+    expect(vi.spyOn(b.runtime.ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'file', value: {
+      sessionId: ROOT, path: '/proj/src/a.ts',
+    } }, { x: 3, y: 4 })
+    injected.openContextMenu({ kind: 'url', url: 'https://example.com/' }, { x: 5, y: 6 })
+    expect(vi.spyOn(b.runtime.ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'url', value: { sessionId: ROOT, url: 'https://example.com/' } }, { x: 5, y: 6 })
+    injected.openContextMenu({ kind: 'image', url: 'blob:image', path: 'image.png', name: 'image.png', mediaType: 'image/png' }, { x: 7, y: 8 })
+    expect(vi.spyOn(b.runtime.ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'image', value: {
+      sessionId: ROOT, url: 'blob:image', path: '/proj/.agents/worktrees/w/image.png', name: 'image.png', mediaType: 'image/png',
+    } }, { x: 7, y: 8 })
+    await b.runtime.sessions.setProjection(ROOT, 'workingDirectory', null)
+    injected.openContextMenu({ kind: 'image', url: 'https://example.com/image' }, { x: 9, y: 10 })
+    injected.openContextMenu({ kind: 'file', path: 'file.ts' }, { x: 9, y: 10 })
+    expect(vi.spyOn(b.runtime.ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'file', value: { sessionId: ROOT, path: '/proj/file.ts' } }, { x: 9, y: 10 })
+    await b.runtime.sessions.setProjection(ROOT, 'workingDirectory', '/proj/.agents/worktrees/w')
+
     // A leading `./` names the same file, so the Sidebar reuses its tab.
     await injected.openFile('./src/a.ts')
     expect(b.sidebarRight.openResource).toHaveBeenLastCalledWith('dsh-resource://file/session/root-1/.agents/worktrees/w/src/a.ts')

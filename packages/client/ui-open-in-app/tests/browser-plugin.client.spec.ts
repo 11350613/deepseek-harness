@@ -88,6 +88,7 @@ describe('open-in-app browser half', () => {
     const { fiber, list, commands } = await bench()
     try {
       const command = commands.get('workspace.openLocal')!
+      expect(command.label()).toBe('Open locally')
       const context = { region: 'page', modal: null, target: null } as const
       expect(command.resolve(context).status).toBe('blocked')
       const id = 'main' as SessionId

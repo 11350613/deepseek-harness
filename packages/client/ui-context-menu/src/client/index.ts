@@ -4,6 +4,9 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import z from '@deepseek-ai/schemastery'
+import { MENU_TRANSITION_MS } from '@deepseek-ai/dsh-client-ui-primitives'
+import { menuTargetKey } from './target-key.ts'
 import { MenuRegistry } from './registry.ts'
 import { createMenuStore } from './store.ts'
 import { MenuOverlay } from './View.tsx'
@@ -23,13 +26,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { /** Menu operation feedback. */ contextMenu: 'failed' }
 }
 
+/** Maximum time to prepare each contribution before omitting its pending actions. */
+export interface Config { resolutionTimeoutMs?: number }
+/** Validated Client menu preparation budget. */
+export const Config: z<Config> = z.object({ resolutionTimeoutMs: z.natural().min(1).default(1000) })
+
 /** Required overlay and localization services. */
 export const inject = ['slots', 'locale']
-/** @param ctx - plugin-owned Client context. */
-export function apply(ctx: Context): void {
+/** @param ctx - plugin-owned Client context. @param config - validated preparation budget. */
+export function apply(ctx: Context, config: Config = Config({})): void {
   ctx.effect(() => ctx.locale.register('contextMenu', {
     zh: { failed: '操作失败，请重试' }, en: { failed: 'Could not complete the action. Try again.' }, ja: { failed: '操作に失敗しました。再試行してください。' },
-  }), 'context menu: copy')
+  }), 'context menu: locale')
   const t = ctx.locale.bind('contextMenu')
   const handle = createMenuStore()
   const instance = handle.create()
@@ -45,7 +53,7 @@ export function apply(ctx: Context): void {
   const notify: ContextMenus['notify'] = (text, success = false) => {
     if (!disposed) instance.actions.notify({ id: ++sequence, text, success })
   }
-  const registry = new MenuRegistry((message) => { notify(message ?? t('failed')) })
+  const registry = new MenuRegistry((message) => { notify(message ?? t('failed')) }, config.resolutionTimeoutMs)
   const cancelOpening = (): void => {
     clearTimeout(openingTimer); finishOpening?.(); finishOpening = undefined
     active?.unsubscribe(); active?.resolution.dispose(); active = undefined
@@ -54,8 +62,9 @@ export function apply(ctx: Context): void {
   const dismiss = (replacing: boolean): void => {
     cancelOpening()
     clearTimeout(closeTimer)
+    if (instance.getSnapshot().target === null) return
     instance.actions.exit(replacing)
-    closeTimer = setTimeout(() => { instance.actions.close() }, replacing ? 20 : 80)
+    closeTimer = setTimeout(() => { instance.actions.close() }, replacing ? MENU_TRANSITION_MS.replace : MENU_TRANSITION_MS.dismiss)
   }
   const close = (): void => { dismiss(false) }
   const menus: ContextMenus = {
@@ -63,8 +72,9 @@ export function apply(ctx: Context): void {
     register: input => registry.register(input), resolve: target => registry.resolve(target), notify, close,
     open: (target, point) => {
       const previous = active
-      if (previous !== undefined && Math.hypot(previous.point.x - point.x, previous.point.y - point.y) <= 4
-        && JSON.stringify(previous.target) === JSON.stringify(target)) { close(); return }
+      if (previous !== undefined
+        && Math.hypot(previous.point.x - point.x, previous.point.y - point.y) <= 4
+        && menuTargetKey(previous.target) === menuTargetKey(target)) { close(); return }
       const focused = document.activeElement
       if (!(focused instanceof Element) || focused.closest('[data-context-menu]') === null) {
         returnFocus = focused instanceof HTMLElement ? focused : null
@@ -76,7 +86,9 @@ export function apply(ctx: Context): void {
       const publish = (): void => { if (displayed) instance.actions.items(resolution.source.getSnapshot()) }
       const occurrence = { resolution, unsubscribe: resolution.source.subscribe(publish), target, point }
       active = occurrence
-      const delay = new Promise<void>((resolve) => { finishOpening = resolve; openingTimer = setTimeout(resolve, 40) })
+      const delay = new Promise<void>((resolve) => {
+        finishOpening = resolve; openingTimer = setTimeout(resolve, MENU_TRANSITION_MS.prepare)
+      })
       void Promise.all([resolution.ready, delay]).then(() => {
         if (active !== occurrence) return
         clearTimeout(closeTimer)
@@ -95,17 +107,25 @@ export function apply(ctx: Context): void {
     const context = (event: MouseEvent): void => { if (!event.defaultPrevented) close() }
     const escape = (event: KeyboardEvent): void => {
       if (active !== undefined && instance.getSnapshot().target === null && event.key === 'Escape') {
-        event.preventDefault(); close()
+        event.preventDefault(); event.stopImmediatePropagation(); close()
       }
     }
     document.addEventListener('pointerdown', outside)
     document.addEventListener('contextmenu', context)
-    document.addEventListener('keydown', escape)
+    const keyboard = (event: KeyboardEvent): void => {
+      escape(event)
+      if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey
+        || !(event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)
+        || !(event.target instanceof HTMLElement)) return
+      const gesture = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+      if (!event.target.dispatchEvent(gesture)) { event.preventDefault(); event.stopImmediatePropagation() }
+    }
+    window.addEventListener('keydown', keyboard, true)
     return () => {
       disposed = true; cancelOpening(); clearTimeout(closeTimer); registry.dispose(); instance.actions.close()
       document.removeEventListener('pointerdown', outside)
       document.removeEventListener('contextmenu', context)
-      document.removeEventListener('keydown', escape)
+      window.removeEventListener('keydown', keyboard, true)
     }
   }, 'context menu: lifetime')
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({

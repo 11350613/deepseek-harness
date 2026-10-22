@@ -48,6 +48,7 @@ interface MockedTabActions {
 
 /** What a spec holds after mounting: the rendered view and every hand on the tree. */
 export interface Mounted {
+  readonly shared: ReturnType<typeof harness>['shared']
   readonly view: RenderResult
   readonly instance: FilesStoreInstance
   readonly script: ScriptedList
@@ -88,6 +89,7 @@ function harness(cwd: string | null, refreshShortcut?: ReturnType<FilesBodyProps
       },
     }),
     renderSlot: () => null,
+    openContextMenu: vi.fn(),
     sessionId: SESSION,
     useSessions: <S,>(sel: (s: SessionListState) => S) => sel(sessions),
     useStore: hookOf(instance),
@@ -106,5 +108,5 @@ function harness(cwd: string | null, refreshShortcut?: ReturnType<FilesBodyProps
 export function mountBody(cwd: string | null = ROOT, refreshShortcut?: ReturnType<FilesBodyProps['useTabInfo']>['tab']['refreshShortcut']): Mounted {
   const { shared, ...hands } = harness(cwd, refreshShortcut)
   const view = render(<FilesBody {...shared as unknown as FilesBodyProps} />)
-  return { ...hands, view, remount: () => render(<FilesBody {...shared as unknown as FilesBodyProps} />) }
+  return { ...hands, shared, view, remount: () => render(<FilesBody {...shared as unknown as FilesBodyProps} />) }
 }

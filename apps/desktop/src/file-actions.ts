@@ -51,8 +51,14 @@ export async function saveOriginal(bytes: Uint8Array, destination: string, repla
   }
 }
 
-/** @param assertOwner - rejects shell pages, subframes, and unowned windows. */
-export function installFileActions(assertOwner: (event: IpcMainInvokeEvent) => BrowserWindow): void {
+/**
+ * Install trusted-window original-file operations.
+ * @param assertOwner - rejects shell pages, subframes, and unowned windows.
+ * @param hostUrl - current application Host excluded from image reads.
+ */
+export function installFileActions(
+  assertOwner: (event: IpcMainInvokeEvent) => BrowserWindow, hostUrl: () => string | undefined = () => undefined,
+): void {
   const saved = new Map<SavedFileId, { owner: BrowserWindow; path: string }>()
   const owners = new WeakSet<BrowserWindow>()
   const timeoutMs = resolveDurationMs(process.env, 'DSH_DESKTOP_IMAGE_READ_TIMEOUT_MS', 30_000)
@@ -61,11 +67,15 @@ export function installFileActions(assertOwner: (event: IpcMainInvokeEvent) => B
   const retainOwner = (owner: BrowserWindow): void => {
     if (owners.has(owner)) return
     owners.add(owner)
+    const contents = owner.webContents
     const clear = (): void => {
       for (const [id, entry] of saved) if (entry.owner === owner) saved.delete(id)
     }
-    owner.webContents.on('did-start-loading', clear)
-    owner.once('closed', () => { clear(); owner.webContents.removeListener('did-start-loading', clear) })
+    const navigate = (_event: Electron.Event, _url: string, inPlace: boolean, mainFrame: boolean): void => {
+      if (mainFrame && !inPlace) clear()
+    }
+    contents.on('did-start-navigation', navigate)
+    owner.once('closed', () => { clear(); contents.removeListener('did-start-navigation', navigate) })
   }
   ipcMain.handle(DESKTOP_IPC.fileSave, async (event, value: unknown): Promise<FileSaveResult> => {
     const owner = assertOwner(event)
@@ -95,7 +105,7 @@ export function installFileActions(assertOwner: (event: IpcMainInvokeEvent) => B
   })
   ipcMain.handle(DESKTOP_IPC.imageCopy, async (event, bytes: unknown) => {
     assertOwner(event)
-    if (!(bytes instanceof Uint8Array)) throw new Error('Invalid clipboard image')
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength > maxBytes) throw new Error('Invalid clipboard image')
     const image = nativeImage.createFromBuffer(Buffer.from(bytes))
     if (image.isEmpty()) throw new Error('Image cannot be decoded')
     await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(image.toPNG())]) })])
@@ -103,16 +113,37 @@ export function installFileActions(assertOwner: (event: IpcMainInvokeEvent) => B
   ipcMain.handle(DESKTOP_IPC.imageRead, async (event, value: unknown) => {
     const owner = assertOwner(event)
     if (typeof value !== 'string') throw new Error('Invalid image URL')
-    const url = new URL(value)
-    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid image URL')
+    const checkedUrl = (value: string): URL => {
+      const url = new URL(value)
+      const host = hostUrl()
+      const application = host === undefined ? undefined : new URL(host)
+      if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password
+        || application !== undefined && url.port === application.port
+        && (url.hostname === application.hostname || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) {
+        throw new Error('Invalid image URL')
+      }
+      return url
+    }
+    let url = checkedUrl(value)
+    const contents = owner.webContents
     const lifetime = new AbortController()
     const abort = (): void => { lifetime.abort() }
     owner.once('closed', abort)
-    owner.webContents.once('did-start-loading', abort)
+    const navigate = (_event: Electron.Event, _url: string, inPlace: boolean, mainFrame: boolean): void => {
+      if (mainFrame && !inPlace) abort()
+    }
+    contents.on('did-start-navigation', navigate)
     try {
-      const response = await fetch(url, {
-        signal: AbortSignal.any([lifetime.signal, AbortSignal.timeout(timeoutMs)]), credentials: 'omit', referrerPolicy: 'no-referrer',
-      })
+      const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(timeoutMs)])
+      let response: Response
+      for (let redirects = 0; ; redirects++) {
+        response = await fetch(url, { signal, redirect: 'manual', credentials: 'omit', referrerPolicy: 'no-referrer' })
+        if (![301, 302, 303, 307, 308].includes(response.status)) break
+        await response.body?.cancel()
+        const location = response.headers.get('location')
+        if (redirects >= 20 || location === null) throw new Error('Invalid image redirect')
+        url = checkedUrl(new URL(location, url).href)
+      }
       if (!response.ok) throw new Error('Original image unavailable')
       const reader = response.body?.getReader()
       if (reader === undefined) throw new Error('Original image unavailable')
@@ -132,7 +163,7 @@ export function installFileActions(assertOwner: (event: IpcMainInvokeEvent) => B
       return { bytes: new Uint8Array(Buffer.concat(chunks)), mediaType: response.headers.get('content-type') ?? '' }
     } finally {
       owner.removeListener('closed', abort)
-      owner.webContents.removeListener('did-start-loading', abort)
+      contents.removeListener('did-start-navigation', navigate)
     }
   })
 }

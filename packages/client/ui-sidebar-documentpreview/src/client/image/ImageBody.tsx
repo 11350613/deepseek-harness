@@ -1,3 +1,4 @@
+import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
 /** Complete image bytes rendered in a shared zoom viewport. */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { DraggableImage } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -162,7 +163,7 @@ function LoadedImage({
           fileDrag={fileDrag}
           onContextMenu={(event) => {
             event.preventDefault(); event.stopPropagation()
-            openImageMenu({ x: event.clientX, y: event.clientY })
+            openImageMenu(menuPoint(event))
           }}
           resourceAddress={resourceAddress}
           ref={attachImage}

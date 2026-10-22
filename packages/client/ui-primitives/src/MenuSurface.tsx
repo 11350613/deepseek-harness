@@ -4,6 +4,9 @@ import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import css from './MenuSurface.module.css'
 
+/** Context-menu transition durations in milliseconds, shared with its lifecycle owner. */
+export const MENU_TRANSITION_MS = Object.freeze({ enter: 40, dismiss: 80, replace: 10, prepare: 20 })
+
 /** Menu containers preserve native div props and refs. */
 export interface MenuSurfaceProps extends ComponentPropsWithoutRef<'div'> {
   /** Match the shared compact menu's smaller outer radius. */
@@ -30,8 +33,11 @@ export const MenuSurface = forwardRef<HTMLDivElement, MenuSurfaceProps>(function
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- The portal ref is attached before layout effects run.
     document.body.appendChild(backingRef.current!)
   }, [])
-  const anchorStyle: CSSProperties & { '--dsh-menu-anchor': string } = {
+  const anchorStyle: CSSProperties & Record<`--dsh-menu-${string}`, string> = {
     '--dsh-menu-anchor': `--dsh-menu-${id.replaceAll(':', '')}`,
+    '--dsh-menu-enter': `${MENU_TRANSITION_MS.enter}ms`,
+    '--dsh-menu-dismiss': `${MENU_TRANSITION_MS.dismiss}ms`,
+    '--dsh-menu-replace': `${MENU_TRANSITION_MS.replace}ms`,
   }
   return <>
     <div {...props} ref={ref} data-menu-material="translucent" data-menu-phase={phase}
