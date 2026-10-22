@@ -870,9 +870,8 @@ describe('web e2e: workspace management (create / rename / grouping / hover affo
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     acknowledgeReloadConnectionLoss(tripwire, warningStart)
     await expect.poll(() => page.getByText('Workspaces', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
-    // Initial Workspace reconnection can focus the composer after the tree renders.
-    // Finish that navigation before the next test opens a path editor.
-    await page.locator('[role="treeitem"][aria-selected="true"]').waitFor({ timeout: 15_000 })
+    // The last Session can leave the new-session page with no selected row.
+    // Wait for composer focus so reconnection cannot steal the next editor's focus.
     await expect.poll(
       () => page.locator('[data-composer-input][contenteditable="true"]')
         .evaluate(element => element === document.activeElement),
