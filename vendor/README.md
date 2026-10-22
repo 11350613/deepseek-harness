@@ -54,7 +54,7 @@ Keep this log exhaustive — every divergence from upstream must be listed.
 18. **Entry `disabled` interpolation in `loader/src/config/entry.ts`**: a `disabled: !!js` expression evaluates against the loader context at every mount decision; the raw node stays in the options, so write-back keeps the `!!js` form. `disabled` is the only interpolated metadata field. Covered by `packages/boot/app-boot/tests/user-patches.spec.ts` and `apps/cli/tests/windows-shell.spec.ts`.
 19. **`loader/src/internal.ts` runtime API detection (upstream in Cordis rc.11)**: classification by available module-job APIs already matches rc.11. It replaces the Node-major check in the pinned Loader rc.5 baseline; no additional detection patch is required when syncing to rc.11. Covered by the Node compatibility matrix.
 
-20. **Loader fiber identity**: rc.11 Core canonicalizes `update()` and `restart()` through `ctx.fiber`, retiring the local unwrapping workaround. `Entry.fiber` retains the registry wrapper; volatile commits explicitly use the canonical fiber. HMR retains its existing replacement algorithm.
+20. **Loader fiber identity**: rc.11 Core canonicalizes `update()` and `restart()` through `ctx.fiber`, retiring the local unwrapping workaround. `Entry.fiber` retains the registry wrapper, including after DSH and vendor HMR replacements; identity checks against lifecycle fibers compare `entry.fiber.ctx.fiber`, and volatile commits explicitly use the canonical fiber. HMR retains its existing replacement algorithm.
 
 21. **Logger exporter disposal**: the rc.11 implementation retains each registration id in its disposer, retiring the local exporter-removal fix.
 
