@@ -212,7 +212,6 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
  * hover reveals the chevron and create button, and dwelling on a real
  * Workspace shows its hover card (the ungrouped bucket has none).
  * `containsCurrent` arrives on the node (derivation fact, no renderer scan).
- * @param props.level - one-based row nesting depth; defaults to one.
  * @param props.group - derived group node.
  * @param props.containsCurrentDescendant - highlight an ancestor even when its subtree is collapsed.
  * @param props.onToggle - expand/collapse the group.
@@ -222,11 +221,8 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
  * @param props.t - the browser root's locale seat.
  * @returns the row element.
  */
-export function ProjectRowItem({
-  group, level = 1, containsCurrentDescendant = false, onToggle, onCreate, actions, drag, home, newShortcut, t,
-}: {
+export function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag, home, newShortcut, t }: {
   group: GroupNode
-  level?: number
   newShortcut?: ShortcutCatalogEntry | undefined
   containsCurrentDescendant?: boolean
   onToggle: () => void
@@ -254,16 +250,8 @@ export function ProjectRowItem({
       className={clsx(css.projectRow, menuOpen && css.menuOpen)}
       data-row-key={`workspace:${group.key}`}
       role="treeitem"
-      aria-level={level}
-      tabIndex={-1}
       aria-expanded={row.expanded}
       onClick={onToggle}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return
-        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
-        event.preventDefault()
-        onToggle()
-      }}
       draggable={drag !== undefined}
       onDragStart={drag === undefined
         ? undefined
@@ -505,17 +493,9 @@ export function SearchResultItem({ result, currentId, onOpen, onUnarchive, t }: 
     <div
       className={clsx(css.searchResultRow, selected && css.selected, result.archived && css.archived)}
       role="treeitem"
-      aria-level={1}
-      tabIndex={-1}
       aria-selected={selected}
       aria-description={result.archived ? t('toast.archivedNotOpenable') : undefined}
       onClick={() => { onOpen(result.id) }}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return
-        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
-        event.preventDefault()
-        onOpen(result.id)
-      }}
     >
       <span className={css.searchResultHeading}>
         {/* Like session rows, the leading slot owns every row marker; on
@@ -561,7 +541,6 @@ export function SearchResultItem({ result, currentId, onOpen, onUnarchive, t }: 
  * neither marker renders there, and its live status stays on the hover card.
  * The row accepts Tab focus and opens with unmodified Enter or Space; descendant controls
  * handle their own activation without opening the row.
- * @param props.level - one-based row nesting depth; defaults to one.
  * @param props.node - derived session node.
  * @param props.currentId - selected session id (row highlight).
  * @param props.now - epoch ms for relative-time formatting.
@@ -578,10 +557,9 @@ export function SearchResultItem({ result, currentId, onOpen, onUnarchive, t }: 
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, level = 1, currentId, now, onOpen, onRenameRequest, renderSlot, onReveal, drag, home, t,
+  node, currentId, now, onOpen, onRenameRequest, renderSlot, onReveal, drag, home, t,
 }: {
   node: SessionNode
-  level?: number
   currentId: string | undefined
   now: number
   onOpen: (id: SessionNode['id']) => void
@@ -639,10 +617,9 @@ export function SessionNodeItem({
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
       role="treeitem"
-      aria-level={level}
-      tabIndex={-1}
       aria-selected={selected}
       aria-description={row.archived ? t('toast.archivedNotOpenable') : undefined}
+      tabIndex={0}
       onClick={() => { onOpen(node.id) }}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return

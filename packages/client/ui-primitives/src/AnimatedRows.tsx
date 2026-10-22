@@ -1,5 +1,5 @@
 /** React-commit-driven movement and entry/exit fades for keyed rows. */
-import { Component, createRef, type AriaRole, type FocusEventHandler, type KeyboardEventHandler, type ReactNode, type RefObject } from 'react'
+import { Component, createRef, type AriaRole, type ReactNode } from 'react'
 import css from './AnimatedRows.module.css'
 
 const ROW_FADE_MS = 100
@@ -11,10 +11,6 @@ export interface AnimatedRowsProps {
   className: string
   role?: AriaRole
   label?: string
-  /** Optional list ref and handlers for caller-owned keyboard navigation. */
-  listRef?: RefObject<HTMLDivElement>
-  onKeyDown?: KeyboardEventHandler<HTMLDivElement>
-  onFocusCapture?: FocusEventHandler<HTMLDivElement>
   /** Unique DOM-order keys matching the rendered data-row-key attributes. */
   rowKeys: readonly string[]
   ready: boolean
@@ -50,8 +46,7 @@ function intersects(row: DOMRect, viewport: DOMRect): boolean {
  */
 export class AnimatedRows extends Component<AnimatedRowsProps> {
   private armed = false
-  private readonly ownList = createRef<HTMLDivElement>()
-  private get list(): RefObject<HTMLDivElement> { return this.props.listRef ?? this.ownList }
+  private readonly list = createRef<HTMLDivElement>()
   private readonly overlay = createRef<HTMLDivElement>()
   private readonly movements = new Map<HTMLElement, Animation>()
   private readonly exits = new Map<string, { element: HTMLElement; animation: Animation }>()
@@ -177,8 +172,6 @@ export class AnimatedRows extends Component<AnimatedRowsProps> {
         className={this.props.className}
         role={this.props.role}
         aria-label={this.props.label}
-        onKeyDown={this.props.onKeyDown}
-        onFocusCapture={this.props.onFocusCapture}
         onPointerDownCapture={() => { this.armed = true }}
         onKeyDownCapture={() => { this.armed = true }}
       >

@@ -278,9 +278,7 @@
   }
 }
 
-.projectRow.menuOpen .rowActions,
-:global(html[data-input-modality='keyboard']) .projectRow:focus-within .rowActions,
-:global(html[data-input-modality='keyboard']) .searchResultRow:focus-within .rowActions {
+.projectRow.menuOpen .rowActions {
   display: inline-flex;
 }
 

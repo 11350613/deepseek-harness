@@ -11,8 +11,8 @@
 - button "View options"
 - button "Add workspace"
 - tree "Sessions":
-  - treeitem "workspace" [expanded] [level=1]
-  - treeitem "New Session" [level=2] [selected]
+  - treeitem "workspace" [expanded]
+  - treeitem "New Session" [selected]
 - button "Account menu": More
 - banner:
   - button "Open right sidebar"

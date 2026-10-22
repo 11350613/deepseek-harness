@@ -1,6 +1,6 @@
 - tree "Sessions":
-  - treeitem "{{workspace}}" [expanded] [level=1]
-  - treeitem "Review deepseek-ai/deepseek-harness#314 Session actions for Review deepseek-ai/deepseek-harness#314 Archive session Pin session" [level=2] [selected]:
+  - treeitem "{{workspace}}" [expanded]
+  - treeitem "Review deepseek-ai/deepseek-harness#314 Session actions for Review deepseek-ai/deepseek-harness#314 Archive session Pin session" [selected]:
     - text: Review deepseek-ai/deepseek-harness#314
     - button "Session actions for Review deepseek-ai/deepseek-harness#314"
     - button "Archive session"

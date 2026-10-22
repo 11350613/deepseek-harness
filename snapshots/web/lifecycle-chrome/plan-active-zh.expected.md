@@ -11,8 +11,8 @@
 - button "视图选项"
 - button "添加工作区"
 - tree "会话":
-  - treeitem "workspace" [expanded] [level=1]
-  - treeitem "新会话" [level=2] [selected]
+  - treeitem "workspace" [expanded]
+  - treeitem "新会话" [selected]
 - button "账号菜单": 更多
 - banner:
   - button "打开右侧边栏"

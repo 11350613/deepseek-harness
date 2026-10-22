@@ -105,7 +105,7 @@ On hover-capable devices, hovering a Session row, giving keyboard focus to the r
 
 Hoverless devices keep the static details and the More menu trigger visible, including while the menu is open; pin and archive remain available in that menu.
 
-Each tree has one row in the Tab order, initially the focused row, otherwise the selected row or the first row. Up/Down and Home/End move focus between visible rows; Left/Right collapse, expand, or move between a folder and its children. Enter or Space activates the focused row. Tab reaches the current row’s actions and any list-expansion controls; other rows are skipped. Modified keys remain available to global shortcuts.
+Session rows accept Tab focus and open with unmodified Enter or Space; Tab also reaches their action buttons, while modified keys remain available to global shortcuts.
 
 Client callers can pass `prompt`, `whenDraftExists`, and `clearPreviousDraft` in the second argument to `uiWorkspace.startSession`. A prompt is plain text; structured drafts are handled internally during restoration and Workspace transfer. An empty draft adopts the prompt. When the target already has text or attachments, `whenDraftExists: 'keep'` (the default) preserves them, `'replace'` replaces only the target Session's text and inline references with the prompt or clears them without one, and `'append'` adds the prompt as new paragraphs after the existing text; attachments stay in every case. `clearPreviousDraft: true` acts as `'replace'` only when `whenDraftExists` is omitted. Option values are captured before asynchronous creation and applied to the exact retained binding before navigation commits. Superseded navigation does not write content; a submission-blocked input refuses preparation and keeps the previous selection. Calls with or without options open the blank Session chosen as described above, so New Session returns to its unsent draft. The [draft initialization decision](../../../.agents/notes/implemented/architecture/2026-09-30-structured-draft-initialization.md) describes the input owner's data flow.
 
@@ -237,6 +237,7 @@ These limits cover search, navigation, archival, and folder selection.
 - **No fuzzy content search or event deep links** — the content backend uses literal token/phrase matching, and selecting a result opens the Session rather than the matching event.
 - **No Session deletion** — sessions can be archived but never deleted; archived rows stay recoverable in place through the archived view filter and the search results' unarchive action, and Workspace registration deletion does not delete Sessions.
 - **Pending user interaction is not aggregated into collapsed groups** — a waiting row inside a collapsed group lights no group-header indicator and becomes visible only after that group is expanded.
+- **Tree keyboard navigation is incomplete** — Workspace and search-result rows do not accept Tab focus, and the browser tree does not implement arrow-key navigation.
 - **Native folder selection depends on the local Host carrier** — under the `-native` composition, in-process or remote browser deployments cannot open a local operating-system dialog; remote-capable picking is the `-browse` composition's in-app flow.
 
 <a id="dev-note"></a>

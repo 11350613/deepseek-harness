@@ -1,5 +1,5 @@
-- treeitem "folder-group" [expanded] [level=1]
+- treeitem "folder-group" [expanded]
 - group:
-  - treeitem "project-two" [expanded] [level=2]
-  - treeitem "New Session" [level=3] [selected]
-  - treeitem "project-one" [expanded] [level=2]
+  - treeitem "project-two" [expanded]
+  - treeitem "New Session" [selected]
+  - treeitem "project-one" [expanded]

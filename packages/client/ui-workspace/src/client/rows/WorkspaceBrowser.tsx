@@ -17,7 +17,7 @@
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  Button, HoverCardGroup, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconArchiveOutlineRegular,
+  AnimatedRows, Button, HoverCardGroup, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconArchiveOutlineRegular,
   IconChevronsUpDownOutlineRegular, IconClockOutlineRegular, IconCloseFillRegular,
   IconFlatListOutlineRegular, IconFolderCloseRegular, IconProjectAddOutlineRegular,
   IconQueueOutlineRegular, IconSearchOutlineRegular, IconSlidersTwoOutlineRegular,
@@ -37,7 +37,6 @@ import {
   pinCurrentBlank, reconcileManualOrder, sessionMemberIds, UNGROUPED_KEY,
 } from '../tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
-import { AnimatedTreeRows, TreeRows } from './TreeRows.tsx'
 import { FLAT_SESSION_ORDER_KEY, type SessionGroupBy } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
@@ -556,7 +555,6 @@ function SessionTree({
           }}
       >
         <ProjectRowItem
-          level={depth + 1}
           newShortcut={shortcuts.find(row => row.id === 'session.new')}
           group={group}
           containsCurrentDescendant={currentAncestors.has(group.key)}
@@ -625,7 +623,6 @@ function SessionTree({
           return (
             <SessionNodeItem
               key={node.id}
-              level={depth + 2}
               node={node}
               currentId={current}
               now={now}
@@ -672,8 +669,9 @@ function SessionTree({
   return (
     <HoverCardGroup className={clsx(css.treeBody, css.wide)}>
       {workspaceDropAtListStart && <span className={css.listTopDropIndicator} aria-hidden="true" />}
-      <AnimatedTreeRows
+      <AnimatedRows
         className={clsx(css.list, workspaceDropAtListStart && css.listTopDropActive)}
+        role="tree"
         label={t('section.sessions')}
         rowKeys={rowKeys}
         ready={list.phase === 'ready' && workspaceReady && !nativeDragActive}
@@ -683,7 +681,7 @@ function SessionTree({
           <EmptySessions rowState={rowState} onLeaveArchivedOnly={onLeaveArchivedOnly} t={t} />
         )}
         {groupRows}
-      </AnimatedTreeRows>
+      </AnimatedRows>
       <span className={css.fade} />
     </HoverCardGroup>
   )
@@ -736,8 +734,9 @@ function FlatList({
   const now = Date.now()
   return (
     <HoverCardGroup className={clsx(css.treeBody, css.wide)}>
-      <AnimatedTreeRows
+      <AnimatedRows
         className={clsx(css.list, css.flatList)}
+        role="tree"
         label={t('section.sessions')}
         rowKeys={rows.length === 0 ? ['empty'] : rows.map(row => `session:${row.id}`)}
         ready={list.phase === 'ready' && workspaceReady && drag === null}
@@ -788,7 +787,7 @@ function FlatList({
             />
           )
         })}
-      </AnimatedTreeRows>
+      </AnimatedRows>
       <span className={css.fade} />
     </HoverCardGroup>
   )
@@ -853,7 +852,7 @@ function SearchResults({
   return (
     <div className={clsx(css.treeBody, css.wide)}>
       <div className={css.list}>
-        <TreeRows className={css.searchTree} label={t('search.results.aria')}>
+        <div className={css.searchTree} role="tree" aria-label={t('search.results.aria')}>
           {results.items.map(result => (
             <SearchResultItem
               key={result.id}
@@ -864,7 +863,7 @@ function SearchResults({
               t={t}
             />
           ))}
-        </TreeRows>
+        </div>
         {pending && (
           /* Two skeleton rows on an empty list, one when local matches already
              show and only the content hits are outstanding. */

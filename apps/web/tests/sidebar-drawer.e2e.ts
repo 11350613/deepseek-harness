@@ -260,7 +260,6 @@ it('overlays the conversation and closes after navigation without losing its sid
       await workspaceRow.tap()
       expect(await workspaceRow.getAttribute('aria-expanded')).toBe('false')
       for (const button of await workspaceButtons.all()) expect(await button.isVisible()).toBe(false)
-      expect(await workspaceRow.evaluate(el => el === document.activeElement)).toBe(true)
       await workspaceRow.tap()
       for (const button of await workspaceButtons.all()) await button.waitFor()
       await drawer.getByRole('button', { name: 'Search sessions', exact: true }).tap()
@@ -573,53 +572,6 @@ it('dismisses retained sidebar menus at the drawer breakpoint and preserves thei
       await compareOrRefreshGolden(fileURLToPath(new URL('./expected/sidebar-menu-dismissal.expected.md', import.meta.url)), [
         'View options and Session menus close when the sidebar becomes an inert drawer.',
         'Focus returns to the visible sidebar opener; retained Session rows keep their DOM identity.',
-      ].join('\n'), webSnapshotMode())
-    } finally { await browser.close() }
-  } finally { await scaffold.close() }
-})
-
-it('uses arrows inside one tree entry and keeps pointer focus from pinning row actions', async () => {
-  const scaffold = await launchWebScaffold({
-    extraOverlayPath: fileURLToPath(new URL('./pin-browse-picker.overlay.yml', import.meta.url)),
-  })
-  try {
-    const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
-    const seed = await readFile(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url), 'utf8')
-    const sessionId = await seedSession(scaffold, seed, 'session-c4421b66-252e-44c0-80ed-6e320abeba25')
-    await workspace.attachSession(sessionId)
-    const browser = await chromium.launch()
-    try {
-      const page = await browser.newPage({ viewport: { width: 1280, height: 844 }, locale: 'en-US' })
-      await page.goto(scaffold.authenticatedUrl)
-      const folder = page.locator(`[data-row-key="workspace:${workspace.id}"]`)
-      await folder.click()
-      if (await folder.getAttribute('aria-expanded') === 'true') await folder.click()
-      await page.mouse.move(700, 400)
-      const actions = folder.getByRole('button', { includeHidden: true })
-      await expect.poll(async () => Promise.all((await actions.all()).map(button => button.isVisible()))).toEqual([false, false])
-      await folder.focus()
-      await page.keyboard.press('ArrowRight')
-      await expect.poll(() => folder.getAttribute('aria-expanded')).toBe('true')
-      await page.keyboard.press('ArrowRight')
-      const session = page.locator(`[data-row-key="session:${sessionId}"]`)
-      expect(await page.locator('[role="treeitem"]:focus').getAttribute('aria-level')).toBe('2')
-      await page.keyboard.press('ArrowDown')
-      expect(await session.evaluate(element => element === document.activeElement)).toBe(true)
-      await page.keyboard.press('ArrowLeft')
-      expect(await folder.evaluate(element => element === document.activeElement)).toBe(true)
-      await page.keyboard.press('End')
-      const tree = folder.locator('xpath=ancestor::*[@role="tree"]')
-      expect(await tree.getByRole('treeitem').last().evaluate(element => element === document.activeElement)).toBe(true)
-      await page.keyboard.press('Home')
-      expect(await tree.getByRole('treeitem').first().evaluate(element => element === document.activeElement)).toBe(true)
-      await folder.focus()
-      expect(await tree.locator('[role="treeitem"][tabindex="0"]').count()).toBe(1)
-      for (let step = 0; step < 3; step++) await page.keyboard.press('Tab')
-      expect(await tree.evaluate(element => element.contains(document.activeElement))).toBe(false)
-      await compareOrRefreshGolden(fileURLToPath(new URL('./expected/sidebar-tree-keyboard.expected.md', import.meta.url)), [
-        'Pointer focus does not pin Workspace row actions after the pointer leaves.',
-        'Left/Right expand, enter, and return to a Workspace; Home/End reach the first and last rows.',
-        'One row enters the Tab order; Tab visits its two actions before leaving the tree.',
       ].join('\n'), webSnapshotMode())
     } finally { await browser.close() }
   } finally { await scaffold.close() }

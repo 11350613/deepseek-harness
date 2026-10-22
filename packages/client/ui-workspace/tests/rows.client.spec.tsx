@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { TreeRows } from '../src/client/rows/TreeRows.tsx'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
 import type { ComponentProps } from 'react'
@@ -284,14 +283,6 @@ describe('workspace browser rows', () => {
     expect(row.querySelector('[data-state="ongoing"]')).toBeTruthy()
     expect(screen.getByText('进行中')).toBeTruthy()
     expect(row.hasAttribute('draggable')).toBe(false)
-    expect(fireEvent.keyDown(row, { key: 'ArrowDown' })).toBe(true)
-    for (const key of ['Enter', ' ']) for (const modifier of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
-      expect(fireEvent.keyDown(row, { key, [modifier]: true })).toBe(true)
-    }
-    expect(onOpen).not.toHaveBeenCalled()
-    for (const key of ['Enter', ' ']) expect(fireEvent.keyDown(row, { key })).toBe(false)
-    expect(onOpen.mock.calls).toEqual([[result.id], [result.id]])
-    onOpen.mockClear()
     fireEvent.click(row)
     expect(onOpen).toHaveBeenCalledWith(result.id)
   })
@@ -328,16 +319,6 @@ describe('workspace browser rows', () => {
     fireEvent.click(screen.getByRole('button', { name: '在“Project”中新建会话' }))
     expect(onCreate).toHaveBeenCalledOnce()
     expect(onToggle).not.toHaveBeenCalled()
-    const row = screen.getByRole('treeitem')
-    expect(fireEvent.keyDown(row, { key: 'ArrowDown' })).toBe(true)
-    expect(fireEvent.keyDown(screen.getByRole('button', { name: '在“Project”中新建会话' }), { key: 'Enter' })).toBe(true)
-    for (const key of ['Enter', ' ']) for (const modifier of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
-      expect(fireEvent.keyDown(row, { key, [modifier]: true })).toBe(true)
-    }
-    expect(onToggle).not.toHaveBeenCalled()
-    for (const key of ['Enter', ' ']) expect(fireEvent.keyDown(row, { key })).toBe(false)
-    expect(onToggle).toHaveBeenCalledTimes(2)
-    onToggle.mockClear()
     fireEvent.click(screen.getByText('Project'))
     expect(onToggle).toHaveBeenCalledOnce()
   })
@@ -376,29 +357,6 @@ describe('workspace browser rows', () => {
     expect(onOpen).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('treeitem'))
     expect(onOpen).toHaveBeenCalledWith(node.id)
-  })
-
-  it('opens a focused session with the keyboard without handling its action buttons twice', () => {
-    const node: SessionNode = {
-      id: sid('keyboard'), title: 'Keyboard session', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
-    }
-    const onOpen = vi.fn()
-    const action = vi.fn()
-    const renderSlot: RowRenderSlot = (name: RowSlotName) => name === 'sidebar.workspaces.session.row.action'
-      ? <button onClick={action}>action</button> : null
-    render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen} renderSlot={renderSlot} t={t} />)
-    const row = screen.getByRole('treeitem')
-    row.focus()
-    expect(document.activeElement).toBe(row)
-    fireEvent.keyDown(row, { key: 'Enter' })
-    fireEvent.keyDown(row, { key: ' ' })
-    expect(onOpen).toHaveBeenCalledTimes(2)
-    const button = screen.getByRole('button', { name: 'action' })
-    fireEvent.keyDown(button, { key: 'Enter' })
-    fireEvent.click(button)
-    expect(onOpen).toHaveBeenCalledTimes(2)
-    expect(action).toHaveBeenCalledOnce()
   })
 
   it('marquees a clipped session title at a constant speed while the row is hovered', () => {
@@ -1333,22 +1291,15 @@ describe('workspace browser rows', () => {
   })
 
   it('flags an archived content-search result', () => {
-    const onOpen = vi.fn()
-    const onUnarchive = vi.fn()
     const result: SearchResultNode = {
       id: sid('result'), title: 'Old result', workspace: 'Workspace context',
       running: false, runningSubagentCount: 0, completed: false, archived: true,
     }
-    render(<SearchResultItem result={result} currentId={undefined} onOpen={onOpen} onUnarchive={onUnarchive} t={t} />)
+    render(<SearchResultItem result={result} currentId={undefined} onOpen={vi.fn()} onUnarchive={vi.fn()} t={t} />)
     const row = screen.getByRole('treeitem')
     expect(row.className).toMatch(/archived/)
     // No leading marker: the grayed row alone carries the archived look.
     expect(screen.queryByRole('img', { name: '已归档' })).toBeNull()
-    const unarchive = screen.getByRole('button', { name: '取消归档' })
-    expect(fireEvent.keyDown(unarchive, { key: 'Enter' })).toBe(true)
-    fireEvent.click(unarchive)
-    expect(onUnarchive).toHaveBeenCalledWith(result.id)
-    expect(onOpen).not.toHaveBeenCalled()
   })
 })
 
@@ -1391,8 +1342,7 @@ describe('session row decoration seats', () => {
 
   it('opens a focused row with Enter or Space without handling its action buttons', () => {
     const onOpen = vi.fn()
-    render(<TreeRows className="rows" label="Sessions"><SessionNodeItem node={idle} currentId={undefined}
-      now={0} onOpen={onOpen} t={t} /></TreeRows>)
+    render(<SessionNodeItem node={idle} currentId={undefined} now={0} onOpen={onOpen} t={t} />)
     const row = screen.getByRole('treeitem')
     expect(row.tabIndex).toBe(0)
     fireEvent.keyDown(row, { key: 'ArrowDown' })
