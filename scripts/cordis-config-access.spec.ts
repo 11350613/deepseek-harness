@@ -66,7 +66,7 @@ describe('Fiber configuration access', () => {
     const wrapper = ctx.plugin(apply, initial)
     await wrapper
     const raw = { value: 2 }
-    wrapper.update(raw)
+    await wrapper.update(raw)
     await wrapper.await()
     expect(apply).toHaveBeenLastCalledWith(wrapper.ctx, raw)
     expect(wrapper.rawConfig).toBe(raw)
