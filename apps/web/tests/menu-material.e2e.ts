@@ -154,7 +154,7 @@ it('shares menu transparency and blur across palettes and follows native menu bo
     const isolated = await sharp(await page.screenshot({ clip })).stats()
     expect(isolated.channels[0]!.stdev).toBeGreaterThan(50)
   } finally {
-    await stripes.evaluate(node => node.remove())
+    await stripes.evaluate((node) => { node.remove() })
     await stripes.dispose()
     await page.keyboard.press('Escape')
   }
