@@ -37,8 +37,7 @@ import {
   pinCurrentBlank, reconcileManualOrder, sessionMemberIds, UNGROUPED_KEY,
 } from '../tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
-import { AnimatedRows } from './AnimatedRows.tsx'
-import { TreeRows } from './TreeRows.tsx'
+import { AnimatedTreeRows, TreeRows } from './TreeRows.tsx'
 import { FLAT_SESSION_ORDER_KEY, type SessionGroupBy } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
@@ -673,7 +672,7 @@ function SessionTree({
   return (
     <HoverCardGroup className={clsx(css.treeBody, css.wide)}>
       {workspaceDropAtListStart && <span className={css.listTopDropIndicator} aria-hidden="true" />}
-      <AnimatedRows
+      <AnimatedTreeRows
         className={clsx(css.list, workspaceDropAtListStart && css.listTopDropActive)}
         label={t('section.sessions')}
         rowKeys={rowKeys}
@@ -684,7 +683,7 @@ function SessionTree({
           <EmptySessions rowState={rowState} onLeaveArchivedOnly={onLeaveArchivedOnly} t={t} />
         )}
         {groupRows}
-      </AnimatedRows>
+      </AnimatedTreeRows>
       <span className={css.fade} />
     </HoverCardGroup>
   )
@@ -737,7 +736,7 @@ function FlatList({
   const now = Date.now()
   return (
     <HoverCardGroup className={clsx(css.treeBody, css.wide)}>
-      <AnimatedRows
+      <AnimatedTreeRows
         className={clsx(css.list, css.flatList)}
         label={t('section.sessions')}
         rowKeys={rows.length === 0 ? ['empty'] : rows.map(row => `session:${row.id}`)}
@@ -789,7 +788,7 @@ function FlatList({
             />
           )
         })}
-      </AnimatedRows>
+      </AnimatedTreeRows>
       <span className={css.fade} />
     </HoverCardGroup>
   )

@@ -3,7 +3,7 @@
 import { StrictMode, useState } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { TreeRows } from '../src/client/rows/TreeRows.tsx'
+import { AnimatedTreeRows, TreeRows } from '../src/client/rows/TreeRows.tsx'
 
 afterEach(cleanup)
 
@@ -25,6 +25,26 @@ it('keeps one entry and only that row’s actions in the Tab order', () => {
   expect(screen.getByRole('button', { name: 'one actions' }).tabIndex).toBe(0)
   screen.getByRole('button', { name: 'three actions' }).focus()
   expect(rows.map(row => row.tabIndex)).toEqual([-1, -1, 0])
+})
+
+it('navigates animated rows on the same tree element and retains focus across reorder', () => {
+  const content = (keys: readonly string[]) => <AnimatedTreeRows
+    className="rows" label="Sessions" rowKeys={keys} ready resetKey="sessions"
+  >
+    {keys.map(key => <div key={key} data-row-key={key} role="treeitem" tabIndex={-1}>
+      {key}<button>{key} actions</button>
+    </div>)}
+  </AnimatedTreeRows>
+  const view = render(content(['one', 'two']))
+  expect(screen.getByRole('tree').className).toBe('rows')
+  const [first, second] = screen.getAllByRole('treeitem') as [HTMLElement, HTMLElement]
+  first.focus()
+  fireEvent.keyDown(first, { key: 'ArrowDown' })
+  expect(document.activeElement).toBe(second)
+  expect(screen.getByRole('button', { name: 'two actions' }).tabIndex).toBe(0)
+  view.rerender(content(['two', 'one']))
+  expect(document.activeElement).toBe(second)
+  expect(screen.getAllByRole('treeitem').map(row => row.tabIndex)).toEqual([0, -1])
 })
 
 it('walks rows without opening them and clamps at both ends', () => {

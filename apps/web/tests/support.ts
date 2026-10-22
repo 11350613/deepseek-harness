@@ -190,14 +190,14 @@ export function probeFreePort(): Promise<number> {
 }
 
 /** Open collapsed mobile navigation before using a sidebar action. */
-async function revealNavigationDrawer(page: Page, locale: 'en' | 'zh'): Promise<void> {
+async function revealNavigationDrawer(page: Page, locale: 'en' | 'zh' | 'ja'): Promise<void> {
   const drawer = await page.evaluate(() => window.innerWidth < 768
     && !document.documentElement.hasAttribute('data-windows-titlebar'))
   await page.waitForFunction(expected => Boolean(document.querySelector('[data-sidebar-drawer]')) === expected, drawer)
   const closed = page.locator('[data-sidebar-drawer][data-sidebar-collapsed]')
   if (await closed.count() === 0) return
   await page.locator('[data-shell-leading]').getByRole('button', {
-    name: locale === 'zh' ? '打开侧边栏' : 'Open sidebar', exact: true,
+    name: { en: 'Open sidebar', zh: '打开侧边栏', ja: 'サイドバーを開く' }[locale], exact: true,
   }).click()
   await closed.waitFor({ state: 'detached' })
 }
@@ -348,15 +348,16 @@ export function conversationContextKey(kind: string, id: string): string {
  * @param page - browser page with the mounted sidebar.
  * @param locale - current UI language.
  */
-export async function openSettings(page: Page, locale: 'en' | 'zh'): Promise<void> {
+export async function openSettings(page: Page, locale: 'en' | 'zh' | 'ja'): Promise<void> {
+  const labels = { en: ['Account menu', 'Settings'], zh: ['账号菜单', '设置'], ja: ['アカウントメニュー', '設定'] } as const
   const trigger = page.getByRole('button', {
-    name: locale === 'zh' ? '账号菜单' : 'Account menu', exact: true, includeHidden: true,
+    name: labels[locale][0], exact: true, includeHidden: true,
   })
   await trigger.waitFor({ state: 'attached' })
   await revealNavigationDrawer(page, locale)
   if (!await trigger.isVisible()) {
-    await page.getByRole('button', { name: locale === 'zh' ? '打开侧边栏' : 'Open sidebar', exact: true }).click()
+    await page.getByRole('button', { name: { en: 'Open sidebar', zh: '打开侧边栏', ja: 'サイドバーを開く' }[locale], exact: true }).click()
   }
   await trigger.click()
-  await page.getByRole('menuitem', { name: locale === 'zh' ? '设置' : 'Settings', exact: true }).click()
+  await page.getByRole('menuitem', { name: labels[locale][1], exact: true }).click()
 }

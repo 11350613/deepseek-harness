@@ -1,21 +1,10 @@
 /** Keyboard focus and navigation shared by the sidebar's rendered row lists. */
 import { useLayoutEffect, useRef } from 'react'
-import type { KeyboardEvent, ReactNode, RefObject } from 'react'
+import type { FocusEvent, KeyboardEvent, ReactNode, RefObject } from 'react'
+import { AnimatedRows } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { AnimatedRowsProps } from '@deepseek-ai/dsh-client-ui-primitives'
 
-/**
- * Keep one row and its actions in the Tab order; arrow keys walk visible rows.
- * @param props - rendered rows, accessible label, and optional animation ref/input callback.
- * @returns the tree container; child rows provide their nesting through aria-level.
- */
-export function TreeRows({ children, className, label, listRef, onInput }: {
-  children: ReactNode
-  className?: string | undefined
-  label: string
-  listRef?: RefObject<HTMLDivElement>
-  onInput?: () => void
-}) {
-  const ownRef = useRef<HTMLDivElement>(null)
-  const root = listRef ?? ownRef
+function useTreeRows(root: RefObject<HTMLDivElement>) {
   const activateRow = useRef<((row: HTMLElement) => void) | null>(null)
   const originalTabs = useRef(new WeakMap<HTMLElement, string | null>()).current
   const rows = (tree: HTMLDivElement): HTMLElement[] => Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]'))
@@ -126,12 +115,39 @@ export function TreeRows({ children, className, label, listRef, onInput }: {
     event.preventDefault()
     target?.focus()
   }
-  return <div ref={root} className={className} role="tree" aria-label={label}
-    onPointerDownCapture={onInput} onKeyDownCapture={onInput} onKeyDown={navigate}
-    onFocusCapture={(event) => {
+  return {
+    onKeyDown: navigate,
+    onFocusCapture: (event: FocusEvent<HTMLDivElement>) => {
       const row = event.target.closest<HTMLElement>('[role="treeitem"]')
       if (row !== null && event.currentTarget.contains(row)) activateRow.current?.(row)
-    }}>
+    },
+  }
+}
+
+/**
+ * Keep one row and its actions in the Tab order; arrow keys walk visible rows.
+ * @param props - rendered rows and accessible label; child rows provide aria-level.
+ * @returns the tree container with keyboard navigation.
+ */
+export function TreeRows({ children, className, label }: {
+  children: ReactNode
+  className?: string | undefined
+  label: string
+}) {
+  const root = useRef<HTMLDivElement>(null)
+  const handlers = useTreeRows(root)
+  return <div ref={root} className={className} role="tree" aria-label={label} {...handlers}>
     {children}
   </div>
+}
+
+/**
+ * Add the sidebar's tree navigation to the shared row animation container.
+ * @param props - keyed row content and animation readiness.
+ * @returns animated rows with the same keyboard behavior as search results.
+ */
+export function AnimatedTreeRows(props: Pick<AnimatedRowsProps, 'children' | 'className' | 'label' | 'rowKeys' | 'ready' | 'resetKey'>) {
+  const root = useRef<HTMLDivElement>(null)
+  const handlers = useTreeRows(root)
+  return <AnimatedRows {...props} role="tree" listRef={root} {...handlers} />
 }
