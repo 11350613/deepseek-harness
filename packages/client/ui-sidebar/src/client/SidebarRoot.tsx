@@ -16,11 +16,11 @@
  * scrollbar indirection away while it is elsewhere, so a list the user is not
  * pointing at carries no bar.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   FishLogo, IconAppsAddOutlineRegular, IconNewChatOutlineMedium, IconNewChatOutlineRegular,
-  IconPanelLeftOutlineRegular, isDarwinDesktop, Menu, ShortcutKeys, Toast, Tooltip, useModalLayer,
+  IconPanelLeftOutlineRegular, focusWithoutRing, isBehindModal, isDarwinDesktop, Menu, ShortcutKeys, Toast, Tooltip, useModalLayer,
   writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -187,7 +187,13 @@ export function SidebarRoot({
   // leaves. A pointer that returns within that window cancels the pending
   // hide rather than restarting from a hidden bar.
   const column = useRef<HTMLDivElement>(null)
+  const sidebarFocus = useRef<Element | null>(null)
   useModalLayer(column, drawer && !collapsed, toggleSidebar)
+  useLayoutEffect(() => {
+    if (!drawer || !collapsed || sidebarFocus.current !== document.activeElement) return
+    const opener = column.current?.ownerDocument.querySelector<HTMLElement>('[data-sidebar-opener]')
+    if (opener != null && !isBehindModal(opener)) focusWithoutRing(opener, { preventScroll: true })
+  }, [drawer, collapsed])
   const [pointerInside, setPointerInside] = useState(false)
   const lingerTimer = useRef<number | undefined>(undefined)
   const armLinger = (): void => {
@@ -267,6 +273,7 @@ export function SidebarRoot({
   return (
     <div
       ref={column}
+      onFocusCapture={(event) => { sidebarFocus.current = event.target }}
       role={drawer ? 'dialog' : undefined}
       data-shortcut-modal={drawer ? 'sidebar' : undefined}
       aria-modal={drawer && !collapsed ? true : undefined}

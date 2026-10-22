@@ -8,7 +8,6 @@
     "src"
   ],
   "references": [
-    { "path": "../ui-primitives" },
     {
       "path": "../../util/brand"
     },
@@ -23,9 +22,6 @@
     },
     {
       "path": "../ui-theme/tsconfig.client.json"
-    },
-    {
-      "path": "../ui-primitives"
     },
     {
       "path": "../store"

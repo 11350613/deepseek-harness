@@ -2,10 +2,11 @@
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ShortcutCatalogEntry, ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { Modal, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Menu, Modal, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import { allowAllAccess, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 import type {
   SidebarFooterActionOwnerProps, SidebarRootComponentProps, SidebarSectionOwnerProps,
   SidebarSettingsOwnerProps,
@@ -36,11 +37,12 @@ type AttentionSnapshot = Parameters<Parameters<SidebarRootComponentProps['useSes
 const noAttention: AttentionSnapshot = new Map()
 const useSessionStatus: SidebarRootComponentProps['useSessionStatus'] = selector => selector(noAttention)
 
-function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts = [] }: {
+function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts = [], content }: {
   collapsed?: boolean
   width?: number
   drawer?: boolean
   shortcuts?: readonly ShortcutCatalogEntry[]
+  content?: ReactNode
 } = {}) {
   const startSession = vi.fn()
   const toggleSidebar = vi.fn()
@@ -78,7 +80,7 @@ function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts 
           return <div data-testid="footer-action-seat" data-wide={owner.wide} />
         }
         regionOwner = owner as SidebarSectionOwnerProps
-        return <div data-testid="region" data-wide={owner.wide} />
+        return <div data-testid="region" data-wide={owner.wide}>{content}</div>
       }) as SidebarRootComponentProps['renderSlot']}
     />
   )
@@ -127,6 +129,7 @@ describe('SidebarRoot shell', () => {
       usePanels={select => select([])} useEntryPins={select => select([])}
       useEntryActions={select => select(false)} setPinned={vi.fn()} useShortcuts={select => select([shortcut])} />)
     const button = screen.getByRole('button', { name: 'New session' })
+    expect(screen.getByRole('button', { name: 'Open sidebar' }).hasAttribute('data-sidebar-opener')).toBe(true)
     expect(button.getAttribute('aria-keyshortcuts')).toBe('Control+N')
     fireEvent.focus(button)
     expect(Array.from(screen.getByRole('tooltip').querySelectorAll('kbd'), key => key.textContent)).toEqual(['Ctrl', 'N'])
@@ -575,4 +578,36 @@ it('closes a drawer opened from a focused SVG element', () => {
   } finally {
     opener.remove()
   }
+})
+
+it.each(['menu', 'outside', 'dialog'] as const)('closes an obscured sidebar menu while preserving %s focus', async (destination) => {
+  function Content() {
+    const [open, setOpen] = useState(true)
+    return <><Menu open={open} onClose={() => { setOpen(false) }} portal
+      anchor={<button>View options</button>} items={[{ id: 'flat', label: 'Flat list' }]} />
+    {destination === 'dialog' && <Modal open title="Settings" closeLabel="Close" onClose={vi.fn()}><button>Settings control</button></Modal>}
+    </>
+  }
+  render(<><button data-sidebar-opener>Open navigation</button><button>Outside control</button></>)
+  const h = mountShell({ collapsed: true, width: 56, content: <Content /> })
+  let target: HTMLElement = screen.getByRole('menuitem')
+  if (destination === 'outside') target = screen.getByRole('button', { name: 'Outside control' })
+  if (destination === 'dialog') target = screen.getByRole('button', { name: 'Settings control' })
+  target.focus()
+  screen.getByTestId('region').setAttribute('inert', '')
+  h.rerender({ drawer: true })
+  await waitFor(() => { expect(screen.queryByRole('menuitem')).toBeNull() })
+  expect(document.activeElement).toBe(destination === 'menu'
+    ? screen.getByRole('button', { name: 'Open navigation' }) : target)
+})
+
+it.each([false, true])('moves hidden sidebar focus only to an available opener (%s)', (hasOpener) => {
+  render(<button data-sidebar-opener={hasOpener || undefined}>Open navigation</button>)
+  const h = mountShell({ collapsed: true, width: 56 })
+  const previous = screen.getByRole('button', { name: 'Open sidebar' })
+  previous.focus()
+  h.rerender({ drawer: true })
+  const expected = hasOpener ? screen.getByRole('button', { name: 'Open navigation' }) : previous
+  expect(document.activeElement).toBe(expected)
+  if (hasOpener) expect(expected.hasAttribute('data-dsh-automatic-focus')).toBe(true)
 })
