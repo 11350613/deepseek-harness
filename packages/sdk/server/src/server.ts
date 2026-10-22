@@ -284,10 +284,10 @@ export class HarnessSdkJsonRpcServer {
   }
 
   /**
-   * Dispatch text as a Desktop-style input without changing Session permissions.
+   * Dispatch text as a Desktop-style input; native commands own Session state changes.
    * @param params - text, receiving Session and ordinary-prompt delivery.
-   * @returns an enqueue receipt for text or the native command result for `/compact`.
-   * @throws on runtime failure; a recognized compact failure never falls back to a prompt.
+   * @returns an enqueue receipt for text or the supported native command's result.
+   * @throws on runtime failure; a recognized command failure never falls back to a prompt.
    */
   async query(params: SessionQueryParams): Promise<SessionQueryResult> {
     if (!this.initialized) throw new Error('SDK server is not initialized')
@@ -312,7 +312,7 @@ export class HarnessSdkJsonRpcServer {
   }
 
   /**
-   * Execute `/compact` through the native command registry without enqueueing a prompt.
+   * Execute `/compact` or `/permission <preset>` through the native command registry.
    * @param params - target Session and complete command line.
    * @returns the native handler result; command errors remain result values.
    * @throws for unsupported input, unavailable commands, or runtime/transport failure.
@@ -320,8 +320,10 @@ export class HarnessSdkJsonRpcServer {
   async executeCommand(params: SessionCommandParams): Promise<CommandExecution> {
     if (!this.initialized) throw new Error('SDK server is not initialized')
     if (this.shuttingDown) throw new Error('SDK server is shutting down')
-    if (parseCommand(params.line)?.name !== 'compact') {
-      throw new TypeError('The SDK command endpoint supports only /compact')
+    const parsed = parseCommand(params.line)
+    if (parsed === undefined || (parsed.name !== 'compact'
+      && (parsed.name !== 'permission' || parsed.rawInput.trim() === ''))) {
+      throw new TypeError('The SDK command endpoint supports only /compact or /permission <preset>')
     }
     const commands = this.ctx.get('commands')
     if (commands === undefined) {
@@ -335,7 +337,7 @@ export class HarnessSdkJsonRpcServer {
     try {
       const result = await task
       if (result === undefined) {
-        throw new Error('/compact is unavailable in this SDK profile')
+        throw new Error(`/${parsed.name} is unavailable in this SDK profile`)
       }
       return result
     } finally {

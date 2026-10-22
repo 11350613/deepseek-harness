@@ -90,7 +90,7 @@ export interface SessionPromptResult {
   messageId: string
 }
 
-/** Strict command invocation; the SDK currently supports only `/compact`. */
+/** Strict invocation of `/compact` or `/permission <preset>`. */
 export interface SessionCommandParams {
   /** SDK-owned Session identity; an unknown id creates its Agent. */
   sessionId: SessionId

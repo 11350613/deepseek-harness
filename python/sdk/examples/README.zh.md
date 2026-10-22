@@ -42,6 +42,20 @@ python python/sdk/examples/compact.py \
 
 脚本消费通知，并将命令 id 和结果与模型回复分开打印。轮次或命令失败时，示例会停止。完成和错误行为见[查询与接收](../README.zh.md#query-and-response)；`minimal.py` 保留其 `run()` 入口，不启用命令执行。
 
+<a id="change-session-permissions"></a>
+## 修改 Session 权限
+
+[权限示例](permission.py)以 `workspace-write` 为默认值启动完整 `sdk` profile，发送 `/permission <preset>`，随后在同一个 Session 中提交普通 query。请显式指定 preset：
+
+```sh
+python python/sdk/examples/permission.py \
+  --dsh-home /absolute/path/to/permission-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  --preset read-only
+```
+
+命令会修改 Session 的策略，而打印出的启动设置仍为 `workspace-write`。后续 query 使用 Session 的当前策略。裸 `/permission` 是普通文本，未知 preset 返回命令错误。结果和状态语义见[查询与接收](../README.zh.md#query-and-response)。
+
 ## 添加插件
 
 对同一个显式 home 使用运行时 wheel 包提供的 `dsh` 命令，以进行持久 profile 变更：

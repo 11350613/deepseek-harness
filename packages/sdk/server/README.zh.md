@@ -33,9 +33,11 @@ kind: "package-reference"
 
 插件在注册提醒激活处理方后发布 `sdkSessionActivation` 就绪标记；SDK 组合让 Schedule 依赖此标记，而非 Web Session controller。定时提醒也通过同一个 SDK Session 所有者投递。启动时已到期的提醒等待 SDK 成功初始化，再使用初始化指定的提供方、模型、推理强度和输出上限恢复会话。客户端可以首次接管提醒恢复的 Session；并发的提醒与客户端恢复共用一个 handle。关闭时释放等待初始化的提醒，并等待已经接纳的恢复完成。
 
-`session/query` 是统一文本入口。普通文本保留原文，使用选定 queue/steer 操作，默认值由客户端显式发送。SDK 识别 `/compact` 及绑定到其当前定义的 Desktop 别名，再复用原生命令路径。`/compact extra`、未知 slash token 和路径仍为普通 prompt。其他 slash 输入，包括已注册但尚不支持的命令及 `/model`、`/file`、`/export` 等 UI 名称，保持原有普通 prompt 行为。未组成 compact 命令时，该输入也保留为普通文本；一旦选中 compact，执行失败不会再回退为 prompt。Query 不改变权限。此入口仅接受文本，`session/prompt` 保留已有内容块 API。
+`session/query` 是统一文本入口。普通文本保留原文，使用选定的 queue/steer 操作。完整 SDK 识别裸 `/compact` 和带非空 preset 的 `/permission <preset>`，包括绑定到当前定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/compact extra` 以及 `/plan`、`/model` 等其余输入仍是普通提示词。命令缺失时也保留提示词路径；选中的 handler 失败后绝不回退。未知 preset 是原生命令错误。此入口仅接受文本，`session/prompt` 保留内容块 API。
 
-`session/command` 接受 `{ sessionId, line }`，目前仅开放 `/compact`。完整 sdk profile 已组成其原生 handler，缺少该命令的 profile 会拒绝调用。服务端解析自己拥有的存活 Agent，并调用 `commands.execute()`，不排入普通 prompt，也不等待 idle。模型请求、历史替换和 checkpoint 由命令所有者处理；活动 Agent 返回原生 busy 结果。Shutdown 取消待决命令，在释放 Agent 前排空 SDK 命令等待者。超时不代表回滚，客户端不能自动重试。结果和错误见[协议](../protocol/README.zh.md)。
+`session/command` 接受用于 `/compact` 或 `/permission <preset>` 的 `{ sessionId, line }`，并拒绝裸 `/permission`。完整 sdk profile 组成这两个原生 handler；缺少所请求命令的 profile 会拒绝调用。服务端解析自己拥有的存活 Agent，并调用 `commands.execute()`，不排入普通 prompt，也不等待 idle。压缩负责其辅助模型请求、历史替换和 checkpoint，并拒绝忙碌 Agent。权限变更保留原生状态和通知行为。Shutdown 取消待决命令，在释放 Agent 前排空 SDK 命令等待者。超时不等于回滚，客户端不能自动重试。结果和错误见[协议](../protocol/README.zh.md)。
+
+权限命令只修改接收命令的 Session。后续 query 和恢复的 Session 保留其持久化权限事实；其他 Session 保留各自状态，新 Session 使用配置的默认值。调用方的启动配置和已保存的用户默认值均不会被重写。模型选择不是 SDK slash 命令；恢复时的模型覆盖仍按上文描述的独立行为执行。
 
 `session/working-directory/get` 接收 `{ sessionId }`；`session/working-directory/set` 接收 `{ sessionId, path }`。两者均返回 `{ cwd }`，并可创建未知 Session，而不启动模型轮次。读取通过工作目录服务恢复缺失目录；修改保留起始目录元数据与权限，并通过已记录的用户上下文告知模型。
 
@@ -124,7 +126,7 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 
 #### 模型看到什么
 
-普通 `session/query` 文本和已接受的 `session/prompt` 内容原样进入用户消息。Query 递送选择排队的新 turn 或下个可用 step，不改变权限。内联 `SdkEncodedImageBlock` 会先通过组合中的附件存储完成校验与提交，因此会话日志保留内容寻址的图片引用而不是 base64 字节。此包不会添加系统提示词文本或工具 schema；这些内容来自组合中的其他插件。
+普通 `session/query` 文本和已接受的 `session/prompt` 内容原样进入用户消息。普通输入的递送选择排队的新 turn 或下个可用 step，不会重新应用权限默认值。内联 `SdkEncodedImageBlock` 会先通过组合中的附件存储完成校验与提交，因此会话日志保留内容寻址的图片引用而不是 base64 字节。此包不会添加系统提示词文本或工具 schema；这些内容来自组合中的其他插件。
 
 #### Token 影响
 
@@ -147,6 +149,20 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 #### KV Cache 影响
 
 历史替换按原生压缩器规则改变可复用前缀，SDK 不增加独立失效。
+
+### Session 权限变更
+
+#### 模型看到什么
+
+命令文本和结果不进入模型消息。[权限预设所有者](../../interaction/permission-presets/README.zh.md#model-experience)更新 runtime-context 用户快照，并可能注入审批策略通知。运行中 turn 的通知可能触发额外 step；默认预设不会改变 system 文本或工具 schema。
+
+#### Token 影响
+
+原生策略快照和通知增加其正常历史 token；SDK 分帧不增加 token。
+
+#### KV Cache 影响
+
+原生上下文更新追加在保留历史之后，不重写 system 前缀。
 
 ## 已知限制与延期工作
 

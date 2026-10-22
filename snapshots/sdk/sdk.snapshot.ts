@@ -107,6 +107,10 @@ interface SdkAssertions {
   approvalOutcomes?: readonly ('allowed-once' | 'rejected')[]
   /** Additional profile patches applied after the shared composition. */
   patches?: readonly string[]
+  /** Captured model-request JSONL filename under this scenario's private DSH home. */
+  modelRequestsFile?: string
+  /** Replay caller-owned commands between turns; profile fixtures own any in-turn commands. */
+  replayStandaloneCommands?: boolean
   /** Wait for the recorded provider title before sending each subsequent prompt. */
   waitForProviderTitle?: boolean
   /** Final response required from a completed turn before updating goldens. */
@@ -148,6 +152,15 @@ const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
   'manual-compact': {
     expectedFinalResponse: 'SDK_COMPACT_OK',
     patches: [fileURLToPath(new URL('./manual-compact/capture.cordis.yml', import.meta.url))],
+    modelRequestsFile: 'compact-requests.jsonl',
+    replayStandaloneCommands: true,
+  },
+  'permission-switch': {
+    expectedFinalResponse: 'SDK_PERMISSION_OK',
+    environment: { DSH_PERMISSION_MODE: 'danger-full-access' },
+    patches: [fileURLToPath(new URL('./permission-switch/capture.cordis.yml', import.meta.url))],
+    modelRequestsFile: 'permission-requests.jsonl',
+    replayStandaloneCommands: true,
   },
   'minimal-image-compaction': {
     expectedFinalResponse: 'MINIMAL_IMAGE_OK',
@@ -492,14 +505,15 @@ function modelFromSession(log: string): { provider: string; model: string } {
   throw new Error('SDK snapshot session has no request model')
 }
 
-/** Replay caller inputs from the log; in-turn commands need an explicit timing-aware controller. */
-function sdkActions(log: string): SdkAction[] {
+/** Replay caller inputs; profile fixtures recreate their own in-turn command activity. */
+function sdkActions(log: string, replayStandaloneCommands: boolean): SdkAction[] {
   const actions: SdkAction[] = []
   let current: TurnAction | undefined
   for (const record of records(log)) {
     if (record.type === 'command/run') {
-      if (current !== undefined) throw new Error('SDK snapshot cannot replay a command inside an open turn')
+      if (!replayStandaloneCommands || current !== undefined) continue
       const data = record.data as JsonObject | undefined
+      if ((data?.source as JsonObject | undefined)?.kind !== 'user') continue
       if (typeof data?.name !== 'string' || typeof data.args !== 'string') {
         throw new Error('SDK snapshot command/run requires a name and recorded string arguments')
       }
@@ -664,13 +678,15 @@ async function runScenario(scenario: CorpusScenario): Promise<{
 }> {
   const workspaceParent = await realpath(tmpdir())
   let workspacePrefix = `sdk-snapshot-${scenario.name}-`
-  if (scenario.name === 'minimal-image-compaction') {
+  const fixedWidthCwd = scenario.name === 'minimal-image-compaction' || scenario.name === 'manual-compact'
+  if (fixedWidthCwd) {
     // mkdtemp appends six characters; JSON quoting is part of the runtime-context text.
     const paddingLength = 192 - JSON.stringify(join(workspaceParent, `${workspacePrefix}XXXXXX`)).length
     if (paddingLength < 0) throw new Error('compaction snapshot temporary root exceeds its fixed cwd text length')
     workspacePrefix += '-'.repeat(paddingLength)
   }
   const cwd = await realpath(await mkdtemp(join(workspaceParent, workspacePrefix)))
+  if (fixedWidthCwd) expect(JSON.stringify(cwd)).toHaveLength(192)
   const dshHome = join(cwd, '.dsh')
   const sessionsRoot = join(dshHome, 'sessions')
   const replayFixtures = recording ? [] : await hydrateReplayFixtures(scenario, cwd)
@@ -711,7 +727,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
     ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
   })
   const [parentFixture, ...childFixtures] = replayFixtures
-  const actions = sdkActions(primaryFixture)
+  const actions = sdkActions(primaryFixture, assertions.replayStandaloneCommands === true)
   const resumeReplayFile = scenario.name === 'session-resume' && !recording
     ? join(patchRoot, 'resume-replay.json') : undefined
   const prepareTurnReplay = async (turn: number): Promise<void> => {
@@ -826,10 +842,10 @@ async function runScenario(scenario: CorpusScenario): Promise<{
           expect(session.id).toBe(sessionId)
         }
         let result: RunResult | undefined
-        if (scenario.name === 'manual-compact') {
+        if (scenario.name === 'manual-compact' || scenario.name === 'permission-switch') {
           const content = action.content[0]
           if (action.content.length !== 1 || content?.type !== 'text' || typeof content.text !== 'string') {
-            throw new Error('manual compact query fixture requires one text block per prompt')
+            throw new Error(`${scenario.name} query fixture requires one text block per prompt`)
           }
           await session.query(content.text)
           for await (const message of session.receiveResponse()) {
@@ -914,8 +930,8 @@ async function runScenario(scenario: CorpusScenario): Promise<{
     const finalWorkspace = await captureWorkspaceSnapshot(cwd, {
       ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
     })
-    const modelRequests = scenario.name === 'manual-compact'
-      ? records(await readFile(join(dshHome, 'compact-requests.jsonl'), 'utf8'))
+    const modelRequests = assertions.modelRequestsFile !== undefined
+      ? records(await readFile(join(dshHome, assertions.modelRequestsFile), 'utf8'))
       : []
     return { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd, modelRequests }
   } finally {
@@ -1090,6 +1106,53 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       )
       reconcileCatalogCreationTimes(ordered.map(log => log.content), 'validate')
       const actualContext = contextOf(ordered, cwd)
+      if (scenario.name === 'permission-switch') {
+        const parent = ordered[0]
+        if (parent === undefined) throw new Error('permission switch has no persisted Session')
+        const events = parseSessionLog(parent.content)
+        const commands = events.filter(event => event.type === 'command/run')
+        expect(commands.map(event => ({ name: event.data.name, args: event.data.args }))).toEqual([
+          { name: 'permission', args: ' read-only' },
+          { name: 'permission', args: ' read-only' },
+          { name: 'permission', args: ' missing-preset' },
+        ])
+        const completed = events.filter(event => event.type === 'command/done')
+        expect(completed.map(event => event.data.kind)).toEqual(['success', 'success', 'error'])
+        expect(completed.map(event => event.data.commandId)).toEqual(commands.map(event => event.data.commandId))
+        expect(events.filter(event => event.type === 'permission/preset').map(event => event.data.preset))
+          .toEqual(['danger-full-access', 'read-only'])
+        expect(events.filter(event => event.type === 'sandbox/mode').map(event => event.data.mode))
+          .toEqual(['danger-full-access', 'read-only'])
+        expect(events.filter(event => event.type === 'approval/policy').map(event => event.data.policy))
+          .toEqual(['never', 'ask'])
+        expect(events.filter(event => event.type === 'turn/start').map(event => event.data.turn)).toEqual([1, 2])
+        expect(events.filter(event => event.type === 'step/start')).toHaveLength(2)
+        const notices = events.filter(event => event.type === 'user/message' && event.data.source.kind === 'user-approval')
+        expect(notices).toHaveLength(1)
+        const noticeText = 'The approval policy changed from "never" to "ask" (changed by the user).'
+        expect(notices[0]?.data.content).toEqual([{ type: 'text', text: noticeText }])
+        expect(modelRequests).toHaveLength(2)
+        const [initialRequest, continuationRequest] = modelRequests
+        if (initialRequest === undefined || continuationRequest === undefined) {
+          throw new Error('permission switch requires its initial and continuation request')
+        }
+        const initialMessages = initialRequest.messages as JsonObject[]
+        const continuationMessages = continuationRequest.messages as JsonObject[]
+        expect(continuationMessages[0]).toEqual(initialMessages[0])
+        for (const field of ['provider', 'model', 'maxTokens', 'reasoningEffort', 'tools']) {
+          expect(continuationRequest[field], `permission switch retained ${field}`).toEqual(initialRequest[field])
+        }
+        const runtimeContexts = continuationMessages.filter(message => (message.source as JsonObject | undefined)?.kind === 'runtime-context')
+        const runtimeText = JSON.stringify(runtimeContexts.at(-1))
+        expect(runtimeText).toContain('Current DSH file policy: read-only.')
+        expect(runtimeText).toContain('Approval policy: ask.')
+        const texts = continuationMessages.flatMap(message => message.content as JsonObject[])
+          .flatMap(block => block.type === 'text' ? [block.text] : [])
+        expect(texts).toContain('SDK_PERMISSION_READY')
+        expect(texts).toContain(noticeText)
+        expect(texts).not.toContain('/permission read-only')
+        expect(texts).not.toContain('preset read-only')
+      }
       if (scenario.name === 'manual-compact') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('manual compact has no persisted Session')

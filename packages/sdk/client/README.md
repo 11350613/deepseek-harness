@@ -55,7 +55,7 @@ The subprocess starts lazily on first use and stays owned by the instance across
 
 ### Sending input and receiving responses
 
-`await session.query(text, { delivery: 'queue' })` starts the runtime if needed, sends text, and returns without awaiting runtime routing or execution. Delivery defaults to `queue`; `steer` targets the next available step for ordinary input. The runtime intercepts bare `/compact`; other text, including `/plan` and `/compact extra`, retains its ordinary-prompt behavior. `run("/compact")` also remains an ordinary prompt. Query is text-only; use `run()` for content-block prompts.
+`await session.query(text, { delivery: 'queue' })` starts the runtime if needed, sends text, and returns without awaiting runtime routing or execution. Delivery defaults to `queue`; `steer` targets the next available step for ordinary input. The full SDK intercepts bare `/compact` and `/permission <preset>` with a non-blank preset, including their registered Desktop aliases. Bare `/permission` or `/权限`, `/plan`, `/model`, and `/compact extra` remain ordinary prompts. `run()` never dispatches these commands. Query is text-only; use `run()` for content-block prompts.
 
 ```ts
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
@@ -73,9 +73,11 @@ Each `receiveResponse()` call takes the oldest pending query and returns an inde
 
 Receivers may run concurrently, so an outstanding model response does not prevent sending and receiving `/compact` with its native busy result. Subscriptions are installed before sending and released before the final result is yielded. Close an unused iterator with `return()`, even before its first `next()`, to discard its buffered events and abandon its local RPC wait. This sends no runtime cancellation and authorizes no automatic retry. Continue servicing the Session until its work finishes or close the harness; command completion does not end independent model activity.
 
+Launch options provide initial values, not a shared live configuration object. A permission command changes only its target Session; later queries retain that state, other Sessions keep their own state, and new Sessions use the configured defaults. It does not update the options object or saved user defaults. An approval-policy change during a running turn can inject a notice and cause another step. See [permission presets](../../interaction/permission-presets/README.md) for native transition and restoration behavior.
+
 ### Lower-level control with HarnessClient
 
-`client.query(sessionId, text, delivery, signal?)` waits for a validated prompt receipt or command result. `client.executeCommand(sessionId, line)` is the advanced strict-command entry and currently supports `/compact`; it waits for the native handler, including auxiliary summary work. Subscribe before these calls when notifications are needed. An optional fourth `request()` argument supplies an `AbortSignal` that abandons only the local wait; runtime work can continue after timeout or local abandonment.
+`client.query(sessionId, text, delivery, signal?)` waits for a validated prompt receipt or command result. `client.executeCommand(sessionId, line)` is the strict entry for `/compact` and `/permission <preset>`; it rejects bare `/permission`. A non-blank unknown preset reaches the native handler and returns `result.kind === "error"`. Subscribe before these calls when notifications are needed. An optional fourth `request()` argument supplies an `AbortSignal` that abandons only the local wait; runtime work can continue after timeout or local abandonment.
 
 `HarnessClient` is the protocol client under the run API: explicit `start()`, `initialize()`, `prompt()`, `request()`, and `close()`, plus notification subscriptions. `prompt()` returns the queued message id as soon as the runtime accepts it and never waits for agent activity. `subscribe(filter?)` returns a `NotificationSubscription` (awaitable `next()`, non-blocking `tryNext()`, async iteration); `subscribeSessionTree(id)` scopes to one session and the descendants discovered from `subagent.started` lineage edges — the runtime notifies for every session in its context, and scoping is client-side, exactly like the Python SDK.
 

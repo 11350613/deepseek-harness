@@ -84,7 +84,7 @@ describe('SDK command dispatch', () => {
     expect(h.ctx.agents.list()).toEqual([])
   })
 
-  it.each(['text', '/plan', '/unknown'])('rejects unsupported input %s without invoking another command', async (line) => {
+  it.each(['text', '/plan', '/unknown', '/permission', '/permission \t\n'])('rejects unsupported input %s without invoking another command', async (line) => {
     const h = await setup()
     await h.initialize()
     const handler = vi.fn(() => ({ kind: 'success' as const }))
@@ -102,6 +102,26 @@ describe('SDK command dispatch', () => {
     const empty = await setup()
     await empty.initialize()
     await expect(empty.command()).rejects.toThrow('/compact is unavailable')
+    await expect(empty.server.executeCommand({ sessionId: SessionId('commands'), line: '/permission read-only' }))
+      .rejects.toThrow('/permission is unavailable')
+  })
+
+  it.each(['strict', 'query'] as const)('passes explicit permission input to the native handler through %s', async (entry) => {
+    const h = await setup()
+    await h.initialize()
+    const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'error' as const, text: 'native preset refusal' }))
+    h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', description: 'Fixture permission', input: { hint: 'Preset' }, handler }))
+    const sessionId = SessionId('permission')
+    const line = '/permission  deployment-preset'
+    const result = entry === 'strict'
+      ? await h.server.executeCommand({ sessionId, line })
+      : await h.server.query({ sessionId, text: line, delivery: 'steer' })
+    expect(handler).toHaveBeenCalledOnce()
+    expect(handler.mock.calls[0]![0].rawInput).toBe('  deployment-preset')
+    const expected = { result: { kind: 'error', text: 'native preset refusal' } }
+    expect(result).toMatchObject(entry === 'strict' ? expected : { kind: 'command', execution: expected })
+    expect(h.ctx.agents.get(sessionId)!.session.snapshotEvents().map(event => event.type))
+      .toEqual(['command/run', 'command/done'])
   })
 
   it('passes arguments unchanged and propagates handler failures', async () => {
@@ -182,9 +202,9 @@ describe('SDK query dispatch', () => {
     expect(h.ctx.agents.list()).toEqual([])
   })
 
-  it('preserves ordinary input without a command registry and requires a live initialized server', async () => {
+  it.each(['/compact', '/permission read-only'])('preserves %s without a command registry and requires a live initialized server', async (text) => {
     const h = await setup(false)
-    const params = { sessionId: SessionId('q'), text: '/compact', delivery: 'queue' as const }
+    const params = { sessionId: SessionId('q'), text, delivery: 'queue' as const }
     await expect(h.server.query(params)).rejects.toThrow('not initialized')
     const model = new TextModel()
     h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
@@ -236,13 +256,14 @@ describe('SDK query dispatch', () => {
     expect(queued).not.toHaveBeenCalled()
   })
 
-  it.each(['/plan inspect', '/model', '/file', '/export'])('preserves existing prompt behavior for unimplemented input %s', async (text) => {
+  it.each(['/plan inspect', '/model', '/file', '/export', '/permission', ' \n/权限\t '])('preserves existing prompt behavior for unimplemented input %s', async (text) => {
     const h = await setup()
     const model = new TextModel()
     h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
     await h.server.initialize({ cwd: process.cwd(), provider: 'query-model', model: 'model' })
     const handler = vi.fn(() => ({ kind: 'success' as const }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'plan', description: 'Plan', input: { hint: 'Task' }, handler }))
+    h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', description: 'Permission', input: { hint: 'Preset' }, handler }))
     await expect(h.server.query({ sessionId: SessionId('q'), text, delivery: 'queue' })).resolves.toMatchObject({ kind: 'prompt' })
     await h.server.wait({ sessionId: 'q' })
     expect(handler).not.toHaveBeenCalled()

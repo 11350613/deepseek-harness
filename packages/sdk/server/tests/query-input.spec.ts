@@ -14,29 +14,43 @@ const commands: readonly CommandDescriptor[] = [
 describe('SDK query text recognition', () => {
   it.each([
     ['/compact', '/compact'], [' \n/compact \t', '/compact'], ['/压缩', '/compact'],
+    ['/permission workspace-write', '/permission workspace-write'],
+    [' \n/权限\tread-only \t', '/permission\tread-only'],
+    ['/permission\ncustom-deployment-preset', '/permission\ncustom-deployment-preset'],
+    ['/permission  missing extra', '/permission  missing extra'],
   ])('recognizes the Desktop form %j', (text, expected) => {
     expect(queryCommand(text, commands)).toBe(expected)
   })
 
   it.each(['ordinary text', '/', '/unknown', '/usr/bin', '/COMPACT', '/模型', '/文件',
     '/compact extra', '/压缩 extra', '/export path', '/model extra', '/file path',
-    '/plan inspect', '/计划 inspect', '/goal finish', '/权限 read-only', '/反馈 problem',
+    '/plan inspect', '/计划 inspect', '/goal finish', '/反馈 problem',
+    '/permission', ' \n/permission \t', '/权限', '/权限\n\t', '/permissions read-only',
     '/导出', '/export', '/model', '/file'])('leaves %j as ordinary text', (text) => {
     expect(queryCommand(text, commands)).toBeUndefined()
   })
 
   it('does not apply an alias to an unrelated scoped replacement', () => {
-    const replaced = [{ name: 'compact', description: 'Scoped command' }]
+    const replaced = [{ name: 'compact', description: 'Scoped command' }, { name: 'permission', description: 'Scoped permission' }]
     expect(queryCommand('/compact', replaced)).toBe('/compact')
     expect(queryCommand('/压缩', replaced)).toBeUndefined()
+    expect(queryCommand('/permission read-only', replaced)).toBe('/permission read-only')
+    expect(queryCommand('/权限 read-only', replaced)).toBeUndefined()
   })
 
-  it('leaves other registered commands and unavailable compact unchanged', () => {
+  it('leaves other registered commands and unavailable supported commands unchanged', () => {
     expect(queryCommand('/plan', commands)).toBeUndefined()
     expect(queryCommand('/compact', [])).toBeUndefined()
     expect(queryCommand('/export', [])).toBeUndefined()
+    expect(queryCommand('/permission read-only', [])).toBeUndefined()
     expect(queryCommand('/压缩', [{ name: 'prune', definitionId: CommandDefinitionId('@deepseek-ai/dsh-command-compact'), description: 'Renamed command' }]))
+      .toBeUndefined()
+    expect(queryCommand('/权限 read-only', [{ name: 'access', definitionId: CommandDefinitionId('@deepseek-ai/dsh-permission-presets'), description: 'Renamed permission' }]))
       .toBeUndefined()
   })
 
+  it('preserves exact-name priority over localized aliases', () => {
+    const shadowed = [...commands, { name: '权限', description: 'Another definition' }]
+    expect(queryCommand('/权限 read-only', shadowed)).toBeUndefined()
+  })
 })

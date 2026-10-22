@@ -42,6 +42,20 @@ python python/sdk/examples/compact.py \
 
 The script consumes notifications and prints the command id and outcome separately from the model's responses. A failed turn or command stops the example. See [Query and response](../README.md#query-and-response) for completion and error behavior; `minimal.py` retains its `run()` entry and does not enable command execution.
 
+<a id="change-session-permissions"></a>
+## Change Session permissions
+
+The [permission example](permission.py) starts the full `sdk` profile with a `workspace-write` default, sends `/permission <preset>`, then submits an ordinary query on the same Session. Supply the preset explicitly:
+
+```sh
+python python/sdk/examples/permission.py \
+  --dsh-home /absolute/path/to/permission-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  --preset read-only
+```
+
+The command changes the Session's policy while the printed launch setting remains `workspace-write`. The later query uses the Session's current policy. Bare `/permission` is ordinary text, and unknown presets produce a command error. See [Query and response](../README.md#query-and-response) for result and state semantics.
+
 ## Add plugins
 
 Use the runtime wheel's `dsh` command against the same explicit home for persistent profile changes:

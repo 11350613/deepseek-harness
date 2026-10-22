@@ -15,8 +15,8 @@
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-sdk-jsonrpc-server/use-this-package:
-  en: 1d441cdad2ebeb6d
-  zh: 0afccd29fe853d8a
+  en: 134300cf15bec54f
+  zh: 34fae5fc83e195ab
 /deepseek-ai-dsh-sdk-jsonrpc-server/use-this-package/wiring:
   en: 47a33e9397e36e15
   zh: e6d173820f9ea6e5
@@ -60,8 +60,8 @@
   en: 04d1b73cd8e06dfe
   zh: cd67fbbfdf39f776
 /deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/sdk-user-message/what-the-model-sees:
-  en: ee8630f8f5eeda84
-  zh: b4f6b0b45fa2b9c2
+  en: 5568cba6770f9372
+  zh: 51b9e4102f4ed054
 /deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/sdk-user-message/token-effect:
   en: 372ed851986b76d2
   zh: 075b94a565275368
@@ -80,6 +80,18 @@
 /deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/manual-compaction/kv-cache-effect:
   en: 6575950aede7f71e
   zh: bfbfbba8b10fc448
+/deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/session-permission-changes:
+  en: 9a6bbed77944026e
+  zh: 0cf9e179dddeeeb5
+/deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/session-permission-changes/what-the-model-sees:
+  en: 2ee1c7fe78fd7637
+  zh: d8f4efac56c1606f
+/deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/session-permission-changes/token-effect:
+  en: 6fd7b795a324c0e9
+  zh: e13a949d27e91e4d
+/deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/session-permission-changes/kv-cache-effect:
+  en: a6c8c78f7e558ed1
+  zh: 410aef8f5f230d67
 /deepseek-ai-dsh-sdk-jsonrpc-server/known-limitations-and-deferred-work:
   en: a6d0b12d02961572
   zh: 92822e033db55980

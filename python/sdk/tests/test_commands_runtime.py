@@ -1,4 +1,4 @@
-"""Exercise /compact through Python and the real sdk profile with a local model.
+"""Exercise Session commands through Python and the real sdk profile with a local model.
 
 The default carrier is the repository's built dsh CLI. Set
 DSH_COMMANDS_TEST_RUNTIME=installed to run these same cases against the imported
@@ -171,9 +171,10 @@ class _Runtime:
 @contextmanager
 def _runtime(
     tmp_path: Path, completions: list[_Completion], *, capture_patch: Path | None = None,
+    initial_permission: str = "danger-full-access",
 ) -> Iterator[_Runtime]:
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
+    workspace.mkdir(exist_ok=True)
     home = tmp_path / "home"
     logs = tmp_path / "sessions"
     patch = tmp_path / "commands.patch.yml"
@@ -191,7 +192,7 @@ def _runtime(
             dsh_bin=dsh_bin, profile="sdk", patches=tuple(str(item) for item in patches), model=_MODEL,
             base_url=model.url, api_key="keyless-commands-runtime",
             initialize_timeout_seconds=60, request_timeout_seconds=20, shutdown_timeout_seconds=20,
-            env={"DSH_PERMISSION_MODE": "danger-full-access",
+            env={"DSH_PERMISSION_MODE": initial_permission,
                  "DSH_TELEMETRY_DISABLED": "1", "DSH_TOOLS_MODE": "native"},
         )
         try:
@@ -203,9 +204,14 @@ def _runtime(
             harness.close()
 
 
-def _read_events(root: Path, *, live: bool = False) -> list[dict]:
-    paths = list(root.rglob("session*.jsonl"))
-    assert len(paths) == 1, f"expected one fresh Session log, found {paths}"
+def _read_events(root: Path, *, live: bool = False, session_id: str = _SESSION_ID) -> list[dict]:
+    paths = []
+    for path in root.rglob("session*.jsonl"):
+        with path.open(encoding="utf-8") as log:
+            header = json.loads(log.readline())
+        if header.get("id") == session_id:
+            paths.append(path)
+    assert len(paths) == 1, f"expected one Session log for {session_id}, found {paths}"
     content = paths[0].read_bytes()
     if not live:
         assert content.endswith(b"\n"), "closed Session log has an incomplete final row"
@@ -213,7 +219,7 @@ def _read_events(root: Path, *, live: bool = False) -> list[dict]:
     complete = content[:content.rfind(b"\n") + 1]
     records = [json.loads(line) for line in complete.splitlines()]
     assert records and records[0]["type"] == "session"
-    assert records[0]["id"] == _SESSION_ID
+    assert records[0]["id"] == session_id
     events = records[1:]
     for seq, event in enumerate(events):
         assert isinstance(event, dict)
@@ -225,13 +231,13 @@ def _of_type(events: list[dict], name: str) -> list[dict]:
     return [event for event in events if event["type"] == name]
 
 
-def _command_pair(events: list[dict], execution: CommandExecution) -> None:
+def _command_pair(events: list[dict], execution: CommandExecution, name: str = "compact") -> None:
     runs = [event for event in _of_type(events, "command/run")
             if event["data"]["commandId"] == execution.command_id]
     done = [event for event in _of_type(events, "command/done")
             if event["data"]["commandId"] == execution.command_id]
     assert len(runs) == len(done) == 1
-    assert runs[0]["data"]["name"] == "compact"
+    assert runs[0]["data"]["name"] == name
     assert runs[0]["seq"] < done[0]["seq"]
     assert done[0]["data"]["kind"] == execution.result.kind
     assert done[0]["data"].get("text") == execution.result.text
@@ -463,3 +469,153 @@ def test_unimplemented_slash_remains_plain_text_without_changing_plan_mode(tmp_p
     assert not _of_type(events, "command/run")
     assert not any(event["data"].get("active") is True for event in _of_type(events, "plan/mode"))
     assert len(_of_type(events, "turn/start")) == len(_of_type(events, "turn/end")) == 2
+
+
+_PERMISSION_FACTS = {"permission/preset", "sandbox/mode", "approval/policy"}
+_ASK_POLICY = "Approval policy: ask."
+_NEVER_POLICY = "Approval prompts are disabled in this session"
+
+
+def _assert_request_permission(request: dict, sandbox: str, approval: str) -> None:
+    contexts = [text for text in _request_texts(request) if text.startswith("Current runtime context.")]
+    assert contexts, "model request has no runtime-context snapshot"
+    assert f"Current DSH file policy: {sandbox}." in contexts[-1]
+    assert (_ASK_POLICY if approval == "ask" else _NEVER_POLICY) in contexts[-1]
+
+
+def _permission_facts(events: list[dict]) -> list[dict]:
+    return [{"type": event["type"], "data": event["data"]}
+            for event in events if event["type"] in _PERMISSION_FACTS]
+
+
+def _permission_command(runtime: _Runtime, session: Session, preset: str) -> CommandExecution:
+    assert runtime.call(session.query, f"/permission {preset}") is None
+    result = runtime.call(_receive_result, session)
+    assert isinstance(result, CommandExecution)
+    return result
+
+
+def test_permission_changes_only_the_selected_session_and_retains_prompt_semantics(tmp_path: Path) -> None:
+    completions = [_Completion(f"PERMISSION_REPLY_{index}") for index in range(9)]
+    with _runtime(tmp_path, completions, initial_permission="workspace-write") as runtime:
+        main = runtime.harness.start_session(_SESSION_ID)
+        other = runtime.harness.start_session("permission-other")
+        initial_config = dict(runtime.harness.config.env)
+        for session, text in [(main, "Initial main policy; do not use tools."),
+                              (other, "Initial other policy; do not use tools.")]:
+            runtime.call(session.query, text)
+            assert isinstance(runtime.call(_receive_result, session), RunResult)
+
+        readonly = _permission_command(runtime, main, "read-only")
+        invalid = _permission_command(runtime, main, "no-such-preset")
+        repeated = _permission_command(runtime, main, "read-only")
+        assert readonly.result.kind == repeated.result.kind == "success"
+        assert invalid.result.kind == "error"
+        assert "unknown preset" in invalid.result.text
+        assert len(runtime.model.captured()) == 2, "idle permission commands woke the model"
+
+        runtime.call(main.query, "Read-only policy after a plain query; do not use tools.")
+        assert isinstance(runtime.call(_receive_result, main), RunResult)
+        full = _permission_command(runtime, main, "danger-full-access")
+        assert full.result.kind == "success"
+        assert len(runtime.model.captured()) == 3
+        runtime.call(main.query, "Full policy after a plain query; do not use tools.")
+        assert isinstance(runtime.call(_receive_result, main), RunResult)
+        restored = _permission_command(runtime, main, "workspace-write")
+        assert restored.result.kind == "success"
+        runtime.call(main.query, "Switched-back policy; do not use tools.")
+        assert isinstance(runtime.call(_receive_result, main), RunResult)
+
+        for session in [other, runtime.harness.start_session("permission-new")]:
+            runtime.call(session.query, "Report your own policy; do not use tools.")
+            assert isinstance(runtime.call(_receive_result, session), RunResult)
+        ordinary = runtime.call(main.run, "/permission danger-full-access")
+        assert isinstance(ordinary, RunResult)
+        runtime.call(main.query, "/permission")
+        assert isinstance(runtime.call(_receive_result, main), RunResult)
+        assert runtime.harness.config.env == initial_config
+
+        requests = runtime.model.captured()
+        assert len(requests) == 9
+        for index in [0, 1, 4, 5, 6, 7, 8]:
+            _assert_request_permission(requests[index], "workspace-write", "ask")
+        _assert_request_permission(requests[2], "read-only", "ask")
+        _assert_request_permission(requests[3], "danger-full-access", "never")
+        assert 'The approval policy changed from "ask" to "never" (changed by the user).' in _request_texts(requests[3])
+        assert 'The approval policy changed from "never" to "ask" (changed by the user).' in _request_texts(requests[4])
+        for index in [2, 3, 4]:
+            assert requests[index]["system"] == requests[0]["system"]
+            assert requests[index]["tools"] == requests[0]["tools"]
+        assert "/permission danger-full-access" in _request_texts(requests[7])
+        assert "/permission" in _request_texts(requests[8])
+
+    events = _read_events(runtime.logs)
+    executions = [readonly, invalid, repeated, full, restored]
+    assert len(_of_type(events, "command/run")) == len(executions)
+    for execution in executions:
+        _command_pair(events, execution, "permission")
+    for execution in [invalid, repeated]:
+        start = next(event["seq"] for event in _of_type(events, "command/run")
+                     if event["data"]["commandId"] == execution.command_id)
+        done = next(event["seq"] for event in _of_type(events, "command/done")
+                    if event["data"]["commandId"] == execution.command_id)
+        assert not _permission_facts(events[start + 1:done])
+    for session_id in [_SESSION_ID, "permission-other", "permission-new"]:
+        state = {event["type"]: event["data"] for event in _permission_facts(_read_events(runtime.logs, session_id=session_id))}
+        assert state["permission/preset"] == {"preset": "workspace-write"}
+        assert state["sandbox/mode"]["mode"] == "workspace-write"
+        assert state["approval/policy"] == {"policy": "ask"}
+
+
+def test_running_permission_change_keeps_the_native_extra_step_and_notifications(tmp_path: Path) -> None:
+    first = _Completion("PERMISSION_FIRST_DONE", blocked=True)
+    second = _Completion("PERMISSION_SWITCH_SEEN")
+    with _runtime(tmp_path, [first, second], initial_permission="workspace-write") as runtime:
+        session = runtime.harness.start_session(_SESSION_ID)
+        runtime.call(session.query, "Wait for the policy change, then finish without tools.")
+        assert first.entered.wait(_WAIT_SECONDS), runtime.model.failures
+        claimed = threading.Event()
+        observing = runtime.workers.submit(_receive_result, session, claimed)
+        assert claimed.wait(_WAIT_SECONDS)
+        execution = _permission_command(runtime, session, "danger-full-access")
+        assert execution.result.kind == "success"
+        assert not first.release.is_set()
+        assert not observing.done()
+        assert len(runtime.model.captured()) == 1
+        first.release.set()
+        result = observing.result(timeout=_WAIT_SECONDS)
+        assert isinstance(result, RunResult)
+        assert result.final_response == second.text
+        requests = runtime.model.captured()
+        assert len(requests) == 2
+        _assert_request_permission(requests[0], "workspace-write", "ask")
+        _assert_request_permission(requests[1], "danger-full-access", "never")
+        assert requests[0]["system"] == requests[1]["system"]
+        assert requests[0]["tools"] == requests[1]["tools"]
+        notice = 'The approval policy changed from "ask" to "never" (changed by the user).'
+        assert notice not in _request_texts(requests[0])
+        assert notice in _request_texts(requests[1])
+        assert runtime.harness.config.env["DSH_PERMISSION_MODE"] == "workspace-write"
+    events = _read_events(runtime.logs)
+    _command_pair(events, execution, "permission")
+    assert [event["data"] for event in _of_type(events, "step/start")] == [
+        {"turn": 1, "step": 1}, {"turn": 1, "step": 2},
+    ]
+    assert len(_of_type(events, "turn/start")) == len(_of_type(events, "turn/end")) == 1
+
+
+def test_resumed_permission_survives_different_launch_defaults(tmp_path: Path) -> None:
+    with _runtime(tmp_path, [], initial_permission="workspace-write") as runtime:
+        session = runtime.harness.start_session(_SESSION_ID)
+        execution = _permission_command(runtime, session, "read-only")
+        assert execution.result.kind == "success"
+        assert runtime.model.captured() == []
+    saved = _permission_facts(_read_events(runtime.logs))
+    with _runtime(tmp_path, [_Completion("RESUMED_PERMISSION")], initial_permission="danger-full-access") as resumed:
+        session = resumed.call(resumed.harness.resume_session, _SESSION_ID)
+        resumed.call(session.query, "Report the restored policy without using tools.")
+        assert isinstance(resumed.call(_receive_result, session), RunResult)
+        [request] = resumed.model.captured()
+        _assert_request_permission(request, "read-only", "ask")
+        assert resumed.harness.config.env["DSH_PERMISSION_MODE"] == "danger-full-access"
+    assert _permission_facts(_read_events(resumed.logs)) == saved

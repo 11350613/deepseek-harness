@@ -20,6 +20,8 @@ class DeepSeekHarnessConfig:
     The runtime inherits the caller's environment by default, so existing
     DEEPSEEK_API_KEY and DEEPSEEK_BASE_URL settings keep working. Use ``env`` to
     intentionally override or inject variables for a subprocess.
+    These values are startup input, not a live Session state mirror; Session
+    commands do not rewrite this object.
     """
 
     provider: str = "deepseek-official"

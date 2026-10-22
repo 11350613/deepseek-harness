@@ -55,7 +55,7 @@ console.log(result.finalResponse)
 
 ### 发送输入与接收响应
 
-`await session.query(text, { delivery: 'queue' })` 在需要时启动运行时、发送文本，然后返回，不等待运行时的路由或执行结果。delivery 默认为 `queue`；对普通输入，`steer` 指向下一个可用步骤。运行时只接管裸 `/compact`；包括 `/plan` 和 `/compact extra` 在内的其他文本保留普通提示词行为。`run("/compact")` 也仍是普通提示词。query 只接受文本，内容块提示词请使用 `run()`。
+`await session.query(text, { delivery: 'queue' })` 在需要时启动运行时、发送文本，然后返回，不等待运行时的路由或执行结果。delivery 默认为 `queue`；对普通输入，`steer` 指向下一个可用步骤。完整 SDK 接管裸 `/compact` 和带非空 preset 的 `/permission <preset>`，包括绑定到其定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/plan`、`/model` 和 `/compact extra` 仍是普通提示词。`run()` 不分派这些命令。query 只接受文本，内容块提示词请使用 `run()`。
 
 ```ts
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
@@ -73,9 +73,11 @@ for await (const message of session.receiveResponse()) {
 
 多个接收器可以并行运行，因此等待模型响应时仍可发送并接收 `/compact` 的原生 busy 结果。订阅在发送前建立，在最终结果产出前释放。对不再使用的迭代器调用 `return()`，即使尚未调用第一次 `next()`，也会丢弃缓冲事件并放弃本地 RPC 等待。该操作不发送运行时取消，也不允许自动重试。请持续服务 Session，直到其工作结束，或关闭 harness；命令完成不代表独立模型活动结束。
 
+启动选项提供初始值，不是共享的实时配置对象。权限命令只修改目标 Session；后续 query 保留该状态，其他 Session 保留各自状态，新 Session 使用配置的默认值。命令不更新 options 对象或已保存的用户默认值。运行中改变审批策略可能注入通知并触发额外 step。原生切换和恢复行为见[权限预设](../../interaction/permission-presets/README.zh.md)。
+
 ### 用 HarnessClient 做低层控制
 
-`client.query(sessionId, text, delivery, signal?)` 等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 是高级用法的严格命令入口，当前支持 `/compact`；它等待原生 handler，包括辅助摘要工作。需要通知时，应在调用前订阅。`request()` 的可选第四个参数接受 `AbortSignal`，仅放弃本地等待；超时或本地放弃后，运行时工作仍可继续。
+`client.query(sessionId, text, delivery, signal?)` 等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 是 `/compact` 和 `/permission <preset>` 的严格入口，会拒绝裸 `/permission`。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。`request()` 的可选第四个参数接受 `AbortSignal`，仅放弃本地等待；超时或本地放弃后，运行时工作仍可继续。
 
 `HarnessClient` 是运行 API 之下的协议客户端：显式 `start()`、`initialize()`、`prompt()`、`request()` 与 `close()`，外加通知订阅。`prompt()` 在运行时接受排队消息后立即返回该消息的 id，绝不等待 agent 活动。`subscribe(filter?)` 返回 `NotificationSubscription`（可等待的 `next()`、非阻塞 `tryNext()`、异步迭代）；`subscribeSessionTree(id)` 把范围限定到一个会话及从 `subagent.started` 血缘边发现的后代——运行时对上下文内每个会话都发通知，范围限定在客户端完成，与 Python SDK 完全一致。
 

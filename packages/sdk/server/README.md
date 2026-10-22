@@ -33,9 +33,11 @@ Set `initialize.approvalRequests` to `true` to send internal approvals as server
 
 The plugin publishes the `sdkSessionActivation` readiness marker once its reminder activation handler is installed; an SDK composition injects this marker into Schedule instead of the Web Session controller. Scheduled delivery uses this same SDK Session owner. Due startup reminders wait for successful SDK initialization, then resume with its provider, model, reasoning effort, and output limit. The client can resume a reminder-restored Session once; concurrent reminder and client restoration share one handle. Shutdown releases reminders waiting for initialization and drains accepted restorations.
 
-`session/query` is the unified text entry. Ordinary text retains its original content and uses the selected queue/steer operation; the default is supplied explicitly by the client. The SDK recognizes `/compact` and its registered Desktop alias, then reuses the native command path. `/compact extra`, unknown slash tokens and paths remain ordinary prompts. All other slash input, including registered commands not yet supported and UI names such as `/model`, `/file` and `/export`, keeps the existing ordinary-prompt behavior. If no compact command is composed, that input also remains ordinary text; a failure after compact has been selected never falls back to a prompt. Query does not change permissions. Inputs are text-only; `session/prompt` retains its existing content-block API.
+`session/query` is the unified text entry. Ordinary text retains its original content and uses the selected queue/steer operation. The full SDK recognizes bare `/compact` and `/permission <preset>` with a non-blank preset, including Desktop aliases bound to their current definitions. Bare `/permission` or `/权限`, `/compact extra`, and all other input including `/plan` and `/model` remain ordinary prompts. A missing command also preserves the prompt path; a selected handler's failure never falls back. An unknown preset is a native command error. Inputs are text-only; `session/prompt` retains its content-block API.
 
-`session/command` accepts `{ sessionId, line }` and currently exposes `/compact` only. The full sdk profile already composes its native handler; profiles without that command reject the call. The server resolves its own live Agent and calls `commands.execute()` without queueing a prompt or waiting for idle. The command owns its model request, history replacement and checkpoint; an active Agent receives the native busy result. Shutdown cancels pending commands and drains SDK command waiters before releasing Agents. A timeout does not establish rollback, and clients must not retry automatically. See the [protocol](../protocol/README.md) for results and errors.
+`session/command` accepts `{ sessionId, line }` for `/compact` or `/permission <preset>` and rejects bare `/permission`. The full sdk profile composes both native handlers; profiles without the requested command reject it. The server resolves its own live Agent and calls `commands.execute()` without queueing a prompt or waiting for idle. Compaction owns its auxiliary model request, history replacement and checkpoint, and refuses a busy Agent. Permission changes retain their native state and notification behavior. Shutdown cancels pending commands and drains SDK command waiters before releasing Agents. Timeout is not rollback; clients must not retry automatically. See the [protocol](../protocol/README.md) for results and errors.
+
+Permission commands change only the receiving Session. Later queries and restored Sessions retain its persisted permission facts; other Sessions keep their own state and new Sessions use the configured defaults. Neither the caller's launch configuration nor saved user defaults are rewritten. Model selection is not an SDK slash command; its resume override remains the separate behavior described above.
 
 `session/working-directory/get` accepts `{ sessionId }`; `session/working-directory/set` accepts `{ sessionId, path }`. Both return `{ cwd }` and create an unknown Session without starting a model turn. Reads recover missing directories through the working-directory service; changes preserve origin metadata and permissions, and reach the model through logged user context.
 
@@ -124,7 +126,7 @@ Read these pages when the plugin contract is not enough. They move from the wire
 
 #### What the model sees
 
-Ordinary `session/query` text and accepted `session/prompt` content enter a user message verbatim. Query delivery selects a queued turn or the next available step, without changing permissions. Inline `SdkEncodedImageBlock` values are validated and committed through the composition's attachment store first, so the session log retains content-addressed image references rather than base64 bytes. This package adds no system-prompt prose or tool schema; those come from the other plugins in the composition.
+Ordinary `session/query` text and accepted `session/prompt` content enter a user message verbatim. Ordinary delivery selects a queued turn or the next available step without reapplying permission defaults. Inline `SdkEncodedImageBlock` values are validated and committed through the composition's attachment store first, so the session log retains content-addressed image references rather than base64 bytes. This package adds no system-prompt prose or tool schema; those come from the other plugins in the composition.
 
 #### Token effect
 
@@ -147,6 +149,20 @@ The compaction owner pays the summary request cost and reduces later history tok
 #### KV Cache effect
 
 The replaced history changes the reusable prefix according to the native compactor. The SDK adds no separate invalidation.
+
+### Session permission changes
+
+#### What the model sees
+
+The command text and result stay outside model messages. The [permission preset owner](../../interaction/permission-presets/README.md#model-experience) updates the runtime-context user snapshot and may inject an approval-policy notice. A notice in a running turn can cause another step; the default presets do not change system text or tool schemas.
+
+#### Token effect
+
+Native policy snapshots and notices add their normal history tokens; SDK framing adds none.
+
+#### KV Cache effect
+
+The native context updates append after retained history without rewriting the system prefix.
 
 ## Known Limitations and Deferred Work
 
