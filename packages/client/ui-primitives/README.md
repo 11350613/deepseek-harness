@@ -126,7 +126,7 @@ The nearest `MarkdownDelegateProvider` supplies optional `openExternalLink` and 
 
 The atoms cannot read the application locale, so every piece of user-facing copy arrives through required label props. `HoverCard`, `TerminalBlock`, `JsonTree`, `CodeBlock`, `MarkdownText`, `JsonBlock`, `ConnectionIndicator`, `Modal`, `DiffBlock`, `ReadBlock`, `SearchBlock`, `WebBlock`, and `ZoomControls` accept complete localized labels. The package owns no language fallback; omission fails typechecking, and each feature maps its typed `t` seat into the primitive's label interface.
 
-`Menu.contextual` positions from the pointer without the frame inset, aligns icons per divider group, and closes on a right-click inside the popup. `exiting` retains an inert popup for its fade; `returnFocus` restores the original control after asynchronous preparation. `MenuSurface.phase` applies the fade to both content and its macOS backing. Ordinary dropdowns retain their existing timing.
+`Menu.contextual` positions from the pointer without the frame inset, aligns icons per divider group, and closes on a right-click inside the popup. `exiting` retains an inert popup for its fade; `returnFocus` restores the original control after asynchronous preparation. `MenuSurface.phase` fades the material, direct content, and macOS backing separately so the material keeps blurring the page. Ordinary dropdowns retain their existing timing.
 
 -----
 

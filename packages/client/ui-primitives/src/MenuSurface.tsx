@@ -8,7 +8,7 @@ import css from './MenuSurface.module.css'
 export interface MenuSurfaceProps extends ComponentPropsWithoutRef<'div'> {
   /** Match the shared compact menu's smaller outer radius. */
   compact?: boolean
-  /** Optional context-popup fade, shared by the material and its native backing. */
+  /** Fade direct content, material, and native backing without isolating the material's backdrop. */
   phase?: 'enter' | 'dismiss' | 'replace' | undefined
 }
 
