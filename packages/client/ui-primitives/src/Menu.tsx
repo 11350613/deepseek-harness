@@ -522,6 +522,9 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
     )
   }
 
+  // Legacy Slot rows and separators are opaque React children. Inspect this popup before paint
+  // to align mixed groups without a first-frame shift; CSS cannot group siblings by separators.
+  // Child-list changes rescan only the open popup, including its mounted submenu.
   useLayoutEffect(() => {
     const list = listRef.current
     if (!open || !contextual || list === null) return
