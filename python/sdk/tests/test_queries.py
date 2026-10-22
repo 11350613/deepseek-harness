@@ -141,7 +141,7 @@ def test_query_only_sends_then_receive_returns_command(sdk: DeepSeekHarness) -> 
     assert_released(sdk)
 
 
-@pytest.mark.parametrize("text", ["ordinary", "fast-prompt", "/plan", "/permission"])
+@pytest.mark.parametrize("text", ["ordinary", "fast-prompt", "/goal", "/permission"])
 @pytest.mark.parametrize("delivery", ["queue", "steer"])
 def test_prompt_yields_receipt_through_idle_then_run_result(sdk: DeepSeekHarness, text: str, delivery: str) -> None:
     session = sdk.start_session("main")

@@ -103,7 +103,7 @@ def test_low_level_command_preserves_the_line(peer: Path, tmp_path: Path) -> Non
 def test_command_rpc_rejection_does_not_fall_back_to_prompt(peer: Path, tmp_path: Path) -> None:
     with harness(peer, tmp_path, {"error": {"code": -32602, "message": "unsupported command"}}) as sdk:
         with pytest.raises(JsonRpcError, match="unsupported command") as raised:
-            sdk.client.session_command("main", "/plan")
+            sdk.client.session_command("main", "/goal")
         assert raised.value.code == -32602
     assert [frame["method"] for frame in frames(tmp_path)] == ["initialize", "session/command", "shutdown"]
 

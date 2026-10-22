@@ -49,7 +49,7 @@ Both wire ends share one method set: client-to-server requests, opt-in server-to
 | client→server | `session/working-directory/set` | `SessionWorkingDirectorySetParams` → `SessionWorkingDirectoryResult` |
 | client→server | `shutdown` | no params → `{}` |
 | server→client | `approval/request` | `ApprovalRequestParams` → `ApprovalRequestResult` |
-| server→client | `user-question/ask` | `SdkUserQuestionRequest` → `SdkUserQuestionAnswer` |
+| server→client | `user-question/ask` | `SdkUserQuestionRequest` → `SdkUserQuestionResult` |
 | server→client | `user-question.cancelled` | `SdkUserQuestionCancelled` |
 | server→client | `session.event` | `SessionEventNotification` (every session in the runtime, unfiltered) |
 | server→client | `session.status` | `SessionStatusNotification` (whole-agent `running`/`idle` transition) |
@@ -62,14 +62,14 @@ Both wire ends share one method set: client-to-server requests, opt-in server-to
 
 `session/query` accepts exactly `{ sessionId, text, delivery }`, where text is non-blank and delivery is `queue` or `steer`. The runtime replies with `{ kind: "prompt", messageId }` for an ordinary input, or `{ kind: "command", execution }` after a supported command settles. A prompt receipt is not a model result; command completion does not require an inbox receipt or idle notification. Recognition and the supported command set belong to the [SDK server](../server/README.md).
 
-`session/command` accepts exactly `{ sessionId, line }` after initialization and delegates `/compact` or `/permission <preset>` to the native registry. A non-blank preset is required; bare `/permission` is rejected. It returns `CommandExecution` after the handler settles, including an unknown preset or other business failure as `result.kind: "error"`. Unavailable or unsupported commands and malformed requests reject with a JSON-RPC error. There is no prompt fallback or attachment input. Command lifecycle notifications precede the response; no inbox receipt or ordinary turn is required. `session/prompt` remains unchanged.
+`session/command` accepts exactly `{ sessionId, line }` after initialization and delegates `/compact`, `/permission <preset>`, or `/plan [off|message]` to the native registry. A non-blank preset is required; bare `/permission` is rejected. It returns `CommandExecution` after the handler settles, including an unknown preset or other business failure as `result.kind: "error"`. Unavailable or unsupported commands and malformed requests reject with a JSON-RPC error. There is no prompt fallback or attachment input. Command lifecycle notifications precede the response; no inbox receipt or ordinary turn is required. `session/prompt` remains unchanged.
 
 `session/resume` accepts a non-empty persisted `{ sessionId }` and returns `{}` after restoring that exact session. It requires initialization and the original persistence store, sends no new input, and rejects missing, unreadable, incompatible, or occupied sessions without creating a replacement. Historical events remain in the stored log; notifications report newly committed events.
 
 <a id="native-user-questions"></a>
 ### Native user questions
 
-An answering host sets `initialize.capabilities.userQuestions: true`. The runtime sends `user-question/ask` with `{ requestId, sessionId, questions }`; questions retain their original ids, options, detail, and presentation intent. The host returns `{ answers: [{ id, selected, custom? }] }`, naming every question id exactly once. Invalid batches fail with `BAD_ANSWER`; host or transport failures fail with `PROVIDER_ERROR`. The SDK does not synthesize answers.
+An answering host sets `initialize.capabilities.userQuestions: true`. The runtime sends `user-question/ask` with `{ requestId, sessionId, questions }`; questions retain their original ids, options, detail, and presentation intent. The host returns `{ answers: [{ id, selected, custom? }] }`, naming every question id exactly once, or `{ cancelled: true }` with no other fields for a user dismissal. Dismissal maps to native `ASK_CANCELLED`; it is not runtime cancellation, a provider failure, or approval. Invalid batches fail with `BAD_ANSWER`; host or transport failures fail with `PROVIDER_ERROR`. The SDK does not synthesize answers.
 
 `user-question.cancelled` identifies the request that stopped waiting. The host cancels its own work and discards the question; the runtime abandons its pending RPC and ignores late responses. Without the advertised capability, existing in-process answerers remain responsible and an absent answerer reports `NO_PROVIDER`. This flow requires no GUI.
 

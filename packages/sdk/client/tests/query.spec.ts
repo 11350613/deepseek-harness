@@ -96,8 +96,8 @@ it('retains a rejection before reception without creating an unhandled rejected 
 
 it('accepts ordinary prompt routing for other slash input and preserves its text', async () => {
   const session = harnessWith().session('main')
-  await session.query('/plan')
-  expect(finalRun(await collect(session.receiveResponse())).finalResponse).toBe('reply:/plan')
+  await session.query('/goal')
+  expect(finalRun(await collect(session.receiveResponse())).finalResponse).toBe('reply:/goal')
   await session.query(' /compact extra ')
   expect(finalRun(await collect(session.receiveResponse())).finalResponse).toBe('reply: /compact extra ')
 })

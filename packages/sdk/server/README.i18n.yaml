@@ -15,8 +15,8 @@
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-sdk-jsonrpc-server/use-this-package:
-  en: 134300cf15bec54f
-  zh: 34fae5fc83e195ab
+  en: 528fa29a24b6216f
+  zh: 2af7b105c8205c87
 /deepseek-ai-dsh-sdk-jsonrpc-server/use-this-package/wiring:
   en: 47a33e9397e36e15
   zh: e6d173820f9ea6e5
@@ -92,6 +92,18 @@
 /deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/session-permission-changes/kv-cache-effect:
   en: a6c8c78f7e558ed1
   zh: 410aef8f5f230d67
+/deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/plan-commands:
+  en: 6714c05c148b2a6e
+  zh: e85929c987561499
+/deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/plan-commands/what-the-model-sees:
+  en: 4edf946453a31daf
+  zh: 47f3d6c9095a80d8
+/deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/plan-commands/token-effect:
+  en: 915597a108a3e579
+  zh: 22f818fa1e6a5e1c
+/deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/plan-commands/kv-cache-effect:
+  en: 1403de19597c9bfd
+  zh: a3d41798c45577cb
 /deepseek-ai-dsh-sdk-jsonrpc-server/known-limitations-and-deferred-work:
   en: a6d0b12d02961572
   zh: 92822e033db55980

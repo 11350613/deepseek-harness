@@ -24,6 +24,7 @@ export type {
   CommandExecution,
   SdkPromptContentBlock,
   SdkUserQuestionAnswer,
+  SdkUserQuestionResult,
   SdkUserQuestionRequest,
   DeepSeekHarnessOptions,
   HarnessClientOptions,

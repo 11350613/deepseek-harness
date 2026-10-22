@@ -49,7 +49,7 @@ kind: "package-library"
 | 客户端→服务端 | `session/working-directory/set` | `SessionWorkingDirectorySetParams` → `SessionWorkingDirectoryResult` |
 | client→server | `shutdown` | 无参数 → `{}` |
 | server→client | `approval/request` | `ApprovalRequestParams` → `ApprovalRequestResult` |
-| server→client | `user-question/ask` | `SdkUserQuestionRequest` → `SdkUserQuestionAnswer` |
+| server→client | `user-question/ask` | `SdkUserQuestionRequest` → `SdkUserQuestionResult` |
 | server→client | `user-question.cancelled` | `SdkUserQuestionCancelled` |
 | server→client | `session.event` | `SessionEventNotification`（运行时内每个会话，不过滤） |
 | server→client | `session.status` | `SessionStatusNotification`（整个 agent（智能体）的 `running`/`idle` 转换） |
@@ -62,14 +62,14 @@ kind: "package-library"
 
 `session/query` 接受且仅接受 `{ sessionId, text, delivery }`，text 不能全为空白，delivery 为 `queue` 或 `steer`。普通输入返回 `{ kind: "prompt", messageId }`，受支持命令结束后返回 `{ kind: "command", execution }`。Prompt 回执不是模型结果，命令完成也不要求 inbox 回执或 idle 通知。识别规则及受支持命令由 [SDK 服务端](../server/README.zh.md)定义。
 
-`session/command` 在初始化后接受且仅接受 `{ sessionId, line }`，将 `/compact` 或 `/permission <preset>` 委托给原生注册器。preset 必须非空，裸 `/permission` 会被拒绝。Handler 结束后返回 `CommandExecution`，未知 preset 或其他业务失败以 `result.kind: "error"` 返回。命令不可用、不受支持或请求格式错误时返回 JSON-RPC 错误。不回退为普通 prompt，也不接受附件。命令生命周期通知在响应前到达，不要求 inbox 回执或普通 turn。`session/prompt` 保持不变。
+`session/command` 在初始化后接受且仅接受 `{ sessionId, line }`，将 `/compact`、`/permission <preset>` 或 `/plan [off|message]` 委托给原生注册器。preset 必须非空，裸 `/permission` 会被拒绝。Handler 结束后返回 `CommandExecution`，未知 preset 或其他业务失败以 `result.kind: "error"` 返回。命令不可用、不受支持或请求格式错误时返回 JSON-RPC 错误。不回退为普通 prompt，也不接受附件。命令生命周期通知在响应前到达，不要求 inbox 回执或普通 turn。`session/prompt` 保持不变。
 
 `session/resume` 接受非空的持久化 `{ sessionId }`，恢复该会话后返回 `{}`。它要求先完成初始化并使用原持久化存储，不发送新输入；会话缺失、不可读、不兼容或被占用时，请求失败且不创建替代会话。历史事件保留在存储日志中，通知只报告新提交的事件。
 
 <a id="native-user-questions"></a>
 ### 原生用户问答
 
-提供回答能力的宿主设置 `initialize.capabilities.userQuestions: true`。运行时发送带有 `{ requestId, sessionId, questions }` 的 `user-question/ask`；问题保留原始 id、选项、detail 与展示意图。宿主返回 `{ answers: [{ id, selected, custom? }] }`，每个问题 id 必须恰好出现一次。无效答案批次返回 `BAD_ANSWER`，宿主或传输失败返回 `PROVIDER_ERROR`。SDK 不生成替代答案。
+提供回答能力的宿主设置 `initialize.capabilities.userQuestions: true`。运行时发送带有 `{ requestId, sessionId, questions }` 的 `user-question/ask`；问题保留原始 id、选项、detail 与展示意图。宿主返回 `{ answers: [{ id, selected, custom? }] }`，每个问题 id 必须恰好出现一次；用户关闭问题时可返回只含 `{ cancelled: true }` 的对象。关闭映射为原生 `ASK_CANCELLED`，不表示运行时取消、回答方失败或批准。无效答案批次返回 `BAD_ANSWER`，宿主或传输失败返回 `PROVIDER_ERROR`。SDK 不生成替代答案。
 
 `user-question.cancelled` 标识已停止等待的请求。宿主取消自己的工作并丢弃问题；运行时放弃对应的待决 RPC，忽略晚到响应。未声明该能力时，仍由现有进程内回答方处理；缺少回答方则报告 `NO_PROVIDER`。此流程不要求 GUI。
 

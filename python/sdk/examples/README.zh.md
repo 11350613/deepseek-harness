@@ -56,6 +56,20 @@ python python/sdk/examples/permission.py \
 
 命令会修改 Session 的策略，而打印出的启动设置仍为 `workspace-write`。后续 query 使用 Session 的当前策略。裸 `/permission` 是普通文本，未知 preset 返回命令错误。结果和状态语义见[查询与接收](../README.zh.md#query-and-response)。
 
+<a id="review-a-plan"></a>
+## 审查计划
+
+[计划示例](plan.py) 通过 query 发送 `/plan <task>`，并在命令完成后保持 Session 通知订阅和问答处理器运行。输入 `a` 批准、`k` 提供反馈、`d` 关闭；EOF 也会关闭而不批准。批准后模型可以从后续步骤开始实施，因此应选择隔离的工作区。
+
+```sh
+python python/sdk/examples/plan.py \
+  --dsh-home /absolute/path/to/plan-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  "Plan the requested change and present it for review."
+```
+
+原生计划通过 `exit_plan_mode` 携带，而不是写入工作区文档。权限仍为 workspace-write。关闭审查会保留计划模式并结束当前轮次。示例通过 `session/wait` 等待，问答回调独立于协议读取线程。
+
 ## 添加插件
 
 对同一个显式 home 使用运行时 wheel 包提供的 `dsh` 命令，以进行持久 profile 变更：

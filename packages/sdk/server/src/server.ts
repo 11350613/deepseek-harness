@@ -312,7 +312,7 @@ export class HarnessSdkJsonRpcServer {
   }
 
   /**
-   * Execute `/compact` or `/permission <preset>` through the native command registry.
+   * Execute supported compact, permission, or plan input through the native command registry.
    * @param params - target Session and complete command line.
    * @returns the native handler result; command errors remain result values.
    * @throws for unsupported input, unavailable commands, or runtime/transport failure.
@@ -321,9 +321,9 @@ export class HarnessSdkJsonRpcServer {
     if (!this.initialized) throw new Error('SDK server is not initialized')
     if (this.shuttingDown) throw new Error('SDK server is shutting down')
     const parsed = parseCommand(params.line)
-    if (parsed === undefined || (parsed.name !== 'compact'
+    if (parsed === undefined || (parsed.name !== 'compact' && parsed.name !== 'plan'
       && (parsed.name !== 'permission' || parsed.rawInput.trim() === ''))) {
-      throw new TypeError('The SDK command endpoint supports only /compact or /permission <preset>')
+      throw new TypeError('The SDK command endpoint supports only /compact, /permission <preset>, or /plan [off|message]')
     }
     const commands = this.ctx.get('commands')
     if (commands === undefined) {

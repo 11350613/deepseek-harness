@@ -22,6 +22,7 @@ from typing import Callable, Iterator, TypeVar
 import pytest
 
 from deepseek_harness import CommandExecution, DeepSeekHarness, Notification, RunResult, Session
+from deepseek_harness.client import UserQuestionHandler
 
 
 _WAIT_SECONDS = 30
@@ -39,6 +40,7 @@ _T = TypeVar("_T")
 class _Completion:
     text: str
     blocked: bool = False
+    tool_call: tuple[str, dict] | None = None
     entered: threading.Event = field(default_factory=threading.Event)
     release: threading.Event = field(default_factory=threading.Event)
 
@@ -47,17 +49,24 @@ class _Completion:
             self.release.set()
 
 
-def _messages_response(text: str, model: str, ordinal: int) -> bytes:
+def _messages_response(text: str, model: str, ordinal: int, tool_call: tuple[str, dict] | None = None) -> bytes:
+    if tool_call is None:
+        block = {"type": "text", "text": ""}
+        delta = {"type": "text_delta", "text": text}
+    else:
+        name, arguments = tool_call
+        block = {"type": "tool_use", "id": f"commands-tool-{ordinal}", "name": name, "input": {}}
+        delta = {"type": "input_json_delta", "partial_json": json.dumps(arguments)}
     events = [
         {"type": "message_start", "message": {
             "id": f"commands-response-{ordinal}", "type": "message", "role": "assistant",
             "model": model, "content": [], "stop_reason": None, "stop_sequence": None,
             "usage": {"input_tokens": 10000, "output_tokens": 0},
         }},
-        {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
-        {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}},
+        {"type": "content_block_start", "index": 0, "content_block": block},
+        {"type": "content_block_delta", "index": 0, "delta": delta},
         {"type": "content_block_stop", "index": 0},
-        {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+        {"type": "message_delta", "delta": {"stop_reason": "end_turn" if tool_call is None else "tool_use", "stop_sequence": None},
          "usage": {"output_tokens": 32}},
         {"type": "message_stop"},
     ]
@@ -89,7 +98,7 @@ class _ModelServer:
                 completion.entered.set()
                 # The test owns release. This larger bound only contains a failed test.
                 assert completion.release.wait(_WAIT_SECONDS * 2), "model barrier was not released"
-                payload = _messages_response(completion.text, body["model"], ordinal)
+                payload = _messages_response(completion.text, body["model"], ordinal, completion.tool_call)
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Content-Length", str(len(payload)))
@@ -172,6 +181,7 @@ class _Runtime:
 def _runtime(
     tmp_path: Path, completions: list[_Completion], *, capture_patch: Path | None = None,
     initial_permission: str = "danger-full-access",
+    on_user_question: UserQuestionHandler | None = None,
 ) -> Iterator[_Runtime]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(exist_ok=True)
@@ -192,6 +202,7 @@ def _runtime(
             dsh_bin=dsh_bin, profile="sdk", patches=tuple(str(item) for item in patches), model=_MODEL,
             base_url=model.url, api_key="keyless-commands-runtime",
             initialize_timeout_seconds=60, request_timeout_seconds=20, shutdown_timeout_seconds=20,
+            on_user_question=on_user_question,
             env={"DSH_PERMISSION_MODE": initial_permission,
                  "DSH_TELEMETRY_DISABLED": "1", "DSH_TOOLS_MODE": "native"},
         )
@@ -445,29 +456,29 @@ def test_unknown_slash_and_compact_arguments_follow_the_plain_prompt_path(tmp_pa
     assert len(_of_type(events, "turn/start")) == len(_of_type(events, "turn/end")) == 2
 
 
-def test_unimplemented_slash_remains_plain_text_without_changing_plan_mode(tmp_path: Path) -> None:
-    plan_text = "/plan DSH_PLAN_TEXT_INPUT"
+def test_unimplemented_slash_remains_plain_text_without_creating_a_goal(tmp_path: Path) -> None:
+    input_text = "/goal DSH_GOAL_TEXT_INPUT"
     following = "DSH_AFTER_PLAN_TEXT_INPUT"
-    plan_reply = "DSH_PLAN_TEXT_REPLY"
+    reply_before = "DSH_GOAL_TEXT_REPLY"
     reply = "DSH_AFTER_PLAN_TEXT_REPLY"
-    with _runtime(tmp_path, [_Completion(plan_reply), _Completion(reply)]) as runtime:
+    with _runtime(tmp_path, [_Completion(reply_before), _Completion(reply)]) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
-        assert runtime.call(session.query, plan_text, delivery="queue") is None
+        assert runtime.call(session.query, input_text, delivery="queue") is None
         first = runtime.call(_receive_result, session)
         assert isinstance(first, RunResult)
-        assert first.final_response == plan_reply
+        assert first.final_response == reply_before
 
         assert runtime.call(session.query, following, delivery="queue") is None
         result = runtime.call(_receive_result, session)
         assert isinstance(result, RunResult)
         assert result.final_response == reply
         initial, continued = runtime.model.captured()
-        assert plan_text in _request_texts(initial)
+        assert input_text in _request_texts(initial)
         assert following in _request_texts(continued)
         assert initial["tools"] == continued["tools"]
     events = _read_events(runtime.logs)
     assert not _of_type(events, "command/run")
-    assert not any(event["data"].get("active") is True for event in _of_type(events, "plan/mode"))
+    assert not any(event["type"].startswith("goal/") for event in events)
     assert len(_of_type(events, "turn/start")) == len(_of_type(events, "turn/end")) == 2
 
 

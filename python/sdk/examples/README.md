@@ -56,6 +56,20 @@ python python/sdk/examples/permission.py \
 
 The command changes the Session's policy while the printed launch setting remains `workspace-write`. The later query uses the Session's current policy. Bare `/permission` is ordinary text, and unknown presets produce a command error. See [Query and response](../README.md#query-and-response) for result and state semantics.
 
+<a id="review-a-plan"></a>
+## Review a plan
+
+The [plan example](plan.py) sends `/plan <task>` through query and keeps the Session notification subscription and question handler alive after command completion. Enter `a` to approve, `k` to give feedback, or `d` to dismiss; EOF dismisses without approving. Approval allows implementation from a later model step, so choose an isolated workspace.
+
+```sh
+python python/sdk/examples/plan.py \
+  --dsh-home /absolute/path/to/plan-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  "Plan the requested change and present it for review."
+```
+
+The native plan is carried in `exit_plan_mode`, not written to a workspace document. Permissions remain workspace-write. Dismissal leaves plan mode active and ends the current turn. The example waits through `session/wait`; its question callback is independent of the protocol reader.
+
 ## Add plugins
 
 Use the runtime wheel's `dsh` command against the same explicit home for persistent profile changes:

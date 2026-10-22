@@ -55,7 +55,7 @@ console.log(result.finalResponse)
 
 ### 发送输入与接收响应
 
-`await session.query(text, { delivery: 'queue' })` 在需要时启动运行时、发送文本，然后返回，不等待运行时的路由或执行结果。delivery 默认为 `queue`；对普通输入，`steer` 指向下一个可用步骤。完整 SDK 接管裸 `/compact` 和带非空 preset 的 `/permission <preset>`，包括绑定到其定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/plan`、`/model` 和 `/compact extra` 仍是普通提示词。`run()` 不分派这些命令。query 只接受文本，内容块提示词请使用 `run()`。
+`await session.query(text, { delivery: 'queue' })` 在需要时启动运行时、发送文本，然后返回，不等待运行时的路由或执行结果。delivery 默认为 `queue`；对普通输入，`steer` 指向下一个可用步骤。完整 SDK 接管裸 `/compact`、带非空 preset 的 `/permission <preset>` 和 `/plan [off|message]`，包括绑定到其定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/model` 和 `/compact extra` 仍是普通提示词。`run()` 不分派这些命令。query 只接受文本，内容块提示词请使用 `run()`。
 
 ```ts
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
@@ -75,9 +75,11 @@ for await (const message of session.receiveResponse()) {
 
 启动选项提供初始值，不是共享的实时配置对象。权限命令只修改目标 Session；后续 query 保留该状态，其他 Session 保留各自状态，新 Session 使用配置的默认值。命令不更新 options 对象或已保存的用户默认值。运行中改变审批策略可能注入通知并触发额外 step。原生切换和恢复行为见[权限预设](../../interaction/permission-presets/README.zh.md)。
 
+`/plan` 进入计划模式，`/plan off` 退出，`/plan <message>` 进入并 steer 正文。接收在其 `CommandExecution` 处结束，模型工作与审查可能继续。需要 `RunResult` 时先进入模式再单独提交普通 query；组合输入应在 query 前订阅，并通过 `client.request('session/wait', { sessionId })` 等待。工作结束前应保持问答处理。计划状态不修改权限；规划由原生指导和审查退出流程控制。
+
 ### 用 HarnessClient 做低层控制
 
-`client.query(sessionId, text, delivery, signal?)` 等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 是 `/compact` 和 `/permission <preset>` 的严格入口，会拒绝裸 `/permission`。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。`request()` 的可选第四个参数接受 `AbortSignal`，仅放弃本地等待；超时或本地放弃后，运行时工作仍可继续。
+`client.query(sessionId, text, delivery, signal?)` 等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 是 `/compact`、`/permission <preset>` 和 `/plan [off|message]` 的严格入口，会拒绝裸 `/permission`。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。`request()` 的可选第四个参数接受 `AbortSignal`，仅放弃本地等待；超时或本地放弃后，运行时工作仍可继续。
 
 `HarnessClient` 是运行 API 之下的协议客户端：显式 `start()`、`initialize()`、`prompt()`、`request()` 与 `close()`，外加通知订阅。`prompt()` 在运行时接受排队消息后立即返回该消息的 id，绝不等待 agent 活动。`subscribe(filter?)` 返回 `NotificationSubscription`（可等待的 `next()`、非阻塞 `tryNext()`、异步迭代）；`subscribeSessionTree(id)` 把范围限定到一个会话及从 `subagent.started` 血缘边发现的后代——运行时对上下文内每个会话都发通知，范围限定在客户端完成，与 Python SDK 完全一致。
 
@@ -88,7 +90,7 @@ for await (const message of session.receiveResponse()) {
 <a id="native-user-questions"></a>
 ### 原生用户问答
 
-向 `DeepSeekHarness` 或 `HarnessClient` 传入 `onUserQuestion`，即可通过原生 SDK 协议回答内建的 `ask_user_question` 工具。回调接收 `{ requestId, sessionId, questions }` 与 `{ signal }`；返回 `{ answers: [{ id, selected, custom? }] }`，每个问题 id 对应一项。应用自行提供 UI 或模拟用户策略。SDK 在初始化时自动声明此回调，也能在其他请求待决时接收答案。`HarnessClient.initialize()` 会在需要时启动进程，无需显式调用 `start()`。
+向 `DeepSeekHarness` 或 `HarnessClient` 传入 `onUserQuestion`，即可通过原生 SDK 协议回答内建的 `ask_user_question` 工具。回调接收 `{ requestId, sessionId, questions }` 与 `{ signal }`；返回 `{ answers: [{ id, selected, custom? }] }`，每个问题 id 对应一项。也可返回 `{ cancelled: true }` 表示用户关闭问题。关闭计划审查会结束原生轮次，并保持计划模式。应用自行提供 UI 或模拟用户策略。SDK 在初始化时自动声明此回调，也能在其他请求待决时接收答案。`HarnessClient.initialize()` 会在需要时启动进程，无需显式调用 `start()`。
 
 运行时取消问题、断开连接或客户端关闭时，应响应 signal 释放宿主工作。SDK 停止等待已取消的回调，并忽略晚到答案。回调抛错会报告提供方错误；缺失或格式错误的答案均不构成批准。未提供回调时，原生进程内回答方仍可用，缺少回答方则报告 `NO_PROVIDER`。
 

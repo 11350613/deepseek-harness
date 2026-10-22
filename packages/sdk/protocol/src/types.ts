@@ -45,6 +45,9 @@ export interface SdkUserQuestionRequest {
 /** Host answers, one item per original question id. */
 export type SdkUserQuestionAnswer = AskUserQuestionAnswer
 
+/** Host answers or an explicit user dismissal; dismissal never means approval. */
+export type SdkUserQuestionResult = SdkUserQuestionAnswer | { cancelled: true }
+
 /** Runtime cancellation of a pending host question. Late answers are ignored. */
 export interface SdkUserQuestionCancelled {
   /** Identity from the original question request. */
@@ -55,7 +58,7 @@ export interface SdkUserQuestionCancelled {
 
 /** Runtime-to-host requests, handled independently of outbound Session requests. */
 export interface HarnessSdkHostRequestMap {
-  'user-question/ask': { params: SdkUserQuestionRequest; result: SdkUserQuestionAnswer }
+  'user-question/ask': { params: SdkUserQuestionRequest; result: SdkUserQuestionResult }
 }
 
 /** Wire-stable server identity returned by initialization. */
@@ -90,7 +93,7 @@ export interface SessionPromptResult {
   messageId: string
 }
 
-/** Strict invocation of `/compact` or `/permission <preset>`. */
+/** Strict invocation of `/compact`, `/permission <preset>`, or `/plan [off|message]`. */
 export interface SessionCommandParams {
   /** SDK-owned Session identity; an unknown id creates its Agent. */
   sessionId: SessionId

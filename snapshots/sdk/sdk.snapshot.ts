@@ -62,6 +62,8 @@ import {
   type NotificationSubscription,
   type RunResult,
   type SdkPromptContentBlock,
+  type SdkUserQuestionRequest,
+  type SdkUserQuestionResult,
 } from '@deepseek-ai/dsh-sdk-client'
 import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import { deriveReplayScript, parseSessionLog } from '@deepseek-ai/dsh-llm-replay'
@@ -111,6 +113,8 @@ interface SdkAssertions {
   modelRequestsFile?: string
   /** Replay caller-owned commands between turns; profile fixtures own any in-turn commands. */
   replayStandaloneCommands?: boolean
+  /** Native plan-review choices in the order the fixture requests them. */
+  planReviews?: readonly ('keep' | 'approve' | 'dismiss')[]
   /** Wait for the recorded provider title before sending each subsequent prompt. */
   waitForProviderTitle?: boolean
   /** Final response required from a completed turn before updating goldens. */
@@ -161,6 +165,14 @@ const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
     patches: [fileURLToPath(new URL('./permission-switch/capture.cordis.yml', import.meta.url))],
     modelRequestsFile: 'permission-requests.jsonl',
     replayStandaloneCommands: true,
+  },
+  'plan-review': {
+    expectedFinalResponse: 'SDK_PLAN_OK',
+    environment: { DSH_PERMISSION_MODE: 'workspace-write' },
+    patches: [fileURLToPath(new URL('./plan-review/capture.cordis.yml', import.meta.url))],
+    modelRequestsFile: 'plan-requests.jsonl',
+    replayStandaloneCommands: true,
+    planReviews: ['keep', 'approve', 'dismiss'],
   },
   'minimal-image-compaction': {
     expectedFinalResponse: 'MINIMAL_IMAGE_OK',
@@ -760,6 +772,20 @@ async function runScenario(scenario: CorpusScenario): Promise<{
     ...resumeReplayFile === undefined ? {} : { DSH_SNAPSHOT_OVERRIDE: resumeReplayFile },
   }
 
+  const planReviews = assertions.planReviews === undefined ? undefined : [...assertions.planReviews]
+  const onUserQuestion = planReviews === undefined ? undefined
+    : async (request: SdkUserQuestionRequest): Promise<SdkUserQuestionResult> => {
+      expect(request.questions).toHaveLength(1)
+      const question = request.questions[0]
+      if (question === undefined) throw new Error('plan review has no question')
+      expect(question.intent?.kind).toBe('plan-review')
+      expect(question.detail).toMatch(/^# /u)
+      const choice = planReviews.shift()
+      if (choice === undefined) throw new Error('unexpected extra plan review')
+      if (choice === 'dismiss') return { cancelled: true }
+      return { answers: [{ id: question.id, selected: [choice === 'approve' ? 'Approve' : 'Keep planning'],
+        ...choice === 'keep' ? { custom: 'Add rollback.' } : {} }] }
+    }
   const createHarness = (model = route.model): DeepSeekHarness => new DeepSeekHarness({
     profile: scenario.manifest.profile,
     ...(assertions.approvalOutcomes === undefined ? {} : { approvalRequests: true }),
@@ -772,6 +798,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
     cwd,
     provider: route.provider,
     model,
+    ...onUserQuestion === undefined ? {} : { onUserQuestion },
   })
   let harness = createHarness()
   try {
@@ -842,7 +869,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
           expect(session.id).toBe(sessionId)
         }
         let result: RunResult | undefined
-        if (scenario.name === 'manual-compact' || scenario.name === 'permission-switch') {
+        if (assertions.replayStandaloneCommands === true) {
           const content = action.content[0]
           if (action.content.length !== 1 || content?.type !== 'text' || typeof content.text !== 'string') {
             throw new Error(`${scenario.name} query fixture requires one text block per prompt`)
@@ -933,6 +960,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
     const modelRequests = assertions.modelRequestsFile !== undefined
       ? records(await readFile(join(dshHome, assertions.modelRequestsFile), 'utf8'))
       : []
+    if (planReviews !== undefined) expect(planReviews).toEqual([])
     return { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd, modelRequests }
   } finally {
     await harness.close()
@@ -1106,6 +1134,34 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       )
       reconcileCatalogCreationTimes(ordered.map(log => log.content), 'validate')
       const actualContext = contextOf(ordered, cwd)
+      if (scenario.name === 'plan-review') {
+        const parent = ordered[0]
+        if (parent === undefined) throw new Error('plan review has no persisted Session')
+        const events = parseSessionLog(parent.content)
+        expect(events.filter(event => event.type === 'plan/mode').map(event => event.data.active))
+          .toEqual([true, false, true, false])
+        expect(events.filter(event => event.type === 'command/run').map(event => ({ name: event.data.name, args: event.data.args })))
+          .toEqual([{ name: 'plan', args: '' }, { name: 'plan', args: '' }, { name: 'plan', args: ' off' }])
+        expect(events.filter(event => event.type === 'permission/preset').map(event => event.data.preset)).toEqual(['workspace-write'])
+        expect(events.filter(event => event.type === 'sandbox/mode').map(event => event.data.mode)).toEqual(['workspace-write'])
+        expect(events.filter(event => event.type === 'approval/policy').map(event => event.data.policy)).toEqual(['ask'])
+        expect(events.filter(event => event.type === 'turn/start')).toHaveLength(4)
+        expect(events.filter(event => event.type === 'step/start')).toHaveLength(6)
+        expect(modelRequests).toHaveLength(6)
+        const active = modelRequests.map((request) => {
+          const messages = request.messages as JsonObject[]
+          const system = messages.filter(message => message.role === 'system').at(-1)
+          return JSON.stringify(system).includes('You are in plan mode.')
+        })
+        expect(active).toEqual([false, true, true, false, true, false])
+        expect(modelRequests.map(request => (request.tools as JsonObject[]).some(tool => tool.name === 'exit_plan_mode')))
+          .toEqual([false, true, true, true, true, true])
+        const toolResults = events.filter(event => event.type === 'tool/result')
+        expect(toolResults).toHaveLength(3)
+        expect(JSON.stringify(toolResults[0]?.data)).toContain('Add rollback.')
+        expect(JSON.stringify(toolResults[1]?.data)).toContain('Plan approved')
+        expect(JSON.stringify(toolResults[2]?.data)).toContain('The user dismissed the plan review')
+      }
       if (scenario.name === 'permission-switch') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('permission switch has no persisted Session')

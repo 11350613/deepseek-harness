@@ -84,7 +84,7 @@ describe('SDK command dispatch', () => {
     expect(h.ctx.agents.list()).toEqual([])
   })
 
-  it.each(['text', '/plan', '/unknown', '/permission', '/permission \t\n'])('rejects unsupported input %s without invoking another command', async (line) => {
+  it.each(['text', '/goal', '/unknown', '/permission', '/permission \t\n'])('rejects unsupported input %s without invoking another command', async (line) => {
     const h = await setup()
     await h.initialize()
     const handler = vi.fn(() => ({ kind: 'success' as const }))
@@ -121,6 +121,18 @@ describe('SDK command dispatch', () => {
     const expected = { result: { kind: 'error', text: 'native preset refusal' } }
     expect(result).toMatchObject(entry === 'strict' ? expected : { kind: 'command', execution: expected })
     expect(h.ctx.agents.get(sessionId)!.session.snapshotEvents().map(event => event.type))
+      .toEqual(['command/run', 'command/done'])
+  })
+
+  it.each(['/plan', '/plan off', '/plan  explain the change'])('delegates %s without reconstructing model input', async (line) => {
+    const h = await setup()
+    await h.initialize()
+    const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const, text: 'native plan result' }))
+    h.ctx.effect(() => h.ctx.commands.register({ name: 'plan', description: 'Plan', input: { hint: '[off|message]' }, handler }))
+    const result = await h.server.query({ sessionId: SessionId('plan'), text: line, delivery: 'queue' })
+    expect(result).toMatchObject({ kind: 'command', execution: { result: { kind: 'success', text: 'native plan result' } } })
+    expect(handler.mock.calls[0]![0].rawInput).toBe(line.slice('/plan'.length))
+    expect(h.ctx.agents.get(SessionId('plan'))!.session.snapshotEvents().map(event => event.type))
       .toEqual(['command/run', 'command/done'])
   })
 
@@ -256,13 +268,13 @@ describe('SDK query dispatch', () => {
     expect(queued).not.toHaveBeenCalled()
   })
 
-  it.each(['/plan inspect', '/model', '/file', '/export', '/permission', ' \n/权限\t '])('preserves existing prompt behavior for unimplemented input %s', async (text) => {
+  it.each(['/goal inspect', '/model', '/file', '/export', '/permission', ' \n/权限\t '])('preserves existing prompt behavior for unimplemented input %s', async (text) => {
     const h = await setup()
     const model = new TextModel()
     h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
     await h.server.initialize({ cwd: process.cwd(), provider: 'query-model', model: 'model' })
     const handler = vi.fn(() => ({ kind: 'success' as const }))
-    h.ctx.effect(() => h.ctx.commands.register({ name: 'plan', description: 'Plan', input: { hint: 'Task' }, handler }))
+    h.ctx.effect(() => h.ctx.commands.register({ name: 'goal', description: 'Goal', input: { hint: 'Task' }, handler }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', description: 'Permission', input: { hint: 'Preset' }, handler }))
     await expect(h.server.query({ sessionId: SessionId('q'), text, delivery: 'queue' })).resolves.toMatchObject({ kind: 'prompt' })
     await h.server.wait({ sessionId: 'q' })
