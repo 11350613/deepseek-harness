@@ -14,6 +14,8 @@ Read an existing file before overwriting it with write (the default fs-observati
 
 Read a file before editing it (the default fs-observation-policy requires it), unless you just created or edited it in this session.
 
+Prefer apply_patch over separate edit calls for changes across files or separated regions. Read a file before updating, deleting, or moving it (the default fs-observation-policy requires it), unless you just created or edited it in this session. Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.
+
 Use the glob tool — not shell find — to discover files by path pattern.
 
 Use the grep tool — not shell grep or rg — to search file contents. Use read on a matched file when you need surrounding context.
@@ -47,6 +49,15 @@ Program-only SDK bindings:
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
 interface ToolArgsMap {
+  /** Create, update, delete, or move UTF-8 text files with one Codex-style patch; prefer it over multiple edit calls when a change spans several files or separated regions. */
+  apply_patch: {
+    /** Codex patch: start with *** Begin Patch and end with *** End Patch. Use *** Add File: path with + lines; *** Update File: path, optionally followed by *** Move to: path, with @@ or @@ context and space-prefixed context, + added, or - removed lines; *** End of File anchors the last hunk to the file end. Use *** Delete File: path to delete. Paths are relative to the Session working directory. Read existing files before updating, deleting, or moving them. */
+    patch: string;
+    /** The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval. */
+    sandbox_permissions?: "workspace-write" | "danger-full-access";
+    /** Required with sandbox_permissions: one sentence for the user explaining why this exact file operation needs the wider access. Use the language of the user’s current request. */
+    justification?: string;
+  } & Record<string, JsonValue>;
   /** Ask the user a concise question when you need confirmation, a choice, or missing information before proceeding. */
   ask_user_question: {
     /** Questions to ask the user before continuing. */
@@ -383,6 +394,27 @@ interface ToolArgsMap {
 }
 
 interface ToolOutputMap {
+  apply_patch: {
+    phase: "commit";
+    cancelled: boolean;
+    operations: ({
+      index: number;
+      kind: "add" | "update" | "delete" | "move";
+      path: string;
+      destination?: string;
+      patchLine: number;
+      status: "completed" | "failed" | "unknown" | "skipped";
+      code?: string;
+      message?: string;
+      hunkLine?: number;
+      changes?: ({
+        path: string;
+        before: string | null;
+        after: string | null;
+      })[];
+    })[];
+    affectedPaths: string[];
+  };
   ask_user_question: {
     answers: {
       id: string;

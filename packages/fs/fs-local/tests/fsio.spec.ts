@@ -1015,6 +1015,16 @@ describe('atomic write failures', () => {
     } finally { await chmod(locked, 0o755) }
   })
 
+  it('maps a parent path blocked by a regular file to FS_IO_ERROR on every platform', async () => {
+    const blocker = join(dir, 'blocker')
+    await writeFile(blocker, 'file')
+    const target = join(blocker, 'child')
+    await expect(writeFileAtomic(target, 'content', undefined, undefined)).rejects.toMatchObject({
+      code: 'FS_IO_ERROR', message: expect.stringContaining(`cannot write "${target}": `) as string, cause: expect.any(Error) as Error,
+    })
+    expect(await readFile(blocker, 'utf8')).toBe('file')
+  })
+
   it.each([new Error('provider defect'), Object.assign(new Error('invalid errno'), { code: 1 }), 'provider defect'])(
     'preserves unexpected failures during staging: %s', async (failure) => {
       const file = join(dir, 'a')
