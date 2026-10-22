@@ -57,6 +57,8 @@ owner 载荷为 `ToolCallOwnerProps`：`callId`、`toolName`、`phase` 判别字
 
 回答面板按钮归问题 renderer 所有。它使用 `DisclosureRow` 组合自己的操作与 transcript；通用 `ToolRow` 不选择或派发问题操作。
 
+工具文件按钮通过 `data-file-path` 提供记录的路径，供外层 transcript 菜单使用；显示标签不会替代目标。
+
 -----
 
 <a id="understand-the-implementation"></a>

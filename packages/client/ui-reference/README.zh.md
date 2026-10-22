@@ -39,6 +39,8 @@ Web 用户需要从同一个 `@` 补全菜单提及文件、文件夹或会话�
 
 点击输入框中的文件引用，可在右侧栏预览文件当前的内容。带引号路径中的空格会保留，路径按输入框所属 Session 解析。文件夹和 Session 引用保留原有的编辑行为。
 
+文件与目录标签通过 `data-file-path` 提供已解码路径，供外层 transcript 菜单使用。
+
 -----
 
 <a id="understand-the-implementation"></a>

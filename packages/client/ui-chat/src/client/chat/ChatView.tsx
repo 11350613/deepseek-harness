@@ -1,6 +1,7 @@
 // An enclosing `[data-conversation-scroll]` owns scrolling when present;
 // otherwise this view owns it. Each row subscribes to one stable node key.
 
+import { openChatContextMenu, chatContextKey } from './context-menu.ts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   NodeKey, RenderEntry,
@@ -60,7 +61,7 @@ const MOTION_TAIL_MS = 800
  */
 export function ChatView({
   useSession, useChat, useConversation, useSessions, renderSlot,
-  sessionId, openFile, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
+  sessionId, openFile, openExternalLink, openContextMenu, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
   usePresentation, useProjection, useInteractionIds, dispatchInteraction, t, fileDrag,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
@@ -214,6 +215,8 @@ export function ChatView({
       <div className={css.root} data-chat-following-tail={scroll.followingTail ? '' : undefined}>
         <div ref={scroll.listRef} className={css.scroll}>
           <div ref={scroll.columnRef} className={css.column} data-chat-flow=""
+            onContextMenu={(event) => { openChatContextMenu(event, openContextMenu) }}
+            onKeyDown={(event) => { chatContextKey(event, openContextMenu) }}
             data-chat-motion={deferCompletedTurns && scroll.initialized
               && (running || motionTail || pendingInputs.length > 0) ? '' : undefined}>
             {openState === 'loading' && <div className={css.hint}>{t('chat.loadingHistory')}</div>}
@@ -229,7 +232,8 @@ export function ChatView({
                 </button>
               </div>
             )}
-            <MarkdownDelegateProvider openFile={requestOpenFile} openExternalLink={openExternalLink} fileImages={fileImages}>
+            <MarkdownDelegateProvider
+              openContextMenu={openContextMenu} openFile={requestOpenFile} openExternalLink={openExternalLink} fileImages={fileImages}>
               {renderSlot('conversation.chat.flow', {
                 entries, pendingInputs, lastInputTurn, deferCollapse,
                 cwd, openFile: requestOpenFile, inspectCall, forkAt, loadImage, fileMentions,

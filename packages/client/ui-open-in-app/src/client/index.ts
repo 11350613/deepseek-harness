@@ -1,3 +1,6 @@
+import { registerContextMenus } from './context-menus.ts'
+import type {} from '@deepseek-ai/dsh-client-ui-file-actions/client'
+import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
  * Shared native opening controls for workspace directories, document previews,
  * delivery cards, and changed-file review. Directory choices persist in the browser;
@@ -40,7 +43,7 @@ export type { OpenPathActionProps, OpenPathInjected } from './OpenPathAction.tsx
 export type { OpenPathEmptyActionProps } from './OpenPathEmptyAction.tsx'
 
 /** Required services: sessions, layout selection, the slot registry, copy, Remote calls, and shortcuts. */
-export const inject = ['sessions', 'slots', 'locale', 'remote', 'remote.session', 'shortcuts', 'layout']
+export const inject = ['menus', 'fileActions', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout']
 
 /**
  * Client plugin body: register dictionaries, workspace directory controls, and
@@ -53,6 +56,7 @@ export function apply(ctx: ClientContext): void {
   const paths = new OpenInAppPathController(ctx.remote)
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja }), 'open-in-app: dictionaries')
   const t = ctx.locale.bind(NS)
+  registerContextMenus(ctx, paths, t, controller)
   const target = () => {
     if (ctx.layout.panelInfo.getSnapshot().activePanelId !== null) return undefined
     const session = Object.values(ctx.sessions.list.getSnapshot().byId)

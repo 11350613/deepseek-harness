@@ -40,6 +40,7 @@ export interface PaneCallbacks {
   /** A chip's or panel header's title content; absent means the record's `title` text. */
   readonly renderTabTitle: TabRenderer | undefined
   /** Embedder items appended to a tab's context menu; absent means the kit's item only. */
+  readonly openTabMenu?: ((tab: import('../contract/types.ts').TabRecord, paneId: PaneId, point: { x: number; y: number }) => void) | undefined
   readonly renderTabMenuItems: TabMenuExtras | undefined
   /** The pane whose strip hosts the embedder's surface-wide controls. */
   readonly chromePaneId: PaneId

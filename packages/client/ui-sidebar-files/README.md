@@ -49,6 +49,8 @@ State lives in the type's own store, bucketed by tab id: `root`, `levels` (loadi
 
 Each open `DirectoryNode` owns its target watch for the Tab lifetime; collapse closes that node and its hidden descendants. Expansion changes during ancestor restoration update the store and pending nodes, so restored descendants follow the latest expansion preferences. Automatic refresh defaults to enabled; its separate toggle is hidden while state, labels, styles, and toggle logic remain. Changes received during a directory read or its completion remain pending for another refresh.
 
+File rows expose the shared [context menu](../ui-context-menu/README.md) without invoking ordinary click navigation.
+
 <a id="model-experience"></a>
 ## Model Experience
 

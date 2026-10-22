@@ -1,3 +1,5 @@
+import { TabMenuContent } from './shell/TabMenuContent.tsx'
+import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
  * Browser half: fill the frame's right column with the panel, put the expand
  * button in the conversation header, and own the seats a tab type registers
@@ -82,7 +84,7 @@ export type { SidebarRightOpenTab } from './tab-inventory.ts'
 const NS = 'sidebarRight'
 
 /** Required browser services: the slot registry, the frame's panel actions, copy, and the resource model. */
-export const inject = ['slots', 'layout', 'locale', 'resources', 'sessions', 'uiSession', 'shortcuts']
+export const inject = ['menus', 'slots', 'layout', 'locale', 'resources', 'sessions', 'uiSession', 'shortcuts']
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -131,6 +133,28 @@ export function apply(ctx: ClientContext): void {
       closeWithFocus: (sessionId, paneId, close) => { closeWithPaneFocus(document, sessionId, paneId, close) },
     },
   )
+  ctx.effect(() => ctx.menus.register({
+    id: 'sidebar.close', target: 'tab', order: 100,
+    resolve: ({ sessionId, paneId, tab }) => {
+      const tabId = tab.id
+      const tabs = controller.menuTabs(sessionId, paneId, tabId)
+      const closeMany = (ids: readonly TabId[]) => {
+        for (const id of ids) {
+          if (controller.menuTabs(sessionId, paneId, tabId).all.includes(id)) controller.closeIn(sessionId, id)
+        }
+      }
+      return [
+        { id: 'close', symbol: 'close', label: t('menu.close'), disabled: !tabs.close, run: () => { if (controller.menuTabs(sessionId, paneId, tabId).close) controller.closeIn(sessionId, tabId) } },
+        { id: 'others', symbol: 'closeOthers', label: t('menu.closeOthers'), disabled: tabs.all.length === 0, run: () => { closeMany(tabs.all) } },
+        ...tabs.right.length === 0 ? [] : [{ id: 'right', symbol: 'closeRight' as const, label: t('menu.closeRight'), run: () => { closeMany(tabs.right) } }],
+      ]
+    },
+  }), 'sidebar: menu actions')
+  ctx.effect(() => ctx.slots.inject('contextMenu.content', () => ctx.slots.register({
+    name: 'contextMenu.content', key: 'tab',
+    children: { 'sidebar.right.tab.menu.item': { kind: 'list', scope: 'session' } },
+    inject: () => ({ hooks: { views: views.source } }),
+  }, TabMenuContent)), 'sidebar: menu extensions')
   // The Session on screen: the selected one while the Conversation fills the
   // main column. Both sources notify before React renders their change, so the
   // service names the arriving Session before any component of that commit
@@ -187,7 +211,7 @@ export function apply(ctx: ClientContext): void {
         } }
       },
     }
-    const injected: Omit<SidebarRightInjected, 'keyedHooks' | 'occurrence' | 'closeTab' | 'measureRoom'> = {
+    const injected: Omit<SidebarRightInjected, 'keyedHooks' | 'occurrence' | 'closeTab' | 'openTabMenu' | 'measureRoom'> = {
       syncPresentation({ shown, track, fullscreen }) {
         if (shown) layout.openRightbar(track, fullscreen)
         else layout.closeRightbar()
@@ -218,11 +242,11 @@ export function apply(ctx: ClientContext): void {
         children: {
           'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
           'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
-          'sidebar.right.tab.menu.item': { kind: 'list', scope: 'session' },
         },
         store,
         inject: (sessionId): SidebarRightInjected => ({
           ...injected,
+          openTabMenu: (tab, paneId, point) => { ctx.menus.open({ kind: 'tab', value: { sessionId, paneId, tab } }, point) },
           measureRoom: (canSplitPane) => { measure(sessionId, canSplitPane) },
           closeTab: (tabId) => {
             try { controller.closeIn(sessionId, tabId) }

@@ -217,6 +217,7 @@ export const ToolRow = memo(function ToolRow({
         <button
           type="button"
           className={css.fileLink}
+          data-file-path={filePath}
           onClick={openFile}
           onKeyDown={summaryLinkKeyDown}
         >

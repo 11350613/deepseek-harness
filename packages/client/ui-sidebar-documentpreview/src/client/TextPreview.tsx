@@ -37,6 +37,7 @@ export type { LoadedPage } from './text/lines.ts'
 
 /** Private registration inputs; the framework binds the registry source to useDocumentPreviews. */
 export interface TextPreviewInjected extends TextInjected {
+  openFileMenu(path: string, point: { x: number; y: number }, line?: number, paneId?: import('@deepseek-ai/dsh-client-ui-dockkit').PaneId): void
   readonly hooks: { readonly documentPreviews: ObservableSnapshot<readonly DocumentPreviewDefinition[]> }
 }
 
@@ -56,9 +57,9 @@ export type TextPreviewProps =
 export function TextPreview({
   useTabInfo, useResource, useStore, actions, loadPage, reloadPages,
   loadAll, reloadAll, prepareRenderer, useDocumentPreviews, renderSlot, t,
-  addResource, setResources,
+  addResource, setResources, openFileMenu,
 }: TextPreviewProps): ReactNode {
-  const { tab } = useTabInfo()
+  const { tab, panel } = useTabInfo()
   const { navigation, signal } = tab
   const meta = useResource<'file'>(tab.contentId)
   const canRead = meta.status !== 'none'
@@ -202,7 +203,11 @@ export function TextPreview({
     return (
       <div className={css.preview} data-textpreview-state="unsupported" data-textpreview-url={tab.contentId}>
         <div className={css.header}>
-          <PathLabel path={displayPath} className={css.path} data-textpreview-path />
+          <PathLabel path={displayPath} className={css.path} data-textpreview-path
+            onContextMenu={(event) => {
+              event.preventDefault(); event.stopPropagation()
+              openFileMenu(displayPath, { x: event.clientX, y: event.clientY }, line, panel.id)
+            }} />
           {fileOwner !== undefined && renderSlot('sidebar.right.tab.document.actions', fileOwner)}
         </div>
         <div className={css.body} data-textpreview-body>
@@ -264,7 +269,11 @@ export function TextPreview({
           </p>
         )}
       <div className={css.header}>
-        <PathLabel path={displayPath} className={css.path} data-textpreview-path />
+        <PathLabel path={displayPath} className={css.path} data-textpreview-path
+          onContextMenu={(event) => {
+            event.preventDefault(); event.stopPropagation()
+            openFileMenu(displayPath, { x: event.clientX, y: event.clientY }, line, panel.id)
+          }} />
         {candidates.length > 1
           && (
             <Menu

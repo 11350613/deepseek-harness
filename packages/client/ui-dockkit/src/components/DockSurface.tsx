@@ -1,3 +1,4 @@
+import type { TabRecord } from '../contract/types.ts'
 /**
  * The docked surface: the split tree plus the tab and divider gestures over it.
  * This is the whole kit as far as an embedder's layout column is concerned —
@@ -64,6 +65,8 @@ export interface DockSurfaceProps {
    */
   readonly renderTabTitle?: TabRenderer
   /** Extra items for a tab's context menu; omit for the kit's own item only. */
+  /** Override the popup while preserving the kit's close and drag gestures. */
+  readonly openTabMenu?: ((tab: TabRecord, paneId: PaneId, point: { x: number; y: number }) => void) | undefined
   readonly renderTabMenuItems?: TabMenuExtras
   /**
    * Surface-wide controls, drawn at the far end of the top-right pane's tab
@@ -169,7 +172,7 @@ function sameSizes(a: readonly number[], b: readonly number[]): boolean {
 
 /** The split tree and the gestures over it. */
 function Surface({
-  state, canSplit, canAddTab, canCloseTab, intents, labels, renderTab, renderTabTitle, renderTabMenuItems, chrome, onRoom,
+  state, canSplit, canAddTab, canCloseTab, intents, labels, renderTab, renderTabTitle, renderTabMenuItems, openTabMenu, chrome, onRoom,
   draw,
   dropZones = 'edges', minPaneFraction = MIN_PANE_FRACTION, hideSplitWhenBlocked = false,
 }: DockSurfaceProps & { readonly draw: (callbacks: PaneCallbacks, preview: SizePreview | undefined) => ReactNode }): ReactNode {
@@ -291,6 +294,7 @@ function Surface({
     renderTab,
     renderTabTitle,
     renderTabMenuItems,
+    openTabMenu,
     chromePaneId: topRightPaneId(state),
     chrome,
   }

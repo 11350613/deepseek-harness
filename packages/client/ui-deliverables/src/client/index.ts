@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
  * Deliverables plugin, browser half: registers the changed-files card and
  * delivery cards into the chat view's turn-tail list, the `changes-review`
@@ -40,7 +41,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required services for the tail-slot and tab-type registrations and their dictionaries. */
-export const inject = ['slots', 'locale', 'uiConversation', 'remote', 'remote.session', 'sidebarRightTabs', 'sidebarRight', 'configForms']
+export const inject = ['menus', 'slots', 'locale', 'uiConversation', 'remote', 'remote.session', 'sidebarRightTabs', 'sidebarRight', 'configForms']
 
 /**
  * Client plugin body: register the dictionaries, the turn-tail entry, and the comparison tab type.
@@ -66,6 +67,7 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
       children: { 'deliverables.file.actions': { kind: 'list', scope: 'session' } },
       inject: (): DeliverablesInjected => ({
+        openFileMenu: (sessionId, path, point) => { ctx.menus.open({ kind: 'file', value: { sessionId, path } }, point) },
         hooks: { changesDiff: diffs.state, presentedOpen: opener.state, presentedHost: opener.host, changesSummary: summaries.state,
           showCodeDiff: ctx.configForms.developerTools.enabled },
         loadChangesDiff: (sessionId, seq, index) => diffs.load(sessionId, seq, index),
@@ -101,13 +103,14 @@ export function apply(ctx: ClientContext): void {
   // The prose side of the same vocabulary: the chat view reaches this face
   // via ctx.get, so its absence — this plugin composed out — is the off state.
   const mentions: ChatFileMentions = {
-    forClosing(owner) {
+    forClosing(owner, sessionId) {
       const paths = selectProducedFiles(owner)
       const presented = presentedForClosing(owner)
       if (paths === null && presented.length === 0) return undefined
       return producedFileMentions([...new Set([...paths ?? [], ...presented.map(file => file.path)])], owner.openFile,
         path => t('presented.previewButton', { name: path }),
-        owner.turn.data.get('deliverables')?.produced)
+        owner.turn.data.get('deliverables')?.produced,
+        (path, point) => { ctx.menus.open({ kind: 'file', value: { sessionId, path } }, point) })
     },
   }
   ctx.provide('chatFileMentions', mentions)

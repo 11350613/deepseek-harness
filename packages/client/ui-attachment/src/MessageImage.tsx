@@ -1,3 +1,4 @@
+import type { MenuTargetMap, MenuPoint } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { IconLoadingOutlineRegular, IconRefreshOutlineRegular, DraggableImage, ImageLightbox, type FileDragActions } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -67,12 +68,13 @@ function dimensionsOf(image: MessageImageSpec): { readonly width: number; readon
  * @param props.labels - resolved strings (tooltip, loading, retry, lightbox).
  * @returns the bounded thumbnail button, or the retry control on failure.
  */
-export function MessageImage({ image, load, variant, labels, fileDrag }: {
+export function MessageImage({ image, load, variant, labels, fileDrag, openImageMenu }: {
   image: MessageImageSpec
   load: ImageLoader
   variant: 'single' | 'tile' | 'thumbnail'
   fileDrag: FileDragActions
   labels: MessageImageLabels
+  openImageMenu?: ((source: MenuTargetMap['image'], point: MenuPoint) => void) | undefined
 }) {
   const preview = 'preview' in image ? image.preview : undefined
   const attachment = 'attachment' in image ? image.attachment : undefined
@@ -135,6 +137,11 @@ export function MessageImage({ image, load, variant, labels, fileDrag }: {
         title={loadingThumbnail ? labels.loading : labels.open}
         aria-label={loadingThumbnail ? labels.loading : labels.openNamed(label)}
         aria-busy={loadingThumbnail || undefined}
+        onContextMenu={src === null || openImageMenu === undefined ? undefined : (event) => {
+          event.preventDefault(); event.stopPropagation()
+          openImageMenu({ url: src, name: label, ...(attachment === undefined ? {} : { mediaType: attachment.mediaType }) },
+            { x: event.clientX, y: event.clientY })
+        }}
         onClick={() => { if (src !== null) setOpen(true) }}
       >
         {src === null
@@ -146,14 +153,19 @@ export function MessageImage({ image, load, variant, labels, fileDrag }: {
           : <DraggableImage fileDrag={fileDrag} src={src} alt={label} name={preview?.name ?? attachment?.name ?? 'image'}
             style={fit === undefined ? undefined : { objectPosition: fit.objectPosition }} />}
       </button>
-      {open && src !== null && <ImageLightbox src={src} alt={label} labels={labels.lightbox} onClose={close} />}
+      {open && src !== null && <ImageLightbox src={src} alt={label} labels={labels.lightbox} onClose={close}
+        onContextMenu={openImageMenu === undefined ? undefined : (event) => {
+          event.preventDefault(); event.stopPropagation()
+          openImageMenu({ url: src, name: label, ...(attachment === undefined ? {} : { mediaType: attachment.mediaType }) },
+            { x: event.clientX, y: event.clientY })
+        }} />}
     </>
   )
 }
 
 /** Wrapping image group shared by user and assistant history: a lone image
  * renders large unless its owner requests compact tiles or contained list thumbnails. */
-export function ImageGallery({ images, load, align, compact = false, thumbnail = false, labels, fileDrag }: {
+export function ImageGallery({ images, load, align, compact = false, thumbnail = false, labels, fileDrag, openImageMenu }: {
   images: readonly MessageImageSpec[]
   load: ImageLoader
   align: 'start' | 'end'
@@ -161,6 +173,7 @@ export function ImageGallery({ images, load, align, compact = false, thumbnail =
   thumbnail?: boolean
   fileDrag: FileDragActions
   labels: MessageImageLabels
+  openImageMenu?: ((source: MenuTargetMap['image'], point: MenuPoint) => void) | undefined
 }) {
   if (images.length === 0) return null
   const variant = thumbnail ? 'thumbnail' : compact || images.length > 1 ? 'tile' : 'single'
@@ -174,6 +187,7 @@ export function ImageGallery({ images, load, align, compact = false, thumbnail =
           variant={variant}
           fileDrag={fileDrag}
           labels={labels}
+          openImageMenu={openImageMenu}
         />
       ))}
     </div>

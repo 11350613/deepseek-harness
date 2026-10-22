@@ -82,6 +82,8 @@ Read these pages when the attachment surface is not enough. They move from the s
 
 -----
 
+Message images and original previews forward context gestures through the shared gallery to [ui-context-menu](../ui-context-menu/README.md). Original authorized URLs and MIME metadata remain independent from thumbnail presentation.
+
 <a id="model-experience"></a>
 ## Model Experience
 

@@ -82,6 +82,8 @@ Trajectory 附件行使用 48px 方形缩略图，完整缩放图片而不裁剪
 
 -----
 
+消息图片和原图预览通过共享图片库将右键手势转发给 [ui-context-menu](../ui-context-menu/README.zh.md)。原始授权 URL 与 MIME 元数据独立于缩略图展示。
+
 <a id="model-experience"></a>
 ## 模型体验
 

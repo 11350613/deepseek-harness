@@ -21,6 +21,7 @@ const COLLAPSED_PRESENTED_COUNT = 4
 
 /** Summary reads, native-open callbacks, and shared gesture status supplied by the plugin. */
 export interface DeliverablesInjected {
+  openFileMenu(sessionId: import('@deepseek-ai/dsh-session/types').SessionId, path: string, point: { x: number; y: number }): void
   hooks: {
     changesDiff: ObservableSnapshot<ReturnType<ChangesDiffStore['state']['getSnapshot']>>
     showCodeDiff: ObservableSnapshot<boolean>
@@ -66,7 +67,7 @@ export function DeliverablesTail(props: PropsRuntime<'conversation.chat.turnTail
  * @returns the closing turn's file rows.
  */
 export function Deliverables({
-  matched, openFile, t, sessionId, useSessions, openPresented, openChangesReview, usePresentedOpen, usePresentedHost,
+  matched, openFile, openFileMenu, t, sessionId, useSessions, openPresented, openChangesReview, usePresentedOpen, usePresentedHost,
   useChangesDiff, loadChangesDiff, useChangesSummary, reloadPresentedHost, loadChangesSummary, useShowCodeDiff, renderSlot,
 }: Pick<TurnTailOwnerProps, 'openFile'> & {
   matched: DeliverablesMatch
@@ -109,6 +110,7 @@ export function Deliverables({
           phase={states[presentedFileUrl(sessionId, file.seq, file.index)]}
           host={host === 'error' ? null : host} t={t}
           onPreview={() => { openFile(file.path) }}
+          onMenu={(point) => { openFileMenu(sessionId, file.path, point) }}
           actions={renderSlot('deliverables.file.actions', {
             actionUrl: presentedFileUrl(sessionId, file.seq, file.index),
             available: host !== null && host !== 'error' && host.available,

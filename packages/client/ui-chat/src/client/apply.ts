@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /** Register the Chat Conversation target, renderers, stats, and details surface. */
 import type {} from '@deepseek-ai/dsh-client-ui-file-drag/client'
 import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
@@ -75,6 +76,7 @@ export const CHAT_NODE_INJECT: ChatNodeInjected = {
 
 /** Services required by the Chat target and its presentation registrations. */
 export const inject = [
+  'menus',
   'slots', 'sessions', 'uiWorkspace', 'uiSession', 'uiConversation', 'locale',
   'configForms', 'connection', 'remote', 'remote.session', 'sidebarRight', 'fileDrag',
 ]
@@ -275,6 +277,20 @@ export function apply(ctx: Context): void {
             if (options?.line === undefined) ctx.sidebarRight.openResource(url)
             else ctx.sidebarRight.openResource(url, { params: { line: options.line } })
             await Promise.resolve()
+          },
+          openContextMenu: (target, point) => {
+            const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
+            const current = session.projections.faceOf('workingDirectory').getSnapshot() as string | null | undefined
+            const path = (value: string) => resolveWorkspacePath(current ?? cwd, value)
+            switch (target.kind) {
+              case 'file': ctx.menus.open({ kind: 'file', value: { sessionId, path: path(target.path),
+                ...(target.line === undefined ? {} : { line: target.line }) } }, point); break
+              case 'url': ctx.menus.open({ kind: 'url', value: { sessionId, url: target.url } }, point); break
+              case 'image': ctx.menus.open({ kind: 'image', value: { sessionId, url: target.url,
+                ...(target.name === undefined ? {} : { name: target.name }),
+                ...(target.mediaType === undefined ? {} : { mediaType: target.mediaType }),
+                ...(target.path === undefined ? {} : { path: path(target.path) }) } }, point); break
+            }
           },
           openExternalLink: (url) => {
             if (linkOpening.getSnapshot() === 'sidebar' && ctx.get('sidebarRightTabs')?.get('browser') !== undefined) {

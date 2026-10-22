@@ -29,6 +29,7 @@ async function bench() {
   runtime.slots.installLocale(locale)
   new UiConversation(runtime.ctx, runtime.sessions)
   await runtime.mount(fileDragPlugin)
+  runtime.ctx.provide('menus', { open: vi.fn() } as never)
   await runtime.mount(attachmentPlugin)
   await runtime.sessions.add({ id: 'image-domains' })
   const session = runtime.sessions.retainFor(runtime.ctx, SessionId('image-domains'))

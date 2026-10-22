@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { apply as applyMenus, inject as injectMenus } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /** Conversation assembly acceptance independent of Tool presentation. */
 import './control-row-dom.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -86,6 +87,7 @@ async function bench(opts?: { blank?: boolean }) {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
+  await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
   await runtime.sessions.add({
     id: SID,
     summary: { title: 'S', displayTitle: 'S', cwd: '/proj' },
@@ -109,6 +111,7 @@ describe('resident composer', () => {
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
+    await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
     await runtime.mount({ inject: [...inject], apply })
     runtime.slots.register({ name: 'conversation.hero.workspace' }, WorkspaceProbe)
@@ -136,6 +139,7 @@ describe('resident composer', () => {
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
+    await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
     await runtime.workspaces.update((draft) => {
       draft.items = [{ workspaceId: 'w1', title: 'Proj', path: '/proj', sessionIds: [SID] }] as never
     })
@@ -203,6 +207,7 @@ describe('prompt rejection through the assembled composer', () => {
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
+    await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
     const prompt = vi.fn<ISession['prompt']>(async () => ({
       ok: false,
       error: new RemoteError('session/agent-busy', 'prompt rejected before acceptance', { reason: 'busy' }),

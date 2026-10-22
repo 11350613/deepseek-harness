@@ -29,6 +29,7 @@ interface Recorded {
 
 async function boot() {
   const ctx = new Context()
+  ctx.provide('menus', { open: vi.fn() } as never)
   const tabs = new SidebarRightTabRegistry(ctx)
   const registered: Recorded[] = []
   const slots = {

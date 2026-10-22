@@ -44,6 +44,7 @@ function openProps(controller = new PresentedOpenController(), summaries = new C
   const diffs = new ChangesDiffStore()
   const sessions: SessionListState = { ids: [], byId: {}, phase: 'ready', projectionsBySession: {} }
   return {
+    openFileMenu: vi.fn(),
     SessionProvider: ({ children }: { children?: import('react').ReactNode }) => <>{children}</>,
     renderSlot: renderFileActions,
     useChangesDiff: <T,>(select: (state: ReturnType<typeof diffs.state.getSnapshot>) => T): T => select(diffs.state.getSnapshot()),
@@ -838,6 +839,7 @@ describe('producedFileMentions resolver', () => {
 describe('plugin registration', () => {
   it('registers the tail entry and fiber disposal removes it', async () => {
     const ctx = new Context()
+    ctx.provide('menus', { register: () => () => {}, open: vi.fn() } as never)
     await ctx.plugin(SlotRegistry).await()
     new UiConversation(ctx, { binding: () => undefined } as never)
     // The owning view's child declaration, stood up by a bench root entry.

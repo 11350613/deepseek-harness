@@ -137,3 +137,5 @@ export type { ImageLightboxLabels } from './ImageLightbox.tsx'
 export { QuotePreview } from './QuotePreview.tsx'
 export type { QuotePreviewProps, QuotePreviewRemoval } from './QuotePreview.tsx'
 export { formatQuoteText } from './markdown/quote-text.ts'
+
+export type { MarkdownMenuTarget } from './markdown/MarkdownDelegate.tsx'

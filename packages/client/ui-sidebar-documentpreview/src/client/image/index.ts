@@ -48,8 +48,9 @@ export function apply(ctx: Context): void {
   const retainTab = retainDocumentTabs(ctx)
   ctx.effect(() => ctx.slots.inject('sidebar.right.tab.document', () => ctx.slots.register({
     name: 'sidebar.right.tab.document', key: IMAGE_BODY_ID, locale: 'sidebarImage', store,
-    inject: (_sessionId: SessionId, actions: BoundActions<ZoomStore>): ImageBodyInjected => ({
+    inject: (sessionId: SessionId, actions: BoundActions<ZoomStore>): ImageBodyInjected => ({
       fileDrag: ctx.fileDrag.actions,
+      openImageMenu: (path, url, mediaType, point) => { ctx.menus.open({ kind: 'image', value: { sessionId, path, url, mediaType } }, point) },
       retainTab: (tabId, signal) => { retainTab(tabId, signal, actions.forget) },
     }),
   }, ImageBody)), 'document-image: body')

@@ -13,6 +13,7 @@ const props = () => ({
   host: { name: 'remote-desktop', available: true, fileManager: 'finder' as const },
   phase: undefined,
   onPreview: vi.fn(),
+  onMenu: vi.fn(),
   actions: <button type="button">Native file action</button>,
   t: makeTranslate(en),
 })

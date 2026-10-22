@@ -277,6 +277,7 @@ describe('ImageGallery', () => {
     runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
     runtime.ctx.provide('fileDrag', { actions: fileDrag, read: () => undefined })
+    runtime.ctx.provide('menus', { open: vi.fn() } as never)
     await runtime.mount(attachmentPlugin)
     const images = [{ preview: { url: 'blob:labels', name: 'preview.png' } }]
     const loadImage = vi.fn(async () => 'blob:unused')
@@ -318,6 +319,7 @@ describe('ImageGallery', () => {
     runtime.slots.installLocale(locale)
     await runtime.declare({ 'conversation.chat.message.images': { kind: 'single', scope: 'session' } })
     runtime.ctx.provide('fileDrag', { actions: fileDrag, read: () => undefined })
+    runtime.ctx.provide('menus', { open: vi.fn() } as never)
     await runtime.mount(attachmentPlugin)
     await runtime.sessions.add({ id: 'message-images-test' })
     const session = runtime.sessions.retainFor(runtime.ctx, SessionId('message-images-test'))

@@ -410,7 +410,7 @@ function mount(fixture: Awaited<ReturnType<typeof bench>>) {
   }
   return render(
     <>
-      <ConversationSessionHeader
+      <ConversationSessionHeader openSessionMenu={vi.fn()}
         hideChrome={false}
         useEntryPins={selector => selector([])}
         useEntryActions={selector => selector(false)}

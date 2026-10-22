@@ -218,7 +218,7 @@ function mount(
     }
     if (key === 'conversation.session.header') {
       return (
-        <ConversationSessionHeader
+        <ConversationSessionHeader openSessionMenu={vi.fn()}
           hideChrome={(owner as Pick<ConversationSessionHeaderSlotProps, 'hideChrome'>).hideChrome}
           sessionId={SID}
           SessionProvider={({ children }) => children}

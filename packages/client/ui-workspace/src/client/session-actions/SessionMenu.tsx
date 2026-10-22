@@ -1,0 +1,11 @@
+/** Existing Session contributions shared by the row, header, and More trigger. */
+import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+
+type Props = Pick<PropsRuntime<'contextMenu.content'>, 'target' | 'dismiss'> & PropsRenderSlots<'sidebar.workspaces.session.menu.item'>
+/** @param props - captured Session and the existing extension position. @returns all existing action contributions. */
+export function SessionMenu({ target, dismiss, renderSlot }: Props) {
+  if (target.kind !== 'session') return null
+  return renderSlot('sidebar.workspaces.session.menu.item', target.value, {
+    hookContext: [true, (open) => { if (!open) dismiss() }],
+  })
+}

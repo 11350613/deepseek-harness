@@ -318,6 +318,11 @@ export function TabStrip({ state, pane, callbacks }: TabPanelProps): ReactNode {
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault()
+                  event.stopPropagation()
+                  if (callbacks.openTabMenu !== undefined) {
+                    callbacks.openTabMenu(tab, pane.id, { x: event.clientX, y: event.clientY })
+                    return
+                  }
                   const anchor = event.currentTarget
                   setMenu(current => current?.tabId === tabId ? undefined : { tabId, anchor })
                 }}

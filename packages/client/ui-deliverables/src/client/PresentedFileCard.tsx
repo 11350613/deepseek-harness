@@ -19,12 +19,13 @@ function cardDescription(description: string | undefined, fallback: string): str
  * @param props - durable file metadata, Sidebar preview, Host capabilities, gesture status, and localized copy.
  * @returns the file card and its anchored action menu.
  */
-export function PresentedFileCard({ file, cwd, phase, host, onPreview, actions, t }: {
+export function PresentedFileCard({ file, cwd, phase, host, onPreview, onMenu, actions, t }: {
   file: PresentedPath
   cwd: string | undefined
   phase: PresentedOpenPhase | undefined
   host: PresentedHost | null
   onPreview: () => void
+  onMenu: (point: { x: number; y: number }) => void
   actions: ReactNode
 } & PropsLocale<typeof NS>) {
   const succeeded = phase === 'opened' || phase === 'revealed'
@@ -38,7 +39,8 @@ export function PresentedFileCard({ file, cwd, phase, host, onPreview, actions, 
         : reveal === 'directory' && phase === 'revealError' ? 'presented.directoryError' : `presented.${phase}`)
   return <div className={css.file} data-presented-file>
     <button type="button" className={css.cardPreview} title={resolveWorkspacePath(cwd, file.path)}
-      aria-label={t('presented.previewCard', { name: file.path })} onClick={onPreview} />
+      aria-label={t('presented.previewCard', { name: file.path })} onClick={onPreview}
+      onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onMenu({ x: event.clientX, y: event.clientY }) }} />
     <span className={css.fileIcon}><FileTypeIcon path={file.path} size={20} /></span>
     <div className={css.fileBody}>
       <div className={css.details}>

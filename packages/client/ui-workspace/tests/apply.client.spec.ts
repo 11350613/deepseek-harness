@@ -66,6 +66,7 @@ async function bench(access: 'fake' | 'static' = 'fake') {
     },
     catalog: createSnapshotStore([]),
   })
+  ctx.provide('menus', { active: createSnapshotStore(null), open: vi.fn(), close: vi.fn() } as never)
   ctx.provide('uiConversation', {})
   await ctx.plugin(SlotRegistry).await()
   const accessSource = vi.fn((_kind: string, _id: string, _action: string): HostObservable<boolean> => ALLOWED)
@@ -181,8 +182,8 @@ type RowListName = typeof MENU_ITEM | typeof ROW_ACTION | 'shell.overlay'
 
 /** Declare any subset of the holes with a single root registration ('root' is a single slot); the overlay is a list. */
 function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
-  const children = Object.fromEntries(names.map(name => [
-    name, { kind: name === 'shell.overlay' ? 'list' : 'single', scope: 'root' },
+  const children = Object.fromEntries([...names, 'contextMenu.content'].map(name => [
+    name, { kind: name === 'shell.overlay' ? 'list' : name === 'contextMenu.content' ? 'keyed' : 'single', scope: 'root' },
   ]))
   return slots.register({ name: 'root', children } as never, () => null)
 }
@@ -221,7 +222,7 @@ describe('ui-workspace apply', () => {
   })
 
   it('declares the services it drives', () => {
-    expect(inject).toEqual([
+    expect(inject).toEqual(['menus',
       'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts', 'remoteAccess',
     ])
   })

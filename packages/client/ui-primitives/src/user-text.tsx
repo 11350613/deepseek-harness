@@ -22,6 +22,8 @@ export function UserTextRun({ text }: UserTextRunProps): ReactNode {
 /** Presentation selected by a reference renderer, independent of its matching grammar. */
 export interface ReferenceChipProps {
   readonly appearance: ReferenceIconKind | 'skill' | 'command'
+  /** Decoded file destination supplied by its owner. */
+  readonly filePath?: string
   readonly label: string
   readonly title: string
   /** Absent for display-only references and previews. */
@@ -34,7 +36,7 @@ export interface ReferenceChipProps {
  * @param props - resolved visual fields and optional action from the owning renderer.
  * @returns an inline label, or a keyboard-accessible button when activation is supplied.
  */
-export function ReferenceChip({ appearance, label, title, onActivate }: ReferenceChipProps): ReactNode {
+export function ReferenceChip({ appearance, label, title, onActivate, filePath }: ReferenceChipProps): ReactNode {
   const slash = appearance === 'skill' || appearance === 'command'
   const contents = <>
     {!slash && <ReferenceIconRegular kind={appearance} size={16} className={css.refIcon} />}
@@ -42,11 +44,11 @@ export function ReferenceChip({ appearance, label, title, onActivate }: Referenc
   </>
   const className = clsx(css.refChip, slash && css.slashChip)
   return onActivate === undefined
-    ? <span className={className} data-ref-chip={appearance} title={title}>{contents}</span>
+    ? <span className={className} data-ref-chip={appearance} data-file-path={filePath} title={title}>{contents}</span>
     : <button
       type="button"
       className={clsx(className, markdownCss.fileMention)}
-      data-ref-chip={appearance}
+      data-ref-chip={appearance} data-file-path={filePath}
       title={title}
       onClick={(event) => {
         if (event.detail > 1 || (event.detail !== 0 && event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false)) return

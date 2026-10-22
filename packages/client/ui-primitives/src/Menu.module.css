@@ -293,3 +293,14 @@
   left: -10px;
   width: 10px;
 }
+
+.list[data-menu-phase='dismiss'],
+.list[data-menu-phase='replace'] { pointer-events: none; }
+.list[data-context-menu].scrollable { max-height: calc(100vh - 24px); }
+
+.item[data-menu-icon-space]:not(:has(> .itemIcon))::before {
+  content: '';
+  flex: none;
+  width: 14px;
+}
+.compactList .item[data-menu-icon-space]:not(:has(> .itemIcon))::before { width: 12px; }

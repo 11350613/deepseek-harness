@@ -57,6 +57,8 @@ Question rows pair answers with questions by id, using the tool result or the `u
 
 Answer-panel buttons belong to the question renderer. It composes `DisclosureRow` with its own action and transcript; generic `ToolRow` does not select or dispatch question actions.
 
+Tool file buttons expose their recorded path through `data-file-path` for the enclosing transcript menu; display labels do not replace the target.
+
 -----
 
 <a id="understand-the-implementation"></a>

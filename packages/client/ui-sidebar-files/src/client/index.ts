@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
  * Browser half: register `files` as a right-Sidebar tab type.
  *
@@ -49,7 +50,7 @@ const NS = 'sidebarFiles'
  * Required browser services: the tab registry, the keyed seat, the Remote
  * carrier and its namespace, and copy.
  */
-export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote', 'remote.workspaceFiles']
+export const inject = ['menus', 'slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote', 'remote.workspaceFiles']
 
 /**
  * Client plugin body: register the type, its dictionaries, its body, and its chip title.
@@ -85,7 +86,9 @@ export function apply(ctx: ClientContext): void {
   const inject = filesFace(createList(ctx.remote), createWatch(ctx.remote))
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     {
-      name: 'sidebar.right.pane.tab', key: FILES_ID, locale: NS, store, inject,
+      name: 'sidebar.right.pane.tab', key: FILES_ID, locale: NS, store, inject: (sessionId, actions) => ({ ...inject(sessionId, actions),
+        openContextMenu: (path: string, paneId: import('@deepseek-ai/dsh-client-ui-dockkit').PaneId, point: { x: number; y: number }) => { ctx.menus.open({ kind: 'file', value: { sessionId, path, paneId } }, point) },
+      }),
       children: { 'sidebar.right.tab.files.actions': { kind: 'list', scope: 'session' } },
     },
     FilesBody,

@@ -6,9 +6,8 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
-import { HoverCardGroup, MenuItemButton, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { HoverCardGroup, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
-import type { MenuOpenState, SessionRowOwnerProps } from '../src/client/contract/slots.ts'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { RowDragProps } from '../src/client/rows/Rows.tsx'
 import {
@@ -48,10 +47,12 @@ function realDoubleClick(el: Element): void {
   fireEvent.doubleClick(el)
 }
 
-function SessionNodeItem({ renderSlot = renderNoRowEntries, onRenameRequest = () => {}, ...props }: Omit<
-  SessionNodeItemProps, 'renderSlot' | 'onRenameRequest'
-> & Partial<Pick<SessionNodeItemProps, 'renderSlot' | 'onRenameRequest'>>) {
-  return <SessionNodeItemComponent {...props} renderSlot={renderSlot} onRenameRequest={onRenameRequest} />
+function SessionNodeItem({ renderSlot = renderNoRowEntries, onRenameRequest = () => {}, openSessionMenu = vi.fn(),
+  useMenuTarget = select => select(null), ...props }: Omit<
+    SessionNodeItemProps, 'renderSlot' | 'onRenameRequest' | 'openSessionMenu' | 'useMenuTarget'
+  > & Partial<Pick<SessionNodeItemProps, 'renderSlot' | 'onRenameRequest' | 'openSessionMenu' | 'useMenuTarget'>>) {
+  return <SessionNodeItemComponent {...props} renderSlot={renderSlot} onRenameRequest={onRenameRequest}
+    openSessionMenu={openSessionMenu} useMenuTarget={useMenuTarget} />
 }
 
 /** Half detection reads the row rect; jsdom rects are all-zero by default. */
@@ -424,6 +425,31 @@ describe('workspace browser rows', () => {
       vi.useRealTimers()
       vi.unstubAllGlobals()
     }
+  })
+
+  it('continues a title crawl while its context menu owns the hover highlight', () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })))
+    try {
+      const node: SessionNode = { id: sid('context-crawl'), title: 'A long Session title', blank: false,
+        running: false, runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false }
+      const props = { node, currentId: undefined, now: 0, onOpen: vi.fn(), t }
+      const view = render(<SessionNodeItem {...props} />)
+      const row = screen.getByRole('treeitem')
+      const title = screen.getByText(node.title)
+      Object.defineProperty(title, 'scrollWidth', { value: 400, configurable: true })
+      Object.defineProperty(title, 'clientWidth', { value: 160, configurable: true })
+      fireEvent.pointerEnter(row)
+      vi.advanceTimersByTime(1616)
+      expect(title.scrollLeft).toBeCloseTo(48)
+      view.rerender(<SessionNodeItem {...props} useMenuTarget={select => select({ kind: 'session',
+        value: { sessionId: node.id, displayTitle: node.title } })} />)
+      fireEvent.pointerLeave(row)
+      vi.advanceTimersByTime(1600)
+      expect(title.scrollLeft).toBeCloseTo(96)
+      view.rerender(<SessionNodeItem {...props} />)
+      expect(title.scrollLeft).toBe(0)
+    } finally { vi.useRealTimers(); vi.unstubAllGlobals() }
   })
 
   it('jumps a clipped title to its far edge under reduced motion', () => {
@@ -825,82 +851,17 @@ describe('workspace browser rows', () => {
     })
   })
 
-  it('session row menu opens without opening the session and Escape closes it', () => {
-    const onOpen = vi.fn()
+  it('routes both context and More gestures to the clicked Session without selecting it', () => {
+    const onOpen = vi.fn(), openSessionMenu = vi.fn()
     const node: SessionNode = {
       id: sid('s1'), title: 'One', blank: false, running: false,
       runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
     }
-    render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen} t={t} />)
-    const trigger = screen.getByRole('button', { name: '会话“One”的操作' })
-    fireEvent.click(trigger)
-    expect(screen.getByRole('menu')).toBeTruthy()
-    expect(onOpen).not.toHaveBeenCalled()
-    // Escape closes without selecting (Menu onClose path).
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByRole('menu')).toBeNull()
-    // The trigger toggles: a second click closes the menu it opened.
-    fireEvent.click(trigger)
-    fireEvent.click(trigger)
-    expect(screen.queryByRole('menu')).toBeNull()
-    expect(onOpen).not.toHaveBeenCalled()
-  })
-
-  it('renders the menu list with the row identity and open state, and returns focus to the trigger after an entry closes it', async () => {
-    const onOpen = vi.fn()
-    const onEntry = vi.fn()
-    const rendered = vi.fn()
-    // A stub satisfies the generic render signature only with erased parameter
-    // types; it narrows the owner and the occurrence options itself.
-    const renderSlot: RowRenderSlot = (name: RowSlotName, owner: object, opts?: object) => {
-      const { sessionId, displayTitle } = owner as SessionRowOwnerProps
-      const hookContext = opts !== undefined && 'hookContext' in opts ? opts.hookContext : undefined
-      rendered(name, owner, hookContext)
-      if (name !== 'sidebar.workspaces.session.menu.item') return null
-      // The stub stands in for the renderer, which binds this occurrence's
-      // hookContext into the entries' useMenuOpenState hook.
-      const [open, setMenuOpen] = hookContext as MenuOpenState
-      return (
-        <MenuItemButton onSelect={() => {
-          setMenuOpen(false)
-          onEntry(sessionId, displayTitle, open)
-        }}>
-          Export
-        </MenuItemButton>
-      )
-    }
-    const node: SessionNode = {
-      id: sid('s1'), title: 'One', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
-    }
-    render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen} renderSlot={renderSlot} t={t} />)
-
-    // Both lists receive the row identity; only the menu list carries the open state.
-    expect(rendered).toHaveBeenCalledWith(
-      'sidebar.workspaces.session.menu.item', { sessionId: node.id, displayTitle: 'One' }, [false, expect.any(Function)],
-    )
-    expect(rendered).toHaveBeenCalledWith(
-      'sidebar.workspaces.session.row.action', { sessionId: node.id, displayTitle: 'One' }, undefined,
-    )
-    expect(screen.queryByRole('menuitem')).toBeNull()
-    const trigger = screen.getByRole('button', { name: '会话“One”的操作' })
-    trigger.focus()
-    fireEvent.click(trigger)
-    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Export'])
-    expect(rendered).toHaveBeenCalledWith(
-      'sidebar.workspaces.session.menu.item', { sessionId: node.id, displayTitle: 'One' }, [true, expect.any(Function)],
-    )
-    const entry = screen.getByRole('menuitem', { name: 'Export' })
-    expect(screen.getByRole('treeitem').contains(entry)).toBe(false)
-    entry.focus()
-    expect(fireEvent.keyDown(entry, { key: 'Enter', code: 'Enter' })).toBe(true)
-    expect(onOpen).not.toHaveBeenCalled()
-    fireEvent.click(entry)
-    expect(onEntry).toHaveBeenCalledWith(node.id, 'One', true)
-    // The entry dismissed the menu through the state pair; the list returns focus.
-    expect(screen.queryByRole('menu')).toBeNull()
-    await act(async () => { await Promise.resolve() })
-    expect(document.activeElement).toBe(trigger)
+    render(<SessionNodeItem node={node} currentId={sid('other')} now={0} onOpen={onOpen} openSessionMenu={openSessionMenu} t={t} />)
+    fireEvent.contextMenu(screen.getByRole('treeitem'), { clientX: 31, clientY: 47 })
+    expect(openSessionMenu).toHaveBeenLastCalledWith(node.id, 'One', { x: 31, y: 47 })
+    fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
+    expect(openSessionMenu).toHaveBeenLastCalledWith(node.id, 'One', { x: 0, y: 0 }, 'toggle')
     expect(onOpen).not.toHaveBeenCalled()
   })
 
@@ -1015,7 +976,7 @@ describe('workspace browser rows', () => {
         id: sid('s1'), title: 'Hovered', blank: false, running: true,
         runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
       }
-      render(<SessionNodeItem node={node} currentId={undefined} now={60_000} onOpen={vi.fn()} t={t} />)
+      const view = render(<SessionNodeItem node={node} currentId={undefined} now={60_000} onOpen={vi.fn()} t={t} />)
       const wrapper = screen.getByRole('treeitem').parentElement as HTMLElement
       fireEvent.pointerEnter(wrapper)
       act(() => { vi.advanceTimersByTime(800) })
@@ -1025,7 +986,8 @@ describe('workspace browser rows', () => {
       expect(screen.getAllByText('进行中')).toHaveLength(2)
       fireEvent.pointerLeave(wrapper)
       // Menu open (disabled=true) suppresses the card for the same hover.
-      fireEvent.click(screen.getByRole('button', { name: '会话“Hovered”的操作' }))
+      view.rerender(<SessionNodeItem node={node} currentId={undefined} now={60_000} onOpen={vi.fn()} t={t}
+        useMenuTarget={select => select({ kind: 'session', value: { sessionId: node.id, displayTitle: node.title } })} />)
       fireEvent.pointerEnter(wrapper)
       act(() => { vi.advanceTimersByTime(1000) })
       expect(screen.queryByText('1分钟前')).toBeNull()

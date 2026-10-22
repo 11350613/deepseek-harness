@@ -126,6 +126,8 @@ The nearest `MarkdownDelegateProvider` supplies optional `openExternalLink` and 
 
 The atoms cannot read the application locale, so every piece of user-facing copy arrives through required label props. `HoverCard`, `TerminalBlock`, `JsonTree`, `CodeBlock`, `MarkdownText`, `JsonBlock`, `ConnectionIndicator`, `Modal`, `DiffBlock`, `ReadBlock`, `SearchBlock`, `WebBlock`, and `ZoomControls` accept complete localized labels. The package owns no language fallback; omission fails typechecking, and each feature maps its typed `t` seat into the primitive's label interface.
 
+`Menu.contextual` positions from the pointer without the frame inset, aligns icons per divider group, and closes on a right-click inside the popup. `exiting` retains an inert popup for its fade; `returnFocus` restores the original control after asynchronous preparation. `MenuSurface.phase` applies the fade to both content and its macOS backing. Ordinary dropdowns retain their existing timing.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -195,6 +197,8 @@ These pages place the atoms in the client stack and the design system.
 -----
 
 `QuotePreview` shares the compact quote excerpt and clipped-only inline HoverCard between composers and sent messages. The popover sizes to its text up to 300px and stays within the viewport. Both surfaces display the exact text; editable drafts may supply a localized whole-quote removal action. Quotes opt into the nearest `HoverCardGroup` for exclusive preview display. The primitive performs no recognition or navigation.
+
+`MarkdownDelegate.openContextMenu` receives explicit file, URL, or original-image targets and pointer coordinates. File mentions can supply `openMenu`; `ImageLightbox.onContextMenu` delegates the original image gesture. An image menu owns Escape and Tab while it holds focus, returning to the preview before closing it.
 
 <a id="model-experience"></a>
 ## Model Experience

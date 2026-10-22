@@ -126,6 +126,8 @@ kind: "package-library"
 
 这些原子组件无法读取应用 locale，因此每段面向用户的文案都必须通过 label prop 提供。`HoverCard`、`TerminalBlock`、`JsonTree`、`CodeBlock`、`MarkdownText`、`JsonBlock`、`ConnectionIndicator`、`Modal`、`DiffBlock`、`ReadBlock`、`SearchBlock`、`WebBlock` 与 `ZoomControls` 接收完整的本地化 label。本包不拥有语言回退；遗漏会导致类型检查失败，各功能会把带类型的 `t` 席位映射到 primitive 的 label 接口。
 
+`Menu.contextual` 从指针位置定位而不避让顶部栏，按分隔线组对齐图标，并在弹窗内右键时关闭。`exiting` 在淡出期间保留不可交互的弹窗；`returnFocus` 在异步准备后恢复原控件焦点。`MenuSurface.phase` 让内容与 macOS 背景同步淡入淡出。普通下拉菜单保留原有时序。
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -195,6 +197,8 @@ kind: "package-library"
 -----
 
 `QuotePreview` 在 composer 与已发送消息之间共享紧凑 quote 摘录和仅截断时显示的行内 HoverCard。原文弹层按文本内容确定宽度，最大为 300px，并限制在视口内。两处均展示原文；可编辑草稿可以提供本地化的整条 quote 删除操作。quote 加入最近的 `HoverCardGroup`，使原文弹层互斥显示。该 primitive 不负责识别或导航。
+
+`MarkdownDelegate.openContextMenu` 接收明确的文件、链接或原图目标及指针坐标。文件引用可提供 `openMenu`；`ImageLightbox.onContextMenu` 转发原图手势。图片菜单持有焦点时负责 Escape 与 Tab，先返回预览再关闭预览。
 
 <a id="model-experience"></a>
 ## 模型体验

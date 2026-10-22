@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
  * Browser half: register `text` as a right-Sidebar tab type.
  *
@@ -79,7 +80,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
  * Required browser services: the tab registry, the slot registry, copy, and the
  * workspace Remote for bytes and paged text reads.
  */
-export const inject = ['slots', 'locale', 'sidebarRightTabs', 'remote', 'remote.workspaceFiles', 'configForms', 'resources', 'fileDrag']
+export const inject = ['menus', 'slots', 'locale', 'sidebarRightTabs', 'remote', 'remote.workspaceFiles', 'configForms', 'resources', 'fileDrag']
 
 /**
  * Client plugin body: register the type, its dictionaries, its body, and its chip title.
@@ -110,7 +111,9 @@ export function apply(ctx: ClientContext): void {
         'sidebar.right.tab.document.action': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: documentTabInfoFactory } } },
       },
       inject: (sessionId, actions): TextPreviewInjected => ({
-        ...face(sessionId, actions), hooks: { documentPreviews: source },
+        ...face(sessionId, actions),
+        openFileMenu: (path, point, line, paneId) => { ctx.menus.open({ kind: 'file', value: { sessionId, path, ...(paneId === undefined ? {} : { paneId }), ...(line === undefined ? {} : { line }) } }, point) },
+        hooks: { documentPreviews: source },
       }),
     },
     TextPreview,

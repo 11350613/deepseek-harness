@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /** Browser attachment plugin: composer entries and independently replaceable image galleries. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
@@ -10,7 +11,7 @@ import { ComposerAttachments, type ComposerAttachmentsInjected } from './Compose
 import { MessageImages, MessageImagesContent } from './MessageImages.tsx'
 
 /** Slot registry required by the attachment presentation plugin. */
-export const inject = ['slots', 'fileDrag']
+export const inject = ['slots', 'fileDrag', 'menus']
 
 /**
  * Register composer attachments and the shared gallery with its domain adapters.
@@ -19,7 +20,7 @@ export const inject = ['slots', 'fileDrag']
 export function apply(ctx: ClientContext): void {
   ctx.slots.registerFactory({
     name: 'conversation.images.content', scope: 'root', locale: 'conversation',
-    inject: () => ({ fileDrag: ctx.fileDrag.actions }),
+    inject: () => ({ fileDrag: ctx.fileDrag.actions, openImageMenu: (source: import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTargetMap['image'], point: { x: number; y: number }) => { ctx.menus.open({ kind: 'image', value: source }, point) } }),
   }, MessageImagesContent)
   ctx.slots.inject('conversation.input.attachments', () => ctx.slots.register({
     name: 'conversation.input.attachments',

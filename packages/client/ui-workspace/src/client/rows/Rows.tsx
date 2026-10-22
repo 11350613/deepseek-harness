@@ -23,7 +23,7 @@ import {
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
-import type { MenuOpenState, WorkspaceBrowserProps } from '../contract/slots.ts'
+import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
 import css from './Rows.module.css'
 
@@ -38,7 +38,6 @@ type RowTranslate = WorkspaceBrowserProps['t']
  * card is open.
  */
 type RowRenderSlots = PropsRenderSlots<
-  | 'sidebar.workspaces.session.menu.item'
   | 'sidebar.workspaces.session.row.action'
   | 'sidebar.session.row.trailing'
   | 'sidebar.session.row.leading'
@@ -102,11 +101,14 @@ function restTitle(title: HTMLSpanElement): void {
  */
 function useTitleMarquee(title: RefObject<HTMLSpanElement | null>): { enter: () => void; leave: () => void } {
   const frame = useRef(0)
+  const revealing = useRef(false)
   useEffect(() => () => { cancelAnimationFrame(frame.current) }, [])
   return useMemo(() => ({
     enter: (): void => {
       /* v8 ignore next -- defensive: the title span renders unconditionally. */
       if (title.current === null) return
+      if (revealing.current) return
+      revealing.current = true
       const element = title.current
       const range = element.scrollWidth - element.clientWidth
       if (range <= MIN_TITLE_REVEAL_PX) return
@@ -126,6 +128,7 @@ function useTitleMarquee(title: RefObject<HTMLSpanElement | null>): { enter: () 
       frame.current = requestAnimationFrame(step)
     },
     leave: (): void => {
+      revealing.current = false
       cancelAnimationFrame(frame.current)
       /* v8 ignore next -- defensive: the title span renders unconditionally. */
       if (title.current === null) return
@@ -553,8 +556,10 @@ export function SearchResultItem({ result, currentId, onOpen, onUnarchive, t }: 
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRenameRequest, renderSlot, onReveal, drag, home, t,
+  node, currentId, now, onOpen, onRenameRequest, renderSlot, openSessionMenu, useMenuTarget, onReveal, drag, home, t,
 }: {
+  openSessionMenu: WorkspaceBrowserProps['openSessionMenu']
+  useMenuTarget: WorkspaceBrowserProps['useMenuTarget']
   node: SessionNode
   currentId: string | undefined
   now: number
@@ -569,7 +574,6 @@ export function SessionNodeItem({
   home?: string | undefined
   t: RowTranslate
 } & PropsRenderSlots<
-  | 'sidebar.workspaces.session.menu.item'
   | 'sidebar.workspaces.session.row.action'
   | 'sidebar.session.row.trailing'
   | 'sidebar.session.row.leading'
@@ -585,10 +589,8 @@ export function SessionNodeItem({
   // move them. Pinned rows drag within the pinned block: the browser gates
   // their drop targets to fellow pinned rows.
   const draggable = drag !== undefined && !row.blank && !row.archived
-  const [menuOpen, setMenuOpen] = useState(false)
+  const menuOpen = useMenuTarget(target => target?.kind === 'session' && target.value.sessionId === node.id)
   const dragPreview = useRowDragPreview(css.dragPreview as string)
-  // The menu's open state, bound into the row entries' `useMenuOpenState` hook.
-  const menuOpenState = useMemo((): MenuOpenState => [menuOpen, setMenuOpen], [menuOpen])
   const rowRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLSpanElement>(null)
   // On macOS the click that activates the window is not delivered, but the
@@ -597,6 +599,10 @@ export function SessionNodeItem({
   const renameArmed = useRef(false)
   const disarmRename = useRef(() => { renameArmed.current = false }).current
   const marquee = useTitleMarquee(titleRef)
+  useEffect(() => {
+    if (menuOpen || rowRef.current?.matches(':hover')) marquee.enter()
+    else marquee.leave()
+  }, [menuOpen, marquee])
   useEffect(() => {
     if (onReveal === undefined) return
     rowRef.current?.scrollIntoView({ block: 'nearest' })
@@ -616,6 +622,11 @@ export function SessionNodeItem({
       aria-selected={selected}
       aria-description={row.archived ? t('toast.archivedNotOpenable') : undefined}
       tabIndex={0}
+      onContextMenu={(event) => {
+        if (row.blank) return
+        event.preventDefault(); event.stopPropagation()
+        openSessionMenu(node.id, row.title, { x: event.clientX, y: event.clientY })
+      }}
       onClick={() => { onOpen(node.id) }}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
@@ -624,7 +635,7 @@ export function SessionNodeItem({
         onOpen(node.id)
       }}
       onPointerEnter={marquee.enter}
-      onPointerLeave={marquee.leave}
+      onPointerLeave={() => { if (!menuOpen) marquee.leave() }}
       draggable={draggable}
       onDragStart={!draggable
         ? undefined
@@ -700,28 +711,15 @@ export function SessionNodeItem({
           button needs no propagation handling of its own. */}
       {!row.blank && (
         <span className={css.rowActions} onClick={(e) => { e.stopPropagation() }}>
-          <Menu
-            open={menuOpen}
-            onClose={() => { setMenuOpen(false) }}
-            portal
-            closeOnPointerLeave
-            anchor={(
-              <button
-                type="button"
-                className={css.iconButton}
-                aria-label={t('actions.session.aria', { name: title })}
-                onClick={() => { setMenuOpen(v => !v) }}
-              >
-                <IconEllipsisOutlineRegular />
-              </button>
-            )}
-          >
-            {renderSlot(
-              'sidebar.workspaces.session.menu.item',
-              { sessionId: node.id, displayTitle: row.title },
-              { hookContext: menuOpenState },
-            )}
-          </Menu>
+          <button type="button" className={css.iconButton}
+            aria-label={t('actions.session.aria', { name: title })}
+            onPointerDown={(event) => { event.stopPropagation() }}
+            data-context-menu-trigger=""
+            onClick={(event) => {
+              event.currentTarget.focus({ preventScroll: true })
+              const rect = event.currentTarget.getBoundingClientRect()
+              openSessionMenu(node.id, row.title, { x: rect.left, y: rect.bottom }, 'toggle')
+            }}><IconEllipsisOutlineRegular /></button>
           <span className={css.rowQuickActions}>
             {renderSlot('sidebar.workspaces.session.row.action', { sessionId: node.id, displayTitle: row.title })}
           </span>

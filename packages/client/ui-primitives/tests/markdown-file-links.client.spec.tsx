@@ -172,3 +172,19 @@ describe('Markdown file links', () => {
     expect(outer).not.toHaveBeenCalled()
   })
 })
+
+it('captures link targets and line numbers without activating them; linked images take priority', () => {
+  const openFile = vi.fn(), openExternalLink = vi.fn(), openContextMenu = vi.fn()
+  const view = render(<MarkdownDelegateProvider {...{ openFile, openExternalLink, openContextMenu }}>
+    <MarkdownText text={'[file](src/main.ts#L42) [web](https://example.com/a?q=1#part) [![picture](https://example.com/original.gif)](https://example.com/target)'} />
+  </MarkdownDelegateProvider>)
+  fireEvent.contextMenu(view.getByRole('button', { name: 'file' }), { clientX: 2, clientY: 3 })
+  expect(openContextMenu).toHaveBeenLastCalledWith({ kind: 'file', path: 'src/main.ts', line: 42 }, { x: 2, y: 3 })
+  fireEvent.contextMenu(view.getByRole('link', { name: 'web' }))
+  expect(openContextMenu).toHaveBeenLastCalledWith({ kind: 'url', url: 'https://example.com/a?q=1#part' }, expect.any(Object))
+  openContextMenu.mockClear()
+  fireEvent.contextMenu(view.getByRole('img', { name: 'picture' }))
+  expect(openContextMenu).toHaveBeenCalledExactlyOnceWith({ kind: 'image', url: 'https://example.com/original.gif' }, expect.any(Object))
+  expect(openFile).not.toHaveBeenCalled()
+  expect(openExternalLink).not.toHaveBeenCalled()
+})

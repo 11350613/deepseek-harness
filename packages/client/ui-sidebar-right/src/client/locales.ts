@@ -8,6 +8,7 @@
 
 /** Simplified Chinese dictionary and key-set source of truth. */
 export const zh = {
+  'menu.close': '关闭', 'menu.closeOthers': '关闭其他标签页', 'menu.closeRight': '关闭右侧标签页',
   'command.close': '关闭当前页面／窗口',
   'command.refresh': '刷新当前页面',
   'command.noRefresh': '当前页面不支持刷新',
@@ -50,6 +51,7 @@ export type SidebarRightKey = keyof typeof zh
 
 /** English dictionary, checked against the Chinese key set. */
 export const en = {
+  'menu.close': 'Close', 'menu.closeOthers': 'Close Other Tabs', 'menu.closeRight': 'Close Tabs to the Right',
   'command.close': 'Close current page or window',
   'command.refresh': 'Refresh current page',
   'command.noRefresh': 'This page cannot be refreshed',
@@ -89,6 +91,7 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'menu.close': '閉じる', 'menu.closeOthers': '他のタブを閉じる', 'menu.closeRight': '右側のタブを閉じる',
   'command.close': '現在のページまたはウィンドウを閉じる',
   'command.refresh': '現在のページを更新',
   'command.noRefresh': 'このページは更新できません',

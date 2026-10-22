@@ -37,7 +37,7 @@ export function FileReference({ node, raw, interactive, openFile, t }: FileRefer
     setFailedPath(null)
   }
   return <>
-    <ReferenceChip appearance="file" label={label} title={raw} {...interactive ? { onActivate: open } : {}} />
+    <ReferenceChip appearance="file" filePath={path} label={label} title={raw} {...interactive ? { onActivate: open } : {}} />
     {interactive && failedPath === path && <Modal
       open
       onClose={close}
@@ -58,5 +58,5 @@ export function FileReference({ node, raw, interactive, openFile, t }: FileRefer
  * @returns an inline non-interactive chip.
  */
 export function FolderReference({ node, raw }: UserTextNodeProps<'folder'>) {
-  return <ReferenceChip appearance="folder" label={node.data.label} title={raw} />
+  return <ReferenceChip appearance="folder" filePath={node.data.path} label={node.data.label} title={raw} />
 }

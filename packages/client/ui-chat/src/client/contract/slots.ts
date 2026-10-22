@@ -1,3 +1,4 @@
+import type { MarkdownDelegate } from '@deepseek-ai/dsh-client-ui-primitives'
 /** Chat-owned Slot declarations and composed component props. */
 import type { RefObject } from 'react'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
@@ -300,6 +301,7 @@ export interface PerformanceUsageInjected {
 export interface ChatViewInjected {
   /** File preparation and failure callbacks owned by the file-drag plugin. */
   readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions
+  openContextMenu: NonNullable<MarkdownDelegate['openContextMenu']>
   /** Dispatch one gesture to the Conversation plugin registry. */
   dispatchInteraction: (gesture: TextInteractionGesture) => string | null
   hooks: {

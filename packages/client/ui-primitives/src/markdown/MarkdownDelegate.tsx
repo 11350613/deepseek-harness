@@ -9,8 +9,16 @@ import type { ImageLightboxLabels } from '../ImageLightbox.tsx'
  */
 export type MarkdownExternalLinkHandler = (href: string) => void
 
+/** Explicit object and viewport coordinates from the element owning a context gesture. */
+export type MarkdownMenuTarget =
+  | { kind: 'file'; path: string; line?: number }
+  | { kind: 'url'; url: string }
+  | { kind: 'image'; url: string; path?: string; name?: string; mediaType?: string }
+
 /** Navigation capabilities supplied by the nearest Markdown owner. */
 export interface MarkdownDelegate {
+  /** Open an object menu without executing its normal activation. */
+  readonly openContextMenu?: ((target: MarkdownMenuTarget, point: { x: number; y: number }) => void) | undefined
   /** Image previews for decoded local paths in this owner's workspace. */
   readonly fileImages?: {
     fileDrag: import('../file-drag-actions.ts').FileDragActions
@@ -46,8 +54,10 @@ export function MarkdownDelegateProvider({
   openExternalLink,
   openFile,
   fileImages,
+  openContextMenu,
 }: MarkdownDelegateProviderProps): ReactNode {
-  const delegate = useMemo(() => ({ openExternalLink, openFile, fileImages }), [openExternalLink, openFile, fileImages])
+  const delegate = useMemo(() => ({ openExternalLink, openFile, fileImages, openContextMenu }),
+    [openExternalLink, openFile, fileImages, openContextMenu])
   return (
     <MarkdownDelegateContext.Provider value={delegate}>
       {children}

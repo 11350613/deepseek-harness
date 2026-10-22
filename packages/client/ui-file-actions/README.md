@@ -1,0 +1,88 @@
+---
+description: "Download and save original files without changing their encoding"
+kind: "package-reference"
+---
+
+# @deepseek-ai/dsh-client-ui-file-actions
+
+English | [中文](README.zh.md)
+
+## Summary
+
+Download and save original files without changing their encoding. Copy images as pasteable PNG content while retaining the original format for saves. Desktop can reveal a successfully saved file; a browser download never claims to know its local destination.
+
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## Use this package
+
+The Web application bundle mounts this Client plugin without configuration fields. Consumers import `/client` types and inject `fileActions`. Desktop supplies an optional trusted-frame adapter; ordinary Web uses its browser clipboard and download APIs.
+
+### Original content
+
+Pass an original URL, optional filename and MIME, or an authorized `read(signal)` callback for Session-owned files. Saves preserve bytes. MIME determines the suffix when it conflicts with the supplied name; compatible and unknown suffixes remain. Suggested names exclude platform-reserved characters and device names and fit a 255-byte filename.
+
+`save(source, mode)` distinguishes cancellation from a completed save request. Browser save-as requires the browser file picker and is disabled when unavailable. A regular browser download reports only that the download was requested. It returns no local reference. Native saves return an opaque ID, which `savedFile(url)` remembers for reveal. IDs are scoped to the originating window and expire on reload or close.
+
+Filename and MIME normalization reuse the file-drag utility, so saving and dragging retain the same original format and filename policy.
+
+Image copying decodes the original into PNG for clipboard interoperability. Downloads and save-as never use that conversion. Callers own localized success and failure feedback. Rejected reads do not start writes; native download writes reserve a unique filename and remove partial files on failure. Explicit replacements write a sibling temporary file before renaming. Plugin disposal aborts browser reads, discards references, and releases object URLs.
+
+-----
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+<details>
+<summary>Implementation internals — click to expand</summary>
+
+The Client selects browser or native operations once per plugin lifetime. [Client implementation](src/client/files.ts) owns MIME normalization and clipboard conversion. [Desktop adapter](../../../apps/desktop/src/file-actions.ts) validates IPC inputs, keeps file paths in the main process, and revalidates the trusted window after asynchronous work.
+
+</details>
+
+-----
+
+<a id="further-exploration"></a>
+## Further Exploration
+
+- [Context menus](../ui-context-menu/README.md) — contributed actions.
+- [Workspace files](../../api/workspace-files/README.md) — authorized Session reads.
+- [Desktop](../../../apps/desktop/README.md) — native operation settings.
+
+-----
+
+<a id="model-experience"></a>
+## Model Experience
+
+None, as explicit user file and clipboard operations do not construct model input.
+
+#### KV Cache effect
+
+None; saving and copying do not change model requests.
+
+## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- Web save-as depends on browser picker support; clipboard operations depend on browser permission and image decoding support.
+- Native HTTP(S) image reads omit credentials and stop on window navigation, close, timeout, or the configured byte limit.
+- Browser downloads have no reveal action unless a separate, actual Host file is known.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

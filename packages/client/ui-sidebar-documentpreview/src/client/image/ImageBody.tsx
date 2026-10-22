@@ -29,6 +29,7 @@ type ImageMediaType = typeof IMAGE_MEDIA_TYPES[keyof typeof IMAGE_MEDIA_TYPES]
 /** Image-only operations injected alongside the shared zoom lifecycle. */
 export interface ImageBodyInjected extends ZoomInjected {
   readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions
+  readonly openImageMenu: (path: string, url: string, mediaType: string, point: { x: number; y: number }) => void
 }
 
 /** Standard document props plus the image renderer's dictionary. */
@@ -104,6 +105,7 @@ export function ImageBody(props: ImageBodyProps): ReactNode {
   }
   return <LoadedImage
     fileDrag={props.fileDrag}
+    openImageMenu={(point) => { props.openImageMenu(path, source.url, mediaType, point) }}
     resourceAddress={resourceAddress}
     key={source.url}
     url={source.url}
@@ -119,7 +121,10 @@ export function ImageBody(props: ImageBodyProps): ReactNode {
 }
 
 /** SVG stays in the browser's static image mode because its bytes only reach an img Blob URL. */
-function LoadedImage({ url, name, file, resourceAddress, preference, onPreference, labels, signal, scrollportRef, t, fileDrag }: {
+function LoadedImage({
+  url, name, file, resourceAddress, preference, onPreference, labels, signal, scrollportRef, t, fileDrag, openImageMenu,
+}: {
+  readonly openImageMenu: (point: { x: number; y: number }) => void
   readonly fileDrag: ImageBodyInjected['fileDrag']
   readonly url: string
   readonly name: string
@@ -155,6 +160,10 @@ function LoadedImage({ url, name, file, resourceAddress, preference, onPreferenc
         style={{ '--document-zoom-width': `${width ?? 0}px` } as CSSProperties} hidden={state !== 'ready'}>
         <DraggableImage
           fileDrag={fileDrag}
+          onContextMenu={(event) => {
+            event.preventDefault(); event.stopPropagation()
+            openImageMenu({ x: event.clientX, y: event.clientY })
+          }}
           resourceAddress={resourceAddress}
           ref={attachImage}
           className={css.image}

@@ -39,6 +39,22 @@ const PRODUCT_NAMES = {
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'menu.sidebar': '在侧边栏打开',
+  'menu.finder': '在 Finder 中显示',
+  'menu.reveal': '在文件夹显示',
+  'menu.defaultApp': '使用默认应用打开',
+  'menu.saveAs': '另存为',
+  'menu.external': '外部浏览器打开',
+  'menu.copyLink': '复制链接地址',
+  'menu.copyPath': '复制文件路径',
+  'menu.copied': '已复制',
+  'menu.copyImage': '复制图片',
+  'menu.download': '下载',
+  'menu.saveFailed': '无法保存文件，请检查源文件和目标位置后重试',
+  'menu.copyFailed': '无法复制，请检查内容是否可用后重试',
+  'menu.saved': '已保存',
+  'menu.downloadStarted': '已开始下载',
+
   'open.title': '用 {app} 打开',
   'path.appDefault': '{app}（默认）',
   'path.appsError': '无法获取应用列表',
@@ -59,6 +75,22 @@ export const zh = {
 
 /** English dictionary, key-identical to the Chinese source of truth. */
 export const en: Record<OpenInAppKey, string> = {
+  'menu.sidebar': 'Open in sidebar',
+  'menu.finder': 'Show in Finder',
+  'menu.reveal': 'Show in folder',
+  'menu.defaultApp': 'Open in default application',
+  'menu.saveAs': 'Save as',
+  'menu.external': 'Open in external browser',
+  'menu.copyLink': 'Copy link address',
+  'menu.copyPath': 'Copy file path',
+  'menu.copied': 'Copied',
+  'menu.copyImage': 'Copy image',
+  'menu.download': 'Download',
+  'menu.saveFailed': 'Could not save. Check the source and destination, then retry.',
+  'menu.copyFailed': 'Could not copy. Check that the content is available, then retry.',
+  'menu.saved': 'Saved',
+  'menu.downloadStarted': 'Download started',
+
   'open.title': 'Open in {app}',
   'path.appDefault': '{app} (default)',
   'path.appsError': 'Could not load applications',
@@ -82,6 +114,22 @@ export type OpenInAppKey = keyof typeof zh
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'menu.sidebar': 'サイドバーで開く',
+  'menu.finder': 'Finder に表示',
+  'menu.reveal': 'フォルダーに表示',
+  'menu.defaultApp': '既定のアプリで開く',
+  'menu.saveAs': '名前を付けて保存',
+  'menu.external': '外部ブラウザーで開く',
+  'menu.copyLink': 'リンクアドレスをコピー',
+  'menu.copyPath': 'ファイルパスをコピー',
+  'menu.copied': 'コピーしました',
+  'menu.copyImage': '画像をコピー',
+  'menu.download': 'ダウンロード',
+  'menu.saveFailed': '保存できません。元のファイルと保存先を確認して再試行してください。',
+  'menu.copyFailed': 'コピーできません。内容を確認して再試行してください。',
+  'menu.saved': '保存しました',
+  'menu.downloadStarted': 'ダウンロードを開始しました',
+
   ...PRODUCT_NAMES,
   'open.title': '{app}で開く',
   'path.appDefault': '{app}（デフォルト）',

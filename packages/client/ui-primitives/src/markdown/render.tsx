@@ -181,7 +181,12 @@ export interface MarkdownFileMentions {
    * @returns The opener with its accessible label and full-path title, or
    * undefined when the token names no known file — it then stays inert code.
    */
-  resolve(value: string): { open: () => void; label: string; title: string } | undefined
+  resolve(value: string): {
+    open: () => void
+    openMenu?: (point: { x: number; y: number }) => void
+    label: string
+    title: string
+  } | undefined
 }
 
 /**
@@ -328,7 +333,11 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
               className={css.fileMention}
               title={mention.title}
               aria-label={mention.label}
+              data-file-path={mention.title}
               onClick={mention.open}
+              onContextMenu={mention.openMenu === undefined ? undefined : (event) => {
+                event.preventDefault(); event.stopPropagation(); mention.openMenu?.({ x: event.clientX, y: event.clientY })
+              }}
             >
               <LinkIconMedium kind={classifyLinkPath(value)} className={css.linkIcon} />
               {value}
@@ -558,12 +567,16 @@ function MarkdownAnchor({ href, glyph, children }: {
   readonly glyph: boolean
   readonly children: ReactNode[]
 }): ReactNode {
-  const { openExternalLink } = useMarkdownDelegate()
+  const { openExternalLink, openContextMenu } = useMarkdownDelegate()
   const external = ['http:', 'https:'].includes(new URL(href).protocol)
   const open = external ? openExternalLink : undefined
   return (
     <a
       href={href}
+      onContextMenu={!external || openContextMenu === undefined ? undefined : (event) => {
+        event.preventDefault(); event.stopPropagation()
+        openContextMenu({ kind: 'url', url: href }, { x: event.clientX, y: event.clientY })
+      }}
       {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
       onClick={open === undefined ? undefined : (event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -591,7 +604,7 @@ function MarkdownFileLink({ file, glyph, children }: {
   readonly glyph: boolean
   readonly children: ReactNode[]
 }): ReactNode {
-  const { openFile, fileImages } = useMarkdownDelegate()
+  const { openFile, fileImages, openContextMenu } = useMarkdownDelegate()
   if (openFile === undefined) return <>{children}</>
   // Pure-image anchors already contain their preview and keep one navigation target.
   const preview = glyph && classifyLinkPath(file.path) === 'image' ? fileImages : undefined
@@ -601,6 +614,11 @@ function MarkdownFileLink({ file, glyph, children }: {
       type="button"
       className={clsx(css.fileMention, css.fileLink)}
       title={src === undefined ? file.path : undefined}
+      onContextMenu={openContextMenu === undefined ? undefined : (event) => {
+        event.preventDefault(); event.stopPropagation()
+        openContextMenu({ kind: 'file', ...file }, { x: event.clientX, y: event.clientY })
+      }}
+      data-file-path={file.path}
       onClick={() => { openFile(file.path, file.line === undefined ? undefined : { line: file.line }) }}
     >
       {glyph && <LinkIconMedium kind={classifyLinkPath(file.path)} className={css.linkIcon} />}
@@ -655,11 +673,18 @@ function LoadedMarkdownImage({ src, alt, destination, preview }: {
   destination: string
   preview: ReturnType<typeof useMarkdownDelegate>['fileImages']
 }): ReactNode {
+  const { openContextMenu } = useMarkdownDelegate()
   const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState(false)
   const close = useCallback(() => { setOpen(false) }, [])
   if (failed) return <span className={css.imageAlt}>{preview === undefined ? '' : `${preview.labels.failed} · `}{alt || destination}</span>
-  const imageProps = { className: css.image, src, alt, onError: () => { setFailed(true) },
+  const onContextMenu: import('react').MouseEventHandler<HTMLImageElement> | undefined = openContextMenu === undefined ? undefined : (event) => {
+    event.preventDefault(); event.stopPropagation()
+    const file = parseFileLink(destination)
+    openContextMenu({ kind: 'image', url: src, ...(file === undefined ? {} : { path: file.path }) },
+      { x: event.clientX, y: event.clientY })
+  }
+  const imageProps = { className: css.image, src, alt, onContextMenu, onError: () => { setFailed(true) },
     loading: 'lazy' as const, decoding: 'async' as const, referrerPolicy: 'no-referrer' as const }
   if (preview === undefined) return <img {...imageProps} />
   const file = parseFileLink(destination)
@@ -676,7 +701,7 @@ function LoadedMarkdownImage({ src, alt, destination, preview }: {
     <button type="button" className={css.imageButton} title={preview.labels.open}
       aria-label={alt ? `${preview.labels.open}: ${alt}` : preview.labels.open}
       onClick={() => { setOpen(true) }}>{img}</button>
-    {open && <ImageLightbox src={src} alt={alt} labels={preview.labels} onClose={close} />}
+    {open && <ImageLightbox src={src} alt={alt} labels={preview.labels} onClose={close} onContextMenu={onContextMenu} />}
   </>
 }
 
