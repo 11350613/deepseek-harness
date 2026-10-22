@@ -153,7 +153,7 @@
 }
 
 .compactList .separator {
-  margin: 2px;
+  margin: 2px 6px;
 }
 
 .compactList .label {
@@ -258,11 +258,11 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-/* Separator cell (figma 122:9481): py 4 / px 2 around the hairline. l2, not
- * l1, for the same reason as .footer: l1 is near-invisible on this surface. */
+/* Separator endpoints align with the row content. The l2 stroke stays visible
+ * on the menu surface. */
 .separator {
   height: 0.5px;
-  margin: 3px 2px;
+  margin: 3px 8px;
   background: var(--dsw-alias-border-l2);
 }
 

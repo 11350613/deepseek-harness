@@ -1,6 +1,6 @@
 Pin session
 Rename
 Fork session
-Archive session
 Copy Session ID
 Show in folder
+Archive session

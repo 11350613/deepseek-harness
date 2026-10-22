@@ -49,13 +49,13 @@ it('shares menu transparency and blur across palettes and follows native menu bo
       })
       expect(overlayFill).toBe(platform === 'darwin'
         ? dark ? 'rgba(48, 49, 54, 0.94)' : 'rgba(248, 249, 250, 0.94)'
-        : dark ? 'rgba(67, 69, 74, 0.45)' : 'rgba(248, 249, 250, 0.58)')
+        : dark ? 'rgba(48, 49, 54, 0.64)' : 'rgba(252, 253, 254, 0.7)')
       await account.click()
       const menu = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Settings', exact: true }) })
       await menu.waitFor()
       const appearance = await material(menu)
       expect(appearance).toMatchObject({
-        fill: dark ? 'rgba(67, 69, 74, 0.45)' : 'rgba(248, 249, 250, 0.58)',
+        fill: dark ? 'rgba(48, 49, 54, 0.64)' : 'rgba(252, 253, 254, 0.7)',
         blur: 'blur(40px) saturate(1.5)',
       })
       expect(appearance.shadow).toContain(`${dark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.04)'} 0px 0px 0px 0.5px`)
@@ -150,9 +150,14 @@ it('shares menu transparency and blur across palettes and follows native menu bo
     })
     const settled = await sharp(await page.screenshot({ clip })).stats()
     expect(settled.channels[0]!.stdev).toBeLessThan(3)
-    await popup.evaluate((node) => { node.style.opacity = '0.999' })
+    await popup.evaluate((node) => {
+      node.style.opacity = '0.999'
+      // The negative control measures backdrop isolation independently of the theme's fill alpha.
+      const material = node.querySelector<HTMLElement>(':scope > [aria-hidden="true"]')!
+      material.style.backgroundColor = 'transparent'
+    })
     const isolated = await sharp(await page.screenshot({ clip })).stats()
-    expect(isolated.channels[0]!.stdev).toBeGreaterThan(50)
+    expect(isolated.channels[0]!.stdev).toBeGreaterThan(90)
   } finally {
     await stripes.evaluate((node) => { node.remove() })
     await stripes.dispose()

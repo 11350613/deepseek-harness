@@ -5,12 +5,12 @@ import type { SessionIdInjected, SessionMenuItemProps } from '../contract/slots.
 /**
  * Copy the complete ID after dismissing the row menu.
  * @param props - Row identity, menu dismissal, clipboard action, and locale.
- * @returns The final built-in menu item.
+ * @returns The copy action at the start of the identification group.
  */
 export function SessionIdMenuItem({ sessionId, useMenuOpenState, copySessionId, t }: SessionMenuItemProps<SessionIdInjected>) {
   const [, setMenuOpen] = useMenuOpenState()
   return (
-    <MenuItemButton icon={<IconCopyOutlineRegular />} onSelect={() => {
+    <MenuItemButton separatorBefore icon={<IconCopyOutlineRegular />} onSelect={() => {
       setMenuOpen(false)
       void copySessionId(sessionId)
     }}>

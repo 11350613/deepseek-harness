@@ -312,8 +312,8 @@ describe('ui-workspace apply', () => {
       ['pin', 100, PinSessionMenuItem, 'workspace'],
       ['rename', 200, RenameSessionMenuItem, 'workspace'],
       ['fork', 300, ForkSessionMenuItem, 'workspace'],
-      ['archive', 400, ArchiveSessionMenuItem, 'workspace'],
       ['session-id', 450, SessionIdMenuItem, 'workspace'],
+      ['archive', 600, ArchiveSessionMenuItem, 'workspace'],
     ])
     expect(rows(ROW_ACTION)).toEqual([
       ['archive', 100, ArchiveSessionRowButton, 'workspace'],

@@ -79,6 +79,9 @@
     },
     {
       "path": "../ui-sidebar-browser/tsconfig.client.json"
+    },
+    {
+      "path": "../ui-workspace"
     }
   ]
 }

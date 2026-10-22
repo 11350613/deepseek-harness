@@ -22,6 +22,7 @@ import { apply as nodeApply } from '../src/index.ts'
 import { OpenInAppAction } from '../src/client/OpenInAppAction.tsx'
 import { OpenPathAction } from '../src/client/OpenPathAction.tsx'
 import { OpenPathEmptyAction } from '../src/client/OpenPathEmptyAction.tsx'
+import { SessionRevealMenuItem, type SessionRevealInjected } from '../src/client/SessionRevealMenuItem.tsx'
 import { en, NS, zh } from '../src/client/locales.ts'
 
 afterEach(() => {
@@ -45,6 +46,7 @@ async function bench() {
   ctx.slots.register({
     name: 'root',
     children: {
+      'sidebar.workspaces.session.menu.item': { kind: 'list', scope: 'root' },
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
       'sidebar.right.tab.files.actions': { kind: 'list', scope: 'session' },
       'sidebar.right.tab.document.actions': { kind: 'list', scope: 'session' },
@@ -60,7 +62,8 @@ async function bench() {
     getSnapshot: () => layoutStore.getSnapshot().panelInfo,
     subscribe: listener => layoutStore.subscribe(listener),
   })
-  ctx.provide('menus', { register: () => () => {}, open: vi.fn() } as never)
+  const notify = vi.fn()
+  ctx.provide('menus', { register: () => () => {}, open: vi.fn(), notify } as never)
   ctx.provide('layout', layout)
   ctx.provide('sessions', { list })
   ctx.provide('shortcuts', { register: (command: ShortcutCommand) => { commands.set(command.id, command); return () => { commands.delete(command.id) } }, catalog: createSnapshotStore([]) })
@@ -73,7 +76,7 @@ async function bench() {
   ctx.provide('remote.session', remote.session as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { ctx, fiber, list, commands, layout }
+  return { ctx, fiber, list, commands, layout, notify }
 }
 
 function headerEntryIds(ctx: Context): (string | undefined)[] {
@@ -81,6 +84,26 @@ function headerEntryIds(ctx: Context): (string | undefined)[] {
 }
 
 describe('open-in-app browser half', () => {
+  it('orders Session reveal between copy ID and archive, reports failure, and unregisters on disposal', async () => {
+    const fetcher = vi.fn(async (input: string | URL) => String(input) === 'open-in-app/apps'
+      ? new Response(JSON.stringify({ apps: ['finder'] })) : new Response('', { status: 502 }))
+    vi.stubGlobal('fetch', fetcher)
+    const { ctx, fiber, notify } = await bench()
+    try {
+      const entry = ctx.slots.entries('sidebar.workspaces.session.menu.item')[0]!
+      expect(entry.component).toBe(SessionRevealMenuItem)
+      expect(entry.options).toMatchObject({ id: 'open-in-app.reveal', order: 500 })
+      const face: Partial<SessionRevealInjected> | undefined = entry.inject?.()
+      if (face?.hooks === undefined || face.reveal === undefined) throw new Error('Expected Session reveal injection')
+      await vi.waitFor(() => { expect(face.hooks!.directoryApps.getSnapshot()).toEqual(['finder']) })
+      await face.reveal('finder', '/captured')
+      expect(fetcher).toHaveBeenCalledWith('open-in-app/open', expect.objectContaining({
+        body: JSON.stringify({ app: 'finder', path: '/captured' }),
+      }))
+      expect(notify).toHaveBeenCalledWith(en['path.revealError'])
+    } finally { await fiber.dispose() }
+    expect(ctx.slots.entries('sidebar.workspaces.session.menu.item')).toHaveLength(0)
+  })
   it('refuses absent workspaces and reports failed keyboard launches', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => String(input) === 'open-in-app/apps'
       ? new Response(JSON.stringify({ apps: ['finder'] })) : new Response('failed', { status: 500 })))

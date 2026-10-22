@@ -74,21 +74,6 @@ async function boot() {
     sidebar, browserTab, notify, failure, writeText }
 }
 
-it('reveals only sessions with a directory and an installed file manager', async () => {
-  const h = await boot()
-  await h.choose({ kind: 'session', value: { sessionId, displayTitle: 'Session' } }, 'open-in-app.session/reveal')
-  await vi.waitFor(() => { expect(h.directoryFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
-    method: 'POST', body: JSON.stringify({ app: 'finder', path: '/workspace' }),
-  })) })
-  const withoutDirectory = await h.resolve({ kind: 'session', value: { sessionId: SessionId('absent'), displayTitle: 'Absent' } })
-  expect(withoutDirectory.source.getSnapshot()[0]).toMatchObject({ disabled: true, label: 'menu.finder' })
-  h.directories.apps.set(['vscode'])
-  const unavailable = await h.resolve({ kind: 'session', value: { sessionId, displayTitle: 'Session' } })
-  expect(unavailable.source.getSnapshot()[0]).toMatchObject({ disabled: true, label: 'menu.reveal' })
-  h.directories.apps.set(null)
-  expect((await h.resolve({ kind: 'session', value: { sessionId, displayTitle: 'Session' } })).source.getSnapshot()[0]?.disabled).toBe(true)
-})
-
 it('routes file actions through the captured pane, line, native association and original bytes', async () => {
   const h = await boot()
   const file = { kind: 'file', value: { sessionId, path: 'file.svg', paneId: 'pane' as never, line: 24 } } as const

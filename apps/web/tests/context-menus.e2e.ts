@@ -64,6 +64,29 @@ describe('web context menus', () => {
     const menu = page.getByRole('menu')
     await menu.getByRole('menuitem', { name: /Copy.*[Ii][Dd]/ }).waitFor()
     const names = await menuLabels(menu)
+    expect(names.slice(0, 5)).toEqual(['Pin session', 'Rename', 'Fork session', 'Copy Session ID', 'Show in folder'])
+    expect(names.at(-1)).toBe('Archive session')
+    expect(await menu.getByRole('separator').count()).toBe(2)
+    const alignedSeparators = async () => {
+      const bounds = await menu.evaluate((node) => {
+        const row = node.querySelector<HTMLElement>('[role="menuitem"]')!
+        const rect = row.getBoundingClientRect()
+        const style = getComputedStyle(row)
+        return {
+          left: rect.left + Number.parseFloat(style.paddingLeft),
+          right: rect.right - Number.parseFloat(style.paddingRight),
+          lines: [...node.querySelectorAll('[role="separator"]')].map((line) => {
+            const rect = line.getBoundingClientRect()
+            return { left: rect.left, right: rect.right }
+          }),
+        }
+      })
+      for (const line of bounds.lines) {
+        expect(line.left).toBeCloseTo(bounds.left, 1)
+        expect(line.right).toBeCloseTo(bounds.right, 1)
+      }
+    }
+    await alignedSeparators()
     await expect(names.join('\n') + '\n').toMatchFileSnapshot(join(import.meta.dirname, 'expected/context-menus/session.txt'))
     expect(names.some(name => name.includes('Rename'))).toBe(true)
     expect(await background.getAttribute('aria-selected')).toBe('false')
@@ -71,6 +94,7 @@ describe('web context menus', () => {
     await background.getByRole('button', { name: /actions/i }).click()
     await menu.getByRole('menuitem', { name: /Copy.*[Ii][Dd]/ }).waitFor()
     expect(await menuLabels(menu)).toEqual(names)
+    await alignedSeparators()
     await background.getByRole('button', { name: /actions/i }).click()
     expect(await menu.count()).toBe(0)
     expect(await background.getAttribute('aria-selected')).toBe('false')

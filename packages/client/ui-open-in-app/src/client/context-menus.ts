@@ -44,17 +44,6 @@ export function registerContextMenus(ctx: Context, paths: OpenInAppPathControlle
     }
   }
   ctx.effect(() => ctx.menus.register({
-    id: 'open-in-app.session', target: 'session', order: 500,
-    resolve: async ({ sessionId }, signal) => {
-      await directories.load()
-      signal.throwIfAborted()
-      const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
-      const manager = directories.apps.getSnapshot()?.find(id => ['finder', 'explorer', 'filemanager'].includes(id))
-      return [{ id: 'reveal', symbol: 'folder', afterContent: true, label: fileManager(), disabled: !cwd || manager === undefined,
-        ...cwd && manager ? { run: () => directories.launch(manager, cwd) } : {} }]
-    },
-  }), 'open-in-app: Session context menu')
-  ctx.effect(() => ctx.menus.register({
     id: 'open-in-app.file', target: 'file', order: 100,
     resolve: async (target, signal) => {
       const { sessionId, path, line, paneId } = target

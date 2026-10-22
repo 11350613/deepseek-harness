@@ -24,7 +24,7 @@ import css from '../rows/Rows.module.css'
 import browserCss from '../rows/WorkspaceBrowser.module.css'
 
 /**
- * Menu row (order 400): archive, or restore an archived row.
+ * Menu row (order 600): archive, or restore an archived row.
  * @param props - owner share, the archive share, and the menu open state.
  * @returns the row.
  */
@@ -36,6 +36,7 @@ export function ArchiveSessionMenuItem({
   const archived = useArchived(set => set.has(sessionId))
   return (
     <MenuItemButton
+      separatorBefore
       shortcut={archived ? undefined : shortcut}
       icon={archived ? <IconUnarchiveOutlineRegular size={14} /> : <IconArchiveOutlineRegular size={14} />}
       onSelect={() => {
