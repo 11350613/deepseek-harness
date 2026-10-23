@@ -1,3 +1,4 @@
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { describe, expect, it, vi } from 'vitest'
 import { MenuRegistry } from '../src/client/registry.ts'
 import type { MenuAction } from '@deepseek-ai/dsh-client-ui-context-menu/client'
@@ -146,4 +147,72 @@ it('omits a provider that misses its deadline and ignores its late result', asyn
     await waiting.promise
     expect(menu.source.getSnapshot().map(item => item.label)).toEqual(['Copy'])
   } finally { registry.dispose(); vi.useRealTimers() }
+})
+
+it('replaces observed actions and callbacks, cancels older preparation, and releases every subscription', async () => {
+  const input = createSnapshotStore(0)
+  const original = input.subscribe.bind(input)
+  const subscribe = vi.spyOn(input, 'subscribe')
+  const detach = vi.fn()
+  subscribe.mockImplementation((listener) => {
+    const off = original(listener)
+    return () => { detach(); off() }
+  })
+  const failed = vi.fn(), registry = new MenuRegistry(failed), run = vi.fn()
+  const old = deferred<readonly MenuAction[]>(), current = deferred<readonly MenuAction[]>()
+  const signals: AbortSignal[] = []
+  const resolve = vi.fn((_target: { id: string }, signal: AbortSignal) => {
+    signals.push(signal)
+    return input.getSnapshot() === 0 ? old.promise : current.promise
+  })
+  const remove = registry.register({ id: 'live', target: 'extension', order: 0, observe: () => [input], resolve })
+  const menu = registry.resolve(target)
+  try {
+    input.set(1)
+    expect(signals[0]?.aborted).toBe(true)
+    old.resolve([{ id: 'old', label: 'Old', run }])
+    await old.promise
+    expect(menu.source.getSnapshot()).toEqual([])
+    current.resolve([{ id: 'new', label: 'New', run }])
+    await menu.ready
+    expect(menu.source.getSnapshot().map(item => item.id)).toEqual(['live/new'])
+    menu.select('live/old')
+    expect(run).not.toHaveBeenCalled()
+    remove()
+    expect(detach).toHaveBeenCalledOnce()
+    expect(menu.source.getSnapshot()).toEqual([])
+    input.set(2)
+    expect(resolve).toHaveBeenCalledTimes(2)
+    expect(signals.every(signal => signal.aborted)).toBe(true)
+    expect(failed).not.toHaveBeenCalled()
+  } finally { menu.dispose(); registry.dispose() }
+  expect(detach).toHaveBeenCalledOnce()
+})
+
+it('withdraws invalid reactive updates and contains observation failure without retaining stale callbacks', () => {
+  const input = createSnapshotStore(false), failed = vi.fn(), run = vi.fn()
+  const registry = new MenuRegistry(failed)
+  registry.register({ id: 'live', target: 'extension', order: 0, observe: () => [input], resolve: () => {
+    if (input.getSnapshot()) throw new Error('No access')
+    return [{ id: 'run', label: 'Run', run }]
+  } })
+  registry.register({ id: 'broken', target: 'extension', order: 1, observe: () => { throw new Error('Unavailable') }, resolve: () => [] })
+  const menu = registry.resolve(target)
+  input.set(true)
+  expect(menu.source.getSnapshot()).toEqual([])
+  menu.select('live/run')
+  expect(run).not.toHaveBeenCalled()
+  expect(failed).toHaveBeenCalledTimes(2)
+  menu.dispose(); registry.dispose()
+})
+
+it('does not report an observation failure after its provider unloads', () => {
+  const failed = vi.fn(), registry = new MenuRegistry(failed)
+  let remove = () => {}
+  remove = registry.register({ id: 'removed', target: 'extension', order: 0,
+    observe: () => { remove(); throw new Error('Unloaded') }, resolve: () => [] })
+  const menu = registry.resolve(target)
+  expect(menu.source.getSnapshot()).toEqual([])
+  expect(failed).not.toHaveBeenCalled()
+  menu.dispose(); registry.dispose()
 })

@@ -8,7 +8,7 @@ import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-title'
 import { launchWebScaffold, seedSession, watchConsole, type WebScaffold } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { saveFailureShot } from './support.ts'
 
 const GIF = Buffer.from('R0lGODdhMAAgAIEAAEtu5gAAAAAAAAAAACwAAAAAMAAgAEAIQQABCBxIsKDBgwgTKlzIsKHDhxAjSpxIsaLFixgzatzIsaPHjyBDihxJsqTJkyhTqlzJsqXLlzBjypxJs6bNmQEBADs=', 'base64')
 async function menuLabels(menu: Locator): Promise<string[]> {
@@ -47,13 +47,16 @@ describe('web context menus', () => {
     await seedSession(scaffold, fixture('Menu foreground'), 'context-menu-first')
     await seedSession(scaffold, fixture('Menu background'), 'context-menu-other')
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    const context = await browser.newContext({ viewport: { width: 1680, height: 1000 }, locale: 'en-US', timezoneId: 'Asia/Shanghai' })
+    page = await context.newPage()
     await page.setViewportSize({ width: 1291, height: 768 })
     tripwire = watchConsole(page)
     await page.route('https://images.example/original.gif', route => route.fulfill({ body: GIF, contentType: 'image/gif', headers: { 'access-control-allow-origin': '*' } }))
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.goto(scaffold.authenticatedUrl)
     await page.locator('[data-row-key^="workspace:"]').filter({ hasText: 'Ungrouped' }).click()
+    await page.locator('[data-row-key="session:context-menu-other"]').click()
+    await page.locator('[data-row-key="session:context-menu-other"]').getByText('Menu background', { exact: true }).waitFor()
     await page.locator('[data-row-key="session:context-menu-first"]').click()
     await page.getByText('CONTEXT_MENU_READY', { exact: true }).waitFor()
   })
@@ -69,6 +72,8 @@ describe('web context menus', () => {
     expect(names.slice(0, 5)).toEqual(['Pin session', 'Rename', 'Fork session', 'Copy Session ID', 'Show in folder'])
     expect(names.at(-1)).toBe('Archive session')
     expect(await menu.getByRole('separator').count()).toBe(2)
+    expect(await menu.getByRole('menuitem', { name: 'Archive session', exact: true }).evaluate(row =>
+      getComputedStyle(row.parentElement!.parentElement!).borderTopWidth)).toBe('0px')
     const alignedSeparators = async () => {
       const bounds = await menu.evaluate((node) => {
         const row = node.querySelector<HTMLElement>('[role="menuitem"]')!
@@ -100,6 +105,61 @@ describe('web context menus', () => {
     await background.getByRole('button', { name: /actions/i }).click()
     expect(await menu.count()).toBe(0)
     expect(await background.getAttribute('aria-selected')).toBe('false')
+  })
+
+  it('updates an open Session menu from another window’s shortcut preferences and still renames the captured row', async () => {
+    onTestFailed(() => saveFailureShot(page, 'context-menus-live-shortcuts'))
+    const other = await page.context().newPage()
+    const key = 'dsh.keybindings.v1'
+    const original = await page.evaluate(key => localStorage.getItem(key), key)
+    try {
+      await other.goto(scaffold.authenticatedUrl)
+      await other.getByRole('button', { name: 'Search sessions', exact: true }).waitFor()
+      const background = page.locator('[data-row-key="session:context-menu-other"]')
+      await background.click({ button: 'right' })
+      const item = page.getByRole('menuitem', { name: 'Rename', exact: true })
+      await item.waitFor()
+      const popup = await page.getByRole('menu').elementHandle()
+      const initial = await item.getAttribute('aria-keyshortcuts')
+      await other.evaluate((key) => {
+        localStorage.setItem(key, JSON.stringify({ schemaVersion: 2, profiles: {
+          'web:macos': { 'session.rename': { code: 'KeyJ', modifiers: ['primary', 'alt', 'shift'] } },
+          'web:windows': { 'session.rename': { code: 'KeyJ', modifiers: ['primary', 'alt', 'shift'] } },
+        } }))
+      }, key)
+      await expect.poll(() => item.getAttribute('aria-keyshortcuts')).toMatch(/J$/)
+      expect(await item.getAttribute('aria-keyshortcuts')).not.toBe(initial)
+      expect(await popup!.evaluate(element => element.isConnected)).toBe(true)
+      expect(await background.getAttribute('aria-selected')).toBe('false')
+      await item.click()
+      const rename = page.getByRole('dialog', { name: 'Rename session', exact: true })
+      expect(await rename.getByLabel('Session name').inputValue()).toBe('Menu background')
+      await rename.getByRole('button', { name: 'Cancel', exact: true }).click()
+      expect(await background.getAttribute('aria-selected')).toBe('false')
+      await background.click({ button: 'right' })
+      await item.waitFor()
+      await other.evaluate((key) => {
+        localStorage.setItem(key, JSON.stringify({ schemaVersion: 2, profiles: {
+          'web:macos': { 'session.rename': null }, 'web:windows': { 'session.rename': null },
+        } }))
+      }, key)
+      await expect.poll(() => item.getAttribute('aria-keyshortcuts')).toBeNull()
+      await other.evaluate(({ key, original }) => {
+        if (original === null) localStorage.removeItem(key)
+        else localStorage.setItem(key, original)
+      }, { key, original })
+      await expect.poll(() => item.getAttribute('aria-keyshortcuts')).toBe(initial)
+      await page.keyboard.press('Escape')
+    } finally {
+      const cancel = page.getByRole('dialog', { name: 'Rename session', exact: true }).getByRole('button', { name: 'Cancel', exact: true })
+      if (await cancel.isVisible()) await cancel.click()
+      await page.keyboard.press('Escape')
+      await other.evaluate(({ key, original }) => {
+        if (original === null) localStorage.removeItem(key)
+        else localStorage.setItem(key, original)
+      }, { key, original })
+      await other.close()
+    }
   })
 
   it('shares Workspace menus and keeps folder gestures independent from expansion', async () => {

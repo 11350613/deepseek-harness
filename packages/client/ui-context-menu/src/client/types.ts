@@ -1,4 +1,6 @@
 /** Presentation-independent menu contributions and explicit gesture targets. */
+import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PaneId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
 
@@ -26,10 +28,12 @@ export interface MenuPoint { readonly x: number; readonly y: number }
 export interface MenuActionView {
   readonly id: string
   readonly label: string
+  /** Command identity for live shortcut display only; selection still invokes this action’s run callback. */
+  readonly commandId?: ShortcutCommandId
   readonly disabled?: boolean
   readonly icon?: string
   /** Semantic glyph from the shared icon library; image icons take precedence. */
-  readonly symbol?: 'copy' | 'download' | 'save' | 'folder' | 'sidebar' | 'external' | 'close' | 'closeOthers' | 'closeRight' | 'rename' | 'delete'
+  readonly symbol?: 'copy' | 'download' | 'save' | 'folder' | 'sidebar' | 'external' | 'close' | 'closeOthers' | 'closeRight' | 'rename' | 'delete' | 'pin' | 'unpin' | 'fork' | 'archive' | 'unarchive'
   readonly danger?: boolean
   readonly separatorBefore?: boolean
   /** Render after legacy component contributions in the shared Web popup. */
@@ -50,15 +54,21 @@ export interface MenuContribution<K extends keyof MenuTargetMap> {
   readonly target: K
   readonly order: number
   /**
+   * Reactive inputs that re-resolve actions for the same captured target.
    * @param target - clicked object.
-   * @param signal - menu occurrence lifetime.
+   * @returns sources owned by the contributing feature; unsubscribed on dismissal or unload.
+   */
+  observe?(target: MenuTargetMap[K]): readonly ObservableSnapshot<unknown>[]
+  /**
+   * @param target - clicked object.
+   * @param signal - aborted on dismissal, plugin unload, or a newer observed preparation.
    * @returns available actions.
    */
   resolve(target: MenuTargetMap[K], signal: AbortSignal): readonly MenuAction[] | Promise<readonly MenuAction[]>
 }
 /** Independent menu occurrence used by custom renderers and embedded menus. */
 export interface MenuResolution {
-  /** Read a new immutable presentation after each provider settles. */
+  /** Read a new immutable presentation after each provider settles, updates, or is withdrawn. */
   readonly source: import('@deepseek-ai/dsh-client-store').ObservableSnapshot<readonly MenuActionView[]>
   /** Settles when all opening contributions have completed or been withdrawn. */
   readonly ready: Promise<void>

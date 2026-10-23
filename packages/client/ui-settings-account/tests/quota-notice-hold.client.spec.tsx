@@ -110,6 +110,7 @@ async function bench() {
   runtime.remote.provideNamespaces({ session: { openWorkspacePath: async () => ({ ok: true, value: { opened: true } }) } })
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
+  runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
   await runtime.mount({ apply: applyMenus, inject: injectMenus })
   runtime.slots.installLocale(locale)
   runtime.ctx.effect(() => locale.register('settings.account', { en, zh }), 'spec: account dictionaries')

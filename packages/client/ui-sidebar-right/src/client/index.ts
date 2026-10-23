@@ -1,3 +1,4 @@
+import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { TabMenuContent } from './shell/TabMenuContent.tsx'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
@@ -144,7 +145,7 @@ export function apply(ctx: ClientContext): void {
         }
       }
       return [
-        { id: 'close', symbol: 'close', label: t('menu.close'), disabled: !tabs.close, run: () => { if (controller.menuTabs(sessionId, paneId, tabId).close) controller.closeIn(sessionId, tabId) } },
+        { id: 'close', commandId: 'page.close' as ShortcutCommandId, symbol: 'close', label: t('menu.close'), disabled: !tabs.close, run: () => { if (controller.menuTabs(sessionId, paneId, tabId).close) controller.closeIn(sessionId, tabId) } },
         { id: 'others', label: t('menu.closeOthers'), disabled: tabs.all.length === 0, run: () => { closeMany(tabs.all) } },
         ...tabs.right.length === 0 ? [] : [{ id: 'right', label: t('menu.closeRight'), run: () => { closeMany(tabs.right) } }],
       ]

@@ -33,7 +33,7 @@ export interface Config { resolutionTimeoutMs?: number }
 export const Config: z<Config> = z.object({ resolutionTimeoutMs: z.natural().min(1).default(1000) })
 
 /** Required overlay and localization services. */
-export const inject = ['slots', 'locale']
+export const inject = ['slots', 'locale', 'shortcuts']
 /** @param ctx - plugin-owned Client context. @param config - validated preparation budget. */
 export function apply(ctx: Context, config: Config = Config({})): void {
   ctx.effect(() => ctx.locale.register('contextMenu', dictionaries), 'context menu: locale')
@@ -130,7 +130,8 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'context-menu', store,
     children: { 'contextMenu.content': { kind: 'keyed', scope: 'root' } },
-    inject: () => ({ close, returnFocus: () => returnFocus, select: (id: string) => { const selected = active?.resolution
+    inject: () => ({ hooks: { catalog: ctx.shortcuts.catalog }, close, returnFocus: () => returnFocus, select: (id: string) => {
+      const selected = active?.resolution
       active?.unsubscribe(); active = undefined
       targetSource.set(null); dismiss(false)
       selected?.select(id); selected?.dispose() } }),

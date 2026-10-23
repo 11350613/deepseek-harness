@@ -37,6 +37,9 @@
     },
     {
       "path": "../ui-renderer"
+    },
+    {
+      "path": "../shortcuts/tsconfig.client.json"
     }
   ]
 }

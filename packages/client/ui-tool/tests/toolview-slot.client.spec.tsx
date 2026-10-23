@@ -95,6 +95,7 @@ async function bench(nodes: ToolResultNode[]) {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
+  runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
   await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
   await runtime.sessions.add({
     id: SID,
@@ -317,6 +318,7 @@ describe('registrant declaration injection', () => {
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
+    runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
     await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
 

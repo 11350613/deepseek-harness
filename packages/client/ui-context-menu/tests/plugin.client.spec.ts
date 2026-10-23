@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -15,6 +16,7 @@ declare module '@deepseek-ai/dsh-client-ui-context-menu/client' {
 
 it('lets an external contribution open another menu and withdraws its actions when its fiber unloads', async () => {
   const ctx = new Context()
+  ctx.provide('shortcuts', { catalog: createSnapshotStore([]) } as never)
   let overlay!: MenuOverlayInjected
   let store!: ReturnType<ReturnType<typeof createMenuStore>['create']>
   ctx.provide('slots', {
@@ -72,6 +74,7 @@ it('lets an external contribution open another menu and withdraws its actions wh
 it('waits for metadata, toggles nearby repeated gestures, replaces occurrences, and cancels pending openings', async () => {
   vi.useFakeTimers()
   const ctx = new Context()
+  ctx.provide('shortcuts', { catalog: createSnapshotStore([]) } as never)
   let store!: ReturnType<ReturnType<typeof createMenuStore>['create']>
   ctx.provide('slots', {
     inject: (_name: string, register: Parameters<SlotRegistry['inject']>[1]) => ctx.effect(register),
@@ -118,6 +121,7 @@ it('waits for metadata, toggles nearby repeated gestures, replaces occurrences, 
 it('keeps trigger focus through replacement and ignores non-dismissal events and late feedback', async () => {
   vi.useFakeTimers()
   const ctx = new Context()
+  ctx.provide('shortcuts', { catalog: createSnapshotStore([]) } as never)
   let overlay!: MenuOverlayInjected
   ctx.provide('slots', {
     inject: (_name: string, register: Parameters<SlotRegistry['inject']>[1]) => ctx.effect(register),
@@ -161,6 +165,7 @@ it('keeps trigger focus through replacement and ignores non-dismissal events and
 
 it('dispatches keyboard menus at focused triggers and leaves unhandled shortcuts available', async () => {
   const ctx = new Context()
+  ctx.provide('shortcuts', { catalog: createSnapshotStore([]) } as never)
   ctx.provide('slots', { inject: () => () => {} } as never)
   ctx.provide('locale', { register: () => () => {}, bind: () => (key: string) => key } as never)
   const fiber = ctx.plugin({ inject, apply })

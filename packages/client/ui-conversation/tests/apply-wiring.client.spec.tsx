@@ -26,6 +26,7 @@ async function bench(options: { declareConversation?: boolean } = {}) {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
+  runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
   await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
   if (options.declareConversation !== false) {
     await runtime.root.declare({

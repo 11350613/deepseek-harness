@@ -177,7 +177,7 @@ const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
  * frame, and scroll/resize; return null to skip placement for that frame.
  * @param props.minWidthFromAnchor - in portal mode, keep the menu at least as wide as its anchor, bounded by viewport margins.
  * @param props.footer - rows pinned below the scrolling items area, separated
- * by a hairline; they stay visible while the items above scroll.
+ * by a hairline; contextual menus reuse an explicit leading separator. These rows stay visible while the items above scroll.
  * @param props.children - component rows rendered after `items` in the same
  * list, each a `role="menuitem"` button such as {@link MenuItemButton}; they
  * share the keyboard walk, the submenu exclusivity, and the post-selection

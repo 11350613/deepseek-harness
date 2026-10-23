@@ -69,6 +69,7 @@ async function bench() {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
+  runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
   await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
   await runtime.declare({
     'shell.overlay': { kind: 'list', scope: 'root' },

@@ -87,6 +87,12 @@
   border-top: 0.5px solid var(--dsw-alias-border-l2);
 }
 
+.list[data-context-menu] .footer:has(> .separator:first-child) {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
 .itemWrap {
   position: relative;
 }

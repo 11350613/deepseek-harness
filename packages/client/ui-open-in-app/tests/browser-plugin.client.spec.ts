@@ -22,7 +22,7 @@ import { apply as nodeApply } from '../src/index.ts'
 import { OpenInAppAction } from '../src/client/OpenInAppAction.tsx'
 import { OpenPathAction } from '../src/client/OpenPathAction.tsx'
 import { OpenPathEmptyAction } from '../src/client/OpenPathEmptyAction.tsx'
-import { SessionRevealMenuItem, type SessionRevealInjected } from '../src/client/SessionRevealMenuItem.tsx'
+import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import { en, NS, zh } from '../src/client/locales.ts'
 
 afterEach(() => {
@@ -63,7 +63,9 @@ async function bench() {
     subscribe: listener => layoutStore.subscribe(listener),
   })
   const notify = vi.fn()
-  ctx.provide('menus', { register: () => () => {}, open: vi.fn(), notify } as never)
+  const menus = new MenuRegistry(notify)
+  ctx.effect(() => () => { menus.dispose() })
+  ctx.provide('menus', { register: menus.register.bind(menus), resolve: menus.resolve.bind(menus), open: vi.fn(), notify } as never)
   ctx.provide('layout', layout)
   ctx.provide('sessions', { list })
   ctx.provide('shortcuts', { register: (command: ShortcutCommand) => { commands.set(command.id, command); return () => { commands.delete(command.id) } }, catalog: createSnapshotStore([]) })
@@ -88,21 +90,24 @@ describe('open-in-app browser half', () => {
     const fetcher = vi.fn(async (input: string | URL) => String(input) === 'open-in-app/apps'
       ? new Response(JSON.stringify({ apps: ['finder'] })) : new Response('', { status: 502 }))
     vi.stubGlobal('fetch', fetcher)
-    const { ctx, fiber, notify } = await bench()
+    const { ctx, fiber, list, notify } = await bench()
+    const id = 'captured' as SessionId
+    list.set({ ...list.getSnapshot(), ids: [id], byId: {
+      [id]: { id, displayTitle: 'Captured', cwd: '/captured', running: false, blank: false, updatedAt: 0, retainedBy: {} },
+    } })
+    const menu = ctx.menus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
     try {
-      const entry = ctx.slots.entries('sidebar.workspaces.session.menu.item')[0]!
-      expect(entry.component).toBe(SessionRevealMenuItem)
-      expect(entry.options).toMatchObject({ id: 'open-in-app.reveal', order: 500 })
-      const face: Partial<SessionRevealInjected> | undefined = entry.inject?.()
-      if (face?.hooks === undefined || face.reveal === undefined) throw new Error('Expected Session reveal injection')
-      await vi.waitFor(() => { expect(face.hooks!.directoryApps.getSnapshot()).toEqual(['finder']) })
-      await face.reveal('finder', '/captured')
+      expect(ctx.slots.entries('sidebar.workspaces.session.menu.item')).toHaveLength(0)
+      await vi.waitFor(() => { expect(menu.source.getSnapshot()[0]).toMatchObject({ label: 'Show in Finder', disabled: false }) })
+      menu.select('open-in-app.reveal/reveal')
+      await vi.waitFor(() => { expect(notify).toHaveBeenCalledWith(en['path.revealError']) })
       expect(fetcher).toHaveBeenCalledWith('open-in-app/open', expect.objectContaining({
         body: JSON.stringify({ app: 'finder', path: '/captured' }),
       }))
-      expect(notify).toHaveBeenCalledWith(en['path.revealError'])
-    } finally { await fiber.dispose() }
-    expect(ctx.slots.entries('sidebar.workspaces.session.menu.item')).toHaveLength(0)
+    } finally { menu.dispose(); await fiber.dispose() }
+    const removed = ctx.menus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
+    expect(removed.source.getSnapshot()).toEqual([])
+    removed.dispose()
   })
   it('refuses absent workspaces and reports failed keyboard launches', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => String(input) === 'open-in-app/apps'

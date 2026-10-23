@@ -104,6 +104,7 @@ async function bench(renderQuote = false) {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
+  runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
   await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
   await runtime.root.declare({
     'main': { kind: 'keyed', scope: 'root' },

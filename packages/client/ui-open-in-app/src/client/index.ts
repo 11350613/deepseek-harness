@@ -23,7 +23,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 import { OPEN_IN_APP_ICON_PREFIX_ROUTE } from '@deepseek-ai/dsh-host-open-in-app/shared'
 import { OpenInAppController } from './controller.ts'
-import { SessionRevealMenuItem, type SessionRevealInjected } from './SessionRevealMenuItem.tsx'
+import { registerSessionReveal } from './session-reveal.ts'
 import { OpenInAppAction, type OpenInAppActionInjected, type OpenInAppActionProps } from './OpenInAppAction.tsx'
 import { OpenInAppPathController } from './open-path.ts'
 import { OpenPathAction, type OpenPathInjected } from './OpenPathAction.tsx'
@@ -58,20 +58,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'open-in-app: dictionaries')
   const t = ctx.locale.bind(NS)
   registerContextMenus(ctx, paths, t, controller)
-  ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register({
-    name: 'sidebar.workspaces.session.menu.item', id: 'open-in-app.reveal', order: 500, locale: NS,
-    inject: (): SessionRevealInjected => ({
-      hooks: { directoryApps: controller.apps },
-      reveal: async (application, directory) => {
-        try {
-          await controller.launch(application, directory)
-        } catch (_error) {
-          // The shared toast remains visible after the Session menu closes.
-          ctx.menus.notify(t('path.revealError'))
-        }
-      },
-    }),
-  }, SessionRevealMenuItem))
+  registerSessionReveal(ctx, controller, t)
   const target = () => {
     if (ctx.layout.panelInfo.getSnapshot().activePanelId !== null) return undefined
     const session = Object.values(ctx.sessions.list.getSnapshot().byId)

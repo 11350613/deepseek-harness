@@ -87,6 +87,7 @@ async function bench(opts?: { blank?: boolean }) {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
+  runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
   await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
   await runtime.sessions.add({
     id: SID,
@@ -111,6 +112,7 @@ describe('resident composer', () => {
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
+    runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
     await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
     await runtime.mount({ inject: [...inject], apply })
@@ -139,6 +141,7 @@ describe('resident composer', () => {
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
+    runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
     await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
     await runtime.workspaces.update((draft) => {
       draft.items = [{ workspaceId: 'w1', title: 'Proj', path: '/proj', sessionIds: [SID] }] as never
@@ -207,6 +210,7 @@ describe('prompt rejection through the assembled composer', () => {
     const locale = new LocaleRuntime(runtime.ctx)
     runtime.ctx.provide('locale', locale)
     runtime.slots.installLocale(locale)
+    runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) })
     await runtime.mount({ inject: [...injectMenus], apply: applyMenus })
     const prompt = vi.fn<ISession['prompt']>(async () => ({
       ok: false,
