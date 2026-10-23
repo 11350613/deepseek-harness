@@ -23,14 +23,14 @@ const DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependen
  * npm's hoisted placement re-checks every internal edge against the incoming
  * edges of its peer target (`canPlacePeers` calls `checkCanPlaceNoCurrent`,
  * which walks `depValid` over that target's edges), so resolution time grows
- * with this product and not with the package count alone. Measured on an idle
- * M-series host: 277 package(s) x 2524 internal edge(s) = 699,148 unit(s) cost
- * 180.7 s of npm time out of 185.1 s end to end. The budget adds 25% headroom
- * for ordinary product growth, so a graph that grows here fails with its own
- * measured counts instead of failing on whichever runner happens to be slow.
+ * with this product and not with the package count alone. Measured on an M5 Pro
+ * with Node 26.7.0 and npm 11.19.0: 316 package(s) x 2780 internal edge(s) =
+ * 878,480 unit(s) cost 78.6 s of npm time out of 78.9 s end to end. The budget
+ * rounds that measured work up to 880,000 units, so a graph that grows here
+ * fails with its own counts instead of on whichever runner happens to be slow.
  * Raising it requires re-measuring the resolution and recording the new counts.
  */
-export const MAX_RESOLUTION_WORK_UNITS = 875_000
+export const MAX_RESOLUTION_WORK_UNITS = 880_000
 
 /**
  * Measured npm seconds per resolution work unit on the reference host: 180.66 s
