@@ -9,6 +9,8 @@
   },
   "include": [
     "apps/web/tests/sidebar-drawer.e2e.ts",
+    "apps/web/tests/creation-recommendations.e2e.ts",
+    "apps/web/tests/plugin-recommendations.e2e.ts",
     "apps/web/tests/japanese-plugin-metadata.e2e.ts",
     "apps/web/tests/additional-locales.e2e.ts",
     "apps/web/tests/rich-text-quotes.e2e.ts",
@@ -255,6 +257,9 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/experimental/action-cards" },
+    { "path": "./packages/experimental/creation-recommendations" },
+    { "path": "./packages/experimental/plugin-recommendations" },
 
     { "path": "./packages/experimental/client-ui-cot-translation/tsconfig.host.json" },
     { "path": "./packages/experimental/cot-translation-bundle" },
