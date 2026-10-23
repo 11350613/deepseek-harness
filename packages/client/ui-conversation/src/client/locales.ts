@@ -1154,7 +1154,6 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
-  'session.moreViewsCurrent': 'Más vistas de conversación · {name}',
   'quote.remove': 'Eliminar cotización',
   'shortcut.newline': 'Nueva linea',
   'shortcut.complementary': 'Usar la acción alternativa de poner en cola o redirigir',
@@ -1226,6 +1225,7 @@ export const es = {
   'hero.chooseWorkspace': 'Elige espacio de trabajo',
   'session.hierarchy': 'Jerarquía de sesiones',
   'session.moreViews': 'Más vistas de conversación',
+  'session.moreViewsCurrent': 'Más vistas de conversación · {name}',
   'todo.title': 'Tareas pendientes',
   'todo.progress.done': '{done} completado',
   'todo.progress.active': '{active} en progreso',
@@ -1536,7 +1536,6 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
-  'session.moreViewsCurrent': 'Autres vues de conversation · {name}',
   'quote.remove': 'Supprimer le devis',
   'shortcut.newline': 'Nouvelle ligne',
   'shortcut.complementary': 'Utiliser l’action alternative de mise en attente ou de guidage',
@@ -1608,6 +1607,7 @@ export const fr = {
   'hero.chooseWorkspace': 'Choisir un espace de travail',
   'session.hierarchy': 'Hiérarchie des sessions',
   'session.moreViews': 'Plus de vues de conversations',
+  'session.moreViewsCurrent': 'Plus de vues de conversations · {name}',
   'todo.title': 'À faire',
   'todo.progress.done': '{done} terminé',
   'todo.progress.active': '{active} en cours',
@@ -1918,7 +1918,6 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
-  'session.moreViewsCurrent': 'Weitere Gesprächsansichten · {name}',
   'quote.remove': 'Zitat entfernen',
   'shortcut.newline': 'Neue Zeile',
   'shortcut.complementary': 'Die alternative Aktion zum Vormerken oder Lenken verwenden',
@@ -1990,6 +1989,7 @@ export const de = {
   'hero.chooseWorkspace': 'Wählen Sie einen Arbeitsbereich',
   'session.hierarchy': 'Sitzungshierarchie',
   'session.moreViews': 'Weitere Konversationsansichten',
+  'session.moreViewsCurrent': 'Weitere Konversationsansichten · {name}',
   'todo.title': 'Aufgaben',
   'todo.progress.done': '{done} abgeschlossen',
   'todo.progress.active': '{active} in Bearbeitung',
@@ -2300,7 +2300,6 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
-  'session.moreViewsCurrent': 'Другие виды разговора · {name}',
   'quote.remove': 'Удалить цитату',
   'shortcut.newline': 'Новая линия',
   'shortcut.complementary': 'Использовать альтернативное действие: поставить в очередь или направить',
@@ -2372,6 +2371,7 @@ export const ru = {
   'hero.chooseWorkspace': 'Выберите рабочее пространство',
   'session.hierarchy': 'Иерархия сеансов',
   'session.moreViews': 'Больше просмотров беседы',
+  'session.moreViewsCurrent': 'Больше просмотров беседы · {name}',
   'todo.title': 'Дела',
   'todo.progress.done': '{done} завершено',
   'todo.progress.active': '{active} в процессе',
@@ -2682,7 +2682,6 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
-  'session.moreViewsCurrent': 'Mais visualizações da conversa · {name}',
   'quote.remove': 'Remover cotação',
   'shortcut.newline': 'Nova linha',
   'shortcut.complementary': 'Usar a ação alternativa de enfileirar ou orientar',
@@ -2754,6 +2753,7 @@ export const pt = {
   'hero.chooseWorkspace': 'Escolha o espaço de trabalho',
   'session.hierarchy': 'Hierarquia de sessão',
   'session.moreViews': 'Mais visualizações de conversas',
+  'session.moreViewsCurrent': 'Mais visualizações de conversas · {name}',
   'todo.title': 'Tarefas',
   'todo.progress.done': '{done} concluído',
   'todo.progress.active': '{active} em andamento',
