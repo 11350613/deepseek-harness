@@ -19,7 +19,10 @@ export type MarkdownMenuTarget =
 export interface MarkdownDelegate {
   /** Open an object menu without executing its normal activation. */
   readonly openContextMenu?: ((target: MarkdownMenuTarget, point: { x: number; y: number }) => void) | undefined
-  /** Image previews for decoded local paths in this owner's workspace. */
+  /**
+   * Image previews for decoded local paths in this owner's workspace. The renderer
+   * appends a per-mount `load` query parameter to `api/file` route URLs.
+   */
   readonly fileImages?: {
     fileDrag: import('../file-drag-actions.ts').FileDragActions
     resolve: (path: string) => string | undefined
