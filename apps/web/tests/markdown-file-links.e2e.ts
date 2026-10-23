@@ -156,6 +156,43 @@ describe('web e2e: Markdown file links', () => {
     await assertFixtureInventory(SNAPSHOT_DIR, ['session.v3.jsonl', 'links.expected.md', 'preview.expected.md'])
   })
 
+  it('replays colon line suffixes as locations and shares tabs with fragment links', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-colon-file-links'))
+    const fixture = new URL('./fixtures/markdown-colon-file-links/session.v3.jsonl', import.meta.url)
+    const id = await seedSession(scaffold, await readFile(fixture, 'utf8'), 'colon-file-links')
+    await page.reload({ waitUntil: 'load' })
+    const workspace = page.getByRole('treeitem').first()
+    await workspace.waitFor()
+    if (await workspace.getAttribute('aria-expanded') !== 'true') await workspace.click()
+    await page.locator(`[data-row-key="session:${id}"]`).click()
+
+    const relative = page.getByRole('button', { name: 'Relative colon:24–30', exact: true })
+    await relative.waitFor()
+    await compareOrRefreshGolden(
+      fileURLToPath(new URL('./expected/markdown-colon-file-links.md', import.meta.url)),
+      await relative.locator('..').ariaSnapshot(), MODE,
+    )
+    const column = page.locator('[data-rightbar-col]')
+    for (const [label, line] of [['Relative colon:24–30', 24], ['Absolute colon:30', 30], ['Fragment:12', 12]] as const) {
+      const link = page.getByRole('button', { name: label, exact: true })
+      await link.focus()
+      await link.press('Enter')
+      await expect.poll(() => column.locator(`[data-textpreview-target="${line}"]`).textContent())
+        .toBe(`source line ${line}\n`)
+      await expect.poll(() => column.locator('[data-textpreview-path]').textContent())
+        .toBe(join(scaffold.workspaceCwd, 'src/example.txt'))
+      expect(await column.locator('[data-dockkit-tab-title]').allTextContents()).toEqual(['example.txt'])
+    }
+    await page.reload({ waitUntil: 'load' })
+    await expect.poll(() => column.locator('[data-textpreview-path]').textContent())
+      .toBe(join(scaffold.workspaceCwd, 'src/example.txt'))
+    await relative.click()
+    await expect.poll(() => column.locator('[data-textpreview-target="24"]').textContent()).toBe('source line 24\n')
+    expect(await column.locator('[data-dockkit-tab-title]').allTextContents()).toEqual(['example.txt'])
+    expect(tripwire.pageErrors).toEqual([])
+    expect(tripwire.warnings).toEqual([])
+  })
+
   it('opens parent-path prose and read-card links while retaining each address across reload', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-parent-file-links'))
     // Return through the parent into this owned temp root; no shared parent file is created.

@@ -1,0 +1,6 @@
+- paragraph:
+  - button "Relative colon:24–30"
+  - text: ·
+  - button "Absolute colon:30"
+  - text: ·
+  - button "Fragment:12"

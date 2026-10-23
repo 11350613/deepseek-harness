@@ -9,6 +9,17 @@ afterEach(cleanup)
 describe('Markdown file links', () => {
   it.each([
     ['src/index.ts', 'src/index.ts', undefined],
+    ['src/index.ts:24', 'src/index.ts', { line: 24 }],
+    ['/workspace/src/index.ts:24', '/workspace/src/index.ts', { line: 24 }],
+    ['index.ts:24', 'index.ts', { line: 24 }],
+    ['./README:24', './README', { line: 24 }],
+    ['../docs/My%20Notes.md:24-30', '../docs/My Notes.md', { line: 24 }],
+    ['C:/work/file.ts:2', 'C:/work/file.ts', { line: 2 }],
+    ['C:%5Cwork%5Cfile.ts:2-3', 'C:\\work\\file.ts', { line: 2 }],
+    ['docs/notes%3A24', 'docs/notes:24', undefined],
+    ['docs/notes%3A24:30', 'docs/notes:24', { line: 30 }],
+    ['docs/notes:24#L3', 'docs/notes:24', { line: 3 }],
+    ['docs/notes:review', 'docs/notes:review', undefined],
     ['/workspace/src/index.ts#L24', '/workspace/src/index.ts', { line: 24 }],
     ['../docs/My%20Notes.md#L24-L30', '../docs/My Notes.md', { line: 24 }],
     ['C:/work/file.ts#L2', 'C:/work/file.ts', { line: 2 }],
@@ -83,6 +94,9 @@ describe('Markdown file links', () => {
     '//example.com/file', '%2F%2Fexample.com/file', '%5C%5Cserver%5Cfile',
     'javascript:alert', 'data:text/plain,hi', 'file:///etc/passwd', 'vscode:open',
     '%6Aavascript:alert', '#L2', 'file.ts?raw=1', 'file%ZZ.ts', 'file%00.ts',
+    '/file.ts:0', '/file.ts:3-2', '/file.ts:1-0', ':24',
+    '/file.ts:9007199254740992', '/file.ts:1-9007199254740992',
+    'javascript:alert:24', 'file:///etc/passwd:24', '//example.com/file:24',
     'file.ts#heading', 'file.ts#L0', 'file.ts#L3-L2',
     'file.ts#L9007199254740992', 'file.ts#L1-L9007199254740992',
   ])('keeps unsupported destination %s inert', (target) => {
