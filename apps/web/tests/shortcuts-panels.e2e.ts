@@ -254,7 +254,7 @@ describe.skipIf(process.platform === 'win32')('Web sidebar shortcuts', () => {
         await menuTab.click({ button: 'right' })
         await page.getByRole('menu').waitFor()
         expect(await page.getByRole('tooltip').count()).toBe(0)
-        expect(await page.getByRole('menuitem', { name: 'Close', exact: true }).getAttribute('aria-keyshortcuts')).toBeNull()
+        expect(await page.getByRole('menuitem', { name: 'Close', exact: true }).getAttribute('aria-keyshortcuts')).toBe(aria)
         if (attempt === 0) {
           await compareOrRefreshGolden(join(expected, 'tab-menu.expected.md'),
             await captureStableAria(page, '[data-context-menu][role="menu"]', scaffold.workspaceCwd), mode)
