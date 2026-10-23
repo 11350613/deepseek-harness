@@ -26,7 +26,7 @@ async function openInventory(page: Page, url: string) {
   return dialog
 }
 
-it('places dynamic Session menu rows by order among the shipped ones and removes them with their fiber', async () => {
+it('keeps ordered legacy Session menu rows before Archive and removes them with their fiber', async () => {
   const scaffold = await launchWebScaffold({ extraInstallAnchors: [join(FIXTURE, 'package.json')] })
   onTestFinished(() => scaffold.close())
   const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
@@ -95,13 +95,15 @@ it('places dynamic Session menu rows by order among the shipped ones and removes
     const menu = page.getByRole('menu')
     await menu.waitFor()
     expect(await menu.getByRole('separator').count()).toBe(3)
+    const exportRow = menu.getByRole('menuitem', { name: 'Export session', exact: true })
+    expect(await exportRow.locator('..').getByRole('separator').isVisible()).toBe(true)
     await compareOrRefreshGolden(
       SESSION_ACTION_EXPECTED,
       await captureStableAria(page, '[role="menu"]', scaffold.workspaceCwd),
       webSnapshotMode(),
     )
 
-    await menu.getByRole('menuitem', { name: 'Export session' }).press('Enter')
+    await exportRow.press('Enter')
     await expect.poll(() => menu.count()).toBe(0)
     expect(await page.evaluate(() => ({
       action: document.documentElement.dataset.sessionAction,

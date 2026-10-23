@@ -280,6 +280,11 @@
   display: none;
 }
 
+/* A legacy outlet following structured rows is not the beginning of the menu. */
+.list[data-context-menu] .viewport > .itemWrap ~ [data-slot] .itemWrap:first-child > .separator:first-child {
+  display: block;
+}
+
 /* The submenu aligns with the parent's bottom edge. Its hit bridge covers
  * the menu inset and the 6px gap so pointer movement keeps it open. */
 .submenu {
