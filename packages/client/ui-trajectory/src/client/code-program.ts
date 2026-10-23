@@ -30,9 +30,15 @@ function parseRecord(value: string | undefined): Record<string, unknown> | undef
 
 function recordedLanguage(schemaRaw: string | undefined): CodeProgram['language'] {
   const schema = parseRecord(schemaRaw)
+  const declaredLanguage = typeof schema?.description === 'string'
+    ? /^Execute a program in `([^`]+)`/i.exec(schema.description)?.[1]?.toLowerCase()
+    : undefined
+  if (declaredLanguage !== undefined
+    && declaredLanguage !== 'typescript' && declaredLanguage !== 'python') return undefined
   const properties = record(record(schema?.parameters)?.properties)
-  const description = record(properties?.code)?.description
-  if (typeof description !== 'string') return undefined
+  const description = [declaredLanguage, record(properties?.code)?.description]
+    .filter(hint => typeof hint === 'string')
+    .join('\n')
   const typescript = /\bTypeScript\b/i.test(description)
   const python = /\bPython\b/i.test(description)
   if (typescript === python) return undefined
