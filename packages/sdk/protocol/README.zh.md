@@ -62,7 +62,7 @@ kind: "package-library"
 
 `session/query` 接受且仅接受 `{ sessionId, text, delivery }`，text 不能全为空白，delivery 为 `queue` 或 `steer`。普通输入返回 `{ kind: "prompt", messageId }`，受支持命令结束后返回 `{ kind: "command", execution }`。Prompt 回执不是模型结果，命令完成也不要求 inbox 回执或 idle 通知。识别规则及受支持命令由 [SDK 服务端](../server/README.zh.md)定义。
 
-`session/command` 在初始化后接受且仅接受 `{ sessionId, line }`，将 `/compact`、`/permission <preset>`、`/plan [off|message]` 或 `/goal [objective|clear|edit objective|pause|resume]` 委托给原生注册器。preset 必须非空，裸 `/permission` 会被拒绝。Handler 结束后返回 `CommandExecution`，未知 preset 或其他业务失败以 `result.kind: "error"` 返回。命令不可用、不受支持或请求格式错误时返回 JSON-RPC 错误。不回退为普通 prompt，也不接受附件。命令生命周期通知在响应前到达，不要求 inbox 回执或普通 turn。`session/prompt` 保持不变。
+`session/command` 在初始化后接受且仅接受 `{ sessionId, line }`，将[支持的命令名](../server/README.zh.md#command-input)委托给原生注册器。preset 必须非空，裸 `/permission` 会被拒绝。Handler 结束后返回 `CommandExecution`，未知 preset 或其他业务失败以 `result.kind: "error"` 返回。命令不可用、不受支持或请求格式错误时返回 JSON-RPC 错误。不回退为普通 prompt，也不接受附件。命令生命周期通知在响应前到达，不要求 inbox 回执或普通 turn。`session/prompt` 保持不变。
 
 `session/resume` 接受非空的持久化 `{ sessionId }`，恢复该会话后返回 `{}`。它要求先完成初始化并使用原持久化存储，不发送新输入；会话缺失、不可读、不兼容或被占用时，请求失败且不创建替代会话。历史事件保留在存储日志中，通知只报告新提交的事件。
 

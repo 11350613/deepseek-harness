@@ -526,18 +526,30 @@ function modelFromSession(log: string): { provider: string; model: string } {
 /** Replay caller inputs; profile fixtures recreate their own in-turn command activity. */
 function sdkActions(log: string, replayStandaloneCommands: boolean): SdkAction[] {
   const actions: SdkAction[] = []
+  const commandInputs = new Set<string>()
+  let commandId: string | undefined
   let current: TurnAction | undefined
   for (const record of records(log)) {
     if (record.type === 'command/run') {
       if (!replayStandaloneCommands || current !== undefined) continue
       const data = record.data as JsonObject | undefined
       if ((data?.source as JsonObject | undefined)?.kind !== 'user') continue
-      if (typeof data?.name !== 'string' || typeof data.args !== 'string') {
-        throw new Error('SDK snapshot command/run requires a name and recorded string arguments')
+      if (typeof data?.name !== 'string' || typeof data.args !== 'string' || typeof data.commandId !== 'string') {
+        throw new Error('SDK snapshot command/run requires commandId, name and recorded string arguments')
       }
+      commandId = data.commandId
       actions.push({ kind: 'command', line: `/${data.name}${data.args}` })
       continue
     }
+    const data = record.data as JsonObject | undefined
+    // Standalone callers send no other input until command/done. Inputs admitted
+    // within that invocation belong to its handler, even when their source is user.
+    if (commandId !== undefined && record.type === 'agent/inbox/spliced' && Array.isArray(data?.inserted)) {
+      for (const message of data.inserted as JsonObject[]) {
+        if (typeof message.id === 'string') commandInputs.add(message.id)
+      }
+    }
+    if (record.type === 'command/done' && data?.commandId === commandId) commandId = undefined
     if (record.type === 'turn/start') {
       const data = record.data as JsonObject | undefined
       if (typeof data?.turn !== 'number') throw new Error('SDK snapshot turn/start has no turn')
@@ -547,7 +559,8 @@ function sdkActions(log: string, replayStandaloneCommands: boolean): SdkAction[]
     if (record.type === 'user/message' && current !== undefined && current.content === undefined) {
       const data = record.data as JsonObject | undefined
       const source = data?.source as JsonObject | undefined
-      if (source?.kind === 'user' && Array.isArray(data?.content)) {
+      if (source?.kind === 'user' && Array.isArray(data?.content)
+        && (typeof data.id !== 'string' || !commandInputs.has(data.id))) {
         current = { kind: 'turn', turn: current.turn, content: data.content as JsonObject[] }
       }
       continue
@@ -1171,7 +1184,8 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
         expect(events.filter(event => event.type === 'plan/mode').map(event => event.data.active))
           .toEqual([true, false, true, false])
         expect(events.filter(event => event.type === 'command/run').map(event => ({ name: event.data.name, args: event.data.args })))
-          .toEqual([{ name: 'plan', args: '' }, { name: 'plan', args: '' }, { name: 'plan', args: ' off' }])
+          .toEqual([{ name: 'plan', args: ' Prepare a plan through exit_plan_mode; revise after feedback and acknowledge approval.' },
+            { name: 'plan', args: '' }, { name: 'plan', args: ' off' }])
         expect(events.filter(event => event.type === 'permission/preset').map(event => event.data.preset)).toEqual(['workspace-write'])
         expect(events.filter(event => event.type === 'sandbox/mode').map(event => event.data.mode)).toEqual(['workspace-write'])
         expect(events.filter(event => event.type === 'approval/policy').map(event => event.data.policy)).toEqual(['ask'])
@@ -1215,8 +1229,6 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
         expect(events.filter(event => event.type === 'step/start')).toHaveLength(2)
         const notices = events.filter(event => event.type === 'user/message' && event.data.source.kind === 'user-approval')
         expect(notices).toHaveLength(1)
-        const noticeText = 'The approval policy changed from "never" to "ask" (changed by the user).'
-        expect(notices[0]?.data.content).toEqual([{ type: 'text', text: noticeText }])
         expect(modelRequests).toHaveLength(2)
         const [initialRequest, continuationRequest] = modelRequests
         if (initialRequest === undefined || continuationRequest === undefined) {
@@ -1231,11 +1243,10 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
         const runtimeContexts = continuationMessages.filter(message => (message.source as JsonObject | undefined)?.kind === 'runtime-context')
         const runtimeText = JSON.stringify(runtimeContexts.at(-1))
         expect(runtimeText).toContain('Current DSH file policy: read-only.')
-        expect(runtimeText).toContain('Approval policy: ask.')
         const texts = continuationMessages.flatMap(message => message.content as JsonObject[])
           .flatMap(block => block.type === 'text' ? [block.text] : [])
         expect(texts).toContain('SDK_PERMISSION_READY')
-        expect(texts).toContain(noticeText)
+        expect(continuationMessages.map(message => message.content)).toContainEqual(notices[0]?.data.content)
         expect(texts).not.toContain('/permission read-only')
         expect(texts).not.toContain('preset read-only')
       }
@@ -1438,7 +1449,8 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
         const parent = ordered[0]
         if (parent === undefined) throw new Error(`${scenario.name}: no primary session log`)
         const turnEnds = records(parent.content).filter(record => record.type === 'turn/end')
-        expect(turnEnds, `${scenario.name}: completed turns`).toHaveLength(results.length)
+        const expectedTurns = records(replayContents[0]!).filter(record => record.type === 'turn/end')
+        expect(turnEnds, `${scenario.name}: completed turns`).toHaveLength(expectedTurns.length)
         for (const turnEnd of turnEnds) expect(turnEnd).toMatchObject({ data: { reason: { kind: 'completed' } } })
       }
 

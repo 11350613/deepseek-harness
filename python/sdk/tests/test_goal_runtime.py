@@ -13,7 +13,7 @@ from test_commands_runtime import (
     _command_pair, _of_type, _permission_facts, _read_events, _receive_result,
     _request_texts, _runtime, _text_blocks,
 )
-from test_plan_runtime import _WaitResult, _wait_activity
+from test_plan_runtime import _wait_activity
 
 
 def _command(runtime: _Runtime, session: Session, text: str, *, kind: str = "success") -> CommandExecution:
@@ -73,11 +73,13 @@ def test_goal_continues_rounds_and_finishes_wrapup_after_completion_event(tmp_pa
             completed = _until(events, "goal/change", "complete")
             assert completed["goal"]["phase"] == "complete" and completed["roundsStarted"] == 2
             assert final.entered.wait(_WAIT_SECONDS)
-            waiting = runtime.workers.submit(runtime.harness.client.request, "session/wait",
-                                             {"sessionId": session.id}, response_model=_WaitResult)
-            assert not waiting.done() and not final.release.is_set()
+            waiting = runtime.harness.client._begin_request("session/wait", {"sessionId": session.id})
+            # A later RPC confirms admission on the same pipe; keep the wait's
+            # response queued so worker scheduling cannot hide an early return.
+            runtime.call(runtime.harness.client.get_working_directory, session.id)
+            assert waiting.waiter.empty() and not final.release.is_set()
             final.release.set()
-            waiting.result(timeout=_WAIT_SECONDS)
+            assert runtime.call(runtime.harness.client._wait_request, waiting) == {}
             assert _until(events, "turn/end")["turn"] == 2
         requests = runtime.model.captured()
         assert len(requests) == 4

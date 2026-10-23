@@ -190,6 +190,37 @@ interface PendingQuery {
   readonly commandNotifications: HarnessNotification[]
 }
 
+/** Collect an ordinary prompt's notifications from its inbox receipt through idle. */
+class PromptActivity {
+  private received = false
+  private readonly events: SessionEvent[] = []
+  private readonly notifications: HarnessNotification[] = []
+
+  constructor(private readonly sessionId: string, private readonly messageId: string) {}
+
+  /** Ignore pre-receipt traffic; validate root events before invoking the observer. */
+  record(notification: HarnessNotification, onNotification?: RunOptions['onNotification']): boolean {
+    if (!this.received) {
+      if (notification.method !== 'session.event' || notification.params.sessionId !== this.sessionId
+        || !isInboxReceipt(notification.params.event, this.messageId)) return false
+      this.received = true
+    }
+    const event = notification.method === 'session.event' && notification.params.sessionId === this.sessionId
+      ? validatedSessionEvent(notification.params.event) : undefined
+    this.notifications.push(notification)
+    onNotification?.(notification)
+    if (event !== undefined) this.events.push(event)
+    return true
+  }
+
+  result(): RunResult {
+    return {
+      sessionId: this.sessionId, finalResponse: finalResponse(this.events),
+      events: this.events, notifications: this.notifications,
+    }
+  }
+}
+
 /**
  * One SDK session: a stable id plus owned activity intervals.
  */
@@ -264,27 +295,18 @@ export class HarnessSession {
           yield outcome.result.execution
           return
         }
-        const events: SessionEvent[] = []
-        const notifications: HarnessNotification[] = []
-        let received = false
+        const activity = new PromptActivity(sessionId, outcome.result.messageId)
         while (!isClosed()) {
           const notification = await pending.subscription.next()
-          if (!received) {
-            if (notification.method !== 'session.event' || notification.params.sessionId !== sessionId
-              || !isInboxReceipt(notification.params.event, outcome.result.messageId)) continue
-            received = true
-          }
-          if (notification.method === 'session.event' && notification.params.sessionId === sessionId) {
-            events.push(validatedSessionEvent(notification.params.event))
-          }
-          notifications.push(notification)
+          if (isClosed()) return
+          if (!activity.record(notification)) continue
           yield notification
           if (notification.method === 'session.status' && notification.params.sessionId === sessionId
             && notification.params.status === 'idle') break
         }
         if (isClosed()) return
         close()
-        yield { sessionId, finalResponse: finalResponse(events), events, notifications }
+        yield activity.result()
       } catch (error: unknown) {
         if (!isClosed()) throw error
       } finally {
@@ -331,36 +353,14 @@ export class HarnessSession {
     await this.harness.start()
     const client = this.harness.client
     const contentBlocks = normalizeInput(input)
-    const events: SessionEvent[] = []
-    const notifications: HarnessNotification[] = []
-
     const subscription = client.subscribeSessionTree(this.id)
-    const collect = (notification: HarnessNotification): void => {
-      if (notification.method === 'session.event' && notification.params.sessionId === this.id) {
-        // Wire boundary: the envelope feeds the typed RunResult, so a
-        // malformed runtime surfaces as a protocol error, not as type-invalid
-        // data (or a TypeError out of finalResponse).
-        const event = validatedSessionEvent(notification.params.event)
-        notifications.push(notification)
-        options?.onNotification?.(notification)
-        events.push(event)
-        return
-      }
-      notifications.push(notification)
-      options?.onNotification?.(notification)
-    }
+    let activity: PromptActivity
     try {
       const messageId = await client.prompt(this.id, contentBlocks)
-      let received = false
+      activity = new PromptActivity(this.id, messageId)
       while (true) {
         const notification = await subscription.next()
-        if (!received) {
-          if (notification.method !== 'session.event'
-            || notification.params.sessionId !== this.id
-            || !isInboxReceipt(notification.params.event, messageId)) continue
-          received = true
-        }
-        collect(notification)
+        if (!activity.record(notification, options?.onNotification)) continue
         if (notification.method === 'session.status'
           && notification.params.sessionId === this.id
           && notification.params.status === 'idle') break
@@ -369,12 +369,7 @@ export class HarnessSession {
       subscription.close()
     }
 
-    return {
-      sessionId: this.id,
-      finalResponse: finalResponse(events),
-      events,
-      notifications,
-    }
+    return activity.result()
   }
 }
 

@@ -68,7 +68,7 @@ python python/sdk/examples/plan.py \
   "Plan the requested change and present it for review."
 ```
 
-原生计划通过 `exit_plan_mode` 携带，而不是写入工作区文档。权限仍为 workspace-write。关闭审查会保留计划模式并结束当前轮次。示例通过 `session/wait` 等待，问答回调独立于协议读取线程。
+原生计划通过 `exit_plan_mode` 携带，而不是写入工作区文档。权限仍为 workspace-write。关闭审查会保留计划模式并结束当前轮次。示例通过 `session/wait` 等待，并报告根轮次截断或失败；问答回调独立于协议读取线程。
 
 <a id="run-a-goal"></a>
 ## 运行目标

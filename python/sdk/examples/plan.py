@@ -40,14 +40,19 @@ def review(request: UserQuestionRequest, cancelled: threading.Event) -> dict:
         return {"cancelled": True}
 
 
-def display(notification: Notification) -> None:
-    """Print completed assistant text while the Session runs."""
+def display(notification: Notification, session_id: str) -> None:
+    """Print assistant text and report an unsuccessful root Session turn."""
     if notification.method == "session.event":
         event = notification.payload.get("event")
         if isinstance(event, dict) and event.get("type") == "assistant/message":
             text = final_response([event])
             if text:
                 print(text)
+        elif (isinstance(event, dict) and event.get("type") == "turn/end"
+              and notification.payload.get("sessionId") == session_id):
+            reason = event["data"]["reason"]
+            if reason["kind"] != "completed":
+                raise RuntimeError(f"Agent turn ended: {reason}")
 
 
 def main() -> None:
@@ -75,7 +80,7 @@ def main() -> None:
                         raise RuntimeError(message.result.text)
             harness.client.request(
                 "session/wait", {"sessionId": session.id}, response_model=WaitResult,
-                on_notification=display, notification_subscription=notifications,
+                on_notification=lambda notice: display(notice, session.id), notification_subscription=notifications,
             )
 
 

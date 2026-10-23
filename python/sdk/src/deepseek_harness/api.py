@@ -53,6 +53,37 @@ class RunResult:
     notifications: list[Notification]
 
 
+class _PromptActivity:
+    """Collect an ordinary prompt's notifications from its inbox receipt through idle."""
+
+    def __init__(self, session_id: str, message_id: str) -> None:
+        self.session_id = session_id
+        self.message_id = message_id
+        self.received = False
+        self.events: list[JsonObject] = []
+        self.notifications: list[Notification] = []
+
+    def record(self, notification: Notification, on_notification: Callable[[Notification], None] | None = None) -> bool:
+        if not self.received:
+            if not _is_inbox_receipt(notification, self.session_id, self.message_id):
+                return False
+            self.received = True
+        self.notifications.append(notification)
+        if on_notification is not None:
+            on_notification(notification)
+        if notification.method == "session.event" and notification.payload.get("sessionId") == self.session_id:
+            event = notification.payload.get("event")
+            if isinstance(event, dict):
+                self.events.append(event)
+        return True
+
+    def result(self) -> RunResult:
+        return RunResult(
+            session_id=self.session_id, final_response=final_response(self.events),
+            finish_reason=finish_reason(self.events), events=self.events, notifications=self.notifications,
+        )
+
+
 class _QueryResponseIterator(Iterator[Notification | RunResult | CommandExecution]):
     def __init__(
         self, client: HarnessClient, session_id: str, request: _PendingRequest,
@@ -66,10 +97,7 @@ class _QueryResponseIterator(Iterator[Notification | RunResult | CommandExecutio
         self._closed = False
         self._released = False
         self._routed = False
-        self._received = False
-        self._message_id = ""
-        self._notifications: list[Notification] = []
-        self._events: list[JsonObject] = []
+        self._activity: _PromptActivity | None = None
         self._buffer: deque[Notification] = deque()
         self._terminal: RunResult | CommandExecution | None = None
 
@@ -119,7 +147,7 @@ class _QueryResponseIterator(Iterator[Notification | RunResult | CommandExecutio
                         if _is_command_done(notification, self._session_id, self._terminal.command_id):
                             break
                 elif response.get("kind") == "prompt" and isinstance(response.get("messageId"), str) and response["messageId"]:
-                    self._message_id = response["messageId"]
+                    self._activity = _PromptActivity(self._session_id, response["messageId"])
                 else:
                     raise SdkProtocolError("session/query requires a prompt messageId or command execution result")
             self._ensure_open()
@@ -131,25 +159,16 @@ class _QueryResponseIterator(Iterator[Notification | RunResult | CommandExecutio
                 self._release()
                 self._closed = True
                 return terminal
+            assert self._activity is not None
             while True:
                 notification = self._subscription.next()
                 self._ensure_open()
-                if not self._received:
-                    if not _is_inbox_receipt(notification, self._session_id, self._message_id):
-                        continue
-                    self._received = True
-                self._notifications.append(notification)
-                if notification.method == "session.event" and notification.payload.get("sessionId") == self._session_id:
-                    event = notification.payload.get("event")
-                    if isinstance(event, dict):
-                        self._events.append(event)
+                if not self._activity.record(notification):
+                    continue
                 if (notification.method == "session.status"
                     and notification.payload.get("sessionId") == self._session_id
                     and notification.payload.get("status") == "idle"):
-                    self._terminal = RunResult(
-                        session_id=self._session_id, final_response=final_response(self._events),
-                        finish_reason=finish_reason(self._events), events=self._events, notifications=self._notifications,
-                    )
+                    self._terminal = self._activity.result()
                     self._release()
                 return notification
         except BaseException as error:
@@ -313,21 +332,6 @@ class Session:
         on_notification: Callable[[Notification], None] | None = None,
     ) -> RunResult:
         content_blocks = normalize_input(input)
-        notifications: list[Notification] = []
-        events: list[JsonObject] = []
-
-        def collect(notification: Notification) -> None:
-            notifications.append(notification)
-            if on_notification is not None:
-                on_notification(notification)
-            if (
-                notification.method == "session.event"
-                and notification.payload.get("sessionId") == self.id
-            ):
-                event = notification.payload.get("event")
-                if isinstance(event, dict):
-                    events.append(event)
-
         with self.harness.client.subscribe_session_notifications(self.id) as subscription:
             message_id = self.harness.client.session_prompt(
                 self.id,
@@ -335,14 +339,11 @@ class Session:
                 notification_subscription=subscription,
             )
 
-            received = False
+            activity = _PromptActivity(self.id, message_id)
             while True:
                 notification = subscription.next()
-                if not received:
-                    if not _is_inbox_receipt(notification, self.id, message_id):
-                        continue
-                    received = True
-                collect(notification)
+                if not activity.record(notification, on_notification):
+                    continue
                 if (
                     notification.method == "session.status"
                     and notification.payload.get("sessionId") == self.id
@@ -350,13 +351,7 @@ class Session:
                 ):
                     break
 
-        return RunResult(
-            session_id=self.id,
-            final_response=final_response(events),
-            finish_reason=finish_reason(events),
-            events=events,
-            notifications=notifications,
-        )
+        return activity.result()
 
 
 def _is_inbox_receipt(notification: Notification, session_id: str, message_id: str) -> bool:

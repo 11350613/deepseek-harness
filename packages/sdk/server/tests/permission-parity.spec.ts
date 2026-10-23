@@ -146,6 +146,8 @@ async function switchAndContinue(path: 'sdk' | 'native', cwd: string) {
     expect(initialConfig).toEqual({ cwd, provider: 'permission-parity', model: 'permission-model', maxTokens: 321 })
     return {
       requests: model.requests,
+      approvalInputs: events.flatMap(event => event.type === 'user/message' && event.data.source.kind === 'user-approval'
+        ? [event.data.content] : []),
       defaults,
       permissionEvents: events.flatMap((event) => {
         if (event.type === 'permission/preset' || event.type === 'sandbox/mode' || event.type === 'approval/policy') {
@@ -176,9 +178,9 @@ it('preserves native permission events, unchanged defaults, and the next model r
     const content = sdk.requests[1]?.messages.flatMap(message => message.content) ?? []
     const texts = content.flatMap(block => block.type === 'text' ? [block.text] : [])
     expect(texts).toContain('PERMISSION_READY')
-    expect(texts).toContain('The approval policy changed from "never" to "ask" (changed by the user).')
+    expect(sdk.approvalInputs).toHaveLength(1)
+    expect(content).toEqual(expect.arrayContaining(sdk.approvalInputs.flat()))
     expect(texts.some(text => text.includes('Current DSH file policy: read-only.'))).toBe(true)
-    expect(texts.some(text => text.includes('Approval policy: ask.'))).toBe(true)
     expect(texts).not.toContain('/permission read-only')
     expect(texts).not.toContain('preset read-only')
   } finally {

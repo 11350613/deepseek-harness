@@ -208,33 +208,48 @@ it.each(['hold', '/compact'])('return releases a pending next for %s without can
   await harness.client.request('test/release')
 })
 
-it('ends a receiver closed during a pre-receipt read without yielding a RunResult', async () => {
-  const harness = harnessWith()
-  const subscribed = vi.spyOn(harness.client, 'subscribeSessionTree')
-  const session = harness.session('main')
-  await session.query('hold')
-  const created = subscribed.mock.results[0]
-  if (created?.type !== 'return') throw new Error('query did not create a subscription')
-  const next = created.value.next.bind(created.value)
-  const arrived = Promise.withResolvers<undefined>()
-  const release = Promise.withResolvers<undefined>()
-  onTestFinished(() => { release.resolve(undefined) })
-  vi.spyOn(created.value, 'next').mockImplementationOnce(async () => {
-    const notification = await next()
-    arrived.resolve(undefined)
-    await release.promise
-    return notification
-  })
-  const receiver = session.receiveResponse()
-  const receiving = receiver.next()
-  await arrived.promise
-  const returning = receiver.return?.()
-  release.resolve(undefined)
-  await expect(receiving).resolves.toEqual({ done: true, value: undefined })
-  await expect(returning).resolves.toEqual({ done: true, value: undefined })
-  expect(await harness.client.request('test/state')).toMatchObject({ waitingPrompts: 1 })
-  await harness.client.request('test/release')
-})
+it.each(['before receipt', 'receipt', 'after receipt'] as const)(
+  'does not emit an acquired %s notification after the receiver closes', async (position) => {
+    const harness = harnessWith()
+    const subscribed = vi.spyOn(harness.client, 'subscribeSessionTree')
+    const session = harness.session('main')
+    await session.query('hold')
+    const created = subscribed.mock.results[0]
+    if (created?.type !== 'return') throw new Error('query did not create a subscription')
+    const next = created.value.next.bind(created.value)
+    const arrived = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    onTestFinished(() => { release.resolve(undefined) })
+    vi.spyOn(created.value, 'next').mockImplementation(async () => {
+      const notification = await next()
+      const event = notification.params.event as { type: string } | undefined
+      const matches = position === 'before receipt'
+        ? notification.method === 'session.event' && event?.type === 'assistant/message'
+        : position === 'receipt'
+          ? notification.method === 'session.event' && event?.type === 'agent/inbox/spliced'
+          : notification.method === 'session.status' && notification.params.status === 'running'
+      if (matches) {
+        arrived.resolve(undefined)
+        await release.promise
+      }
+      return notification
+    })
+    const receiver = session.receiveResponse()
+    const receiving = collect(receiver)
+    await arrived.promise
+    const returning = receiver.return?.()
+    release.resolve(undefined)
+    const messages = await receiving
+    if (position === 'after receipt') {
+      expect(messages).toMatchObject([{ method: 'session.event', params: { event: { type: 'agent/inbox/spliced' } } }])
+    } else {
+      expect(messages).toEqual([])
+    }
+    await expect(returning).resolves.toEqual({ done: true, value: undefined })
+    expect(await harness.client.request('test/state')).toMatchObject({ waitingPrompts: 1 })
+    await harness.client.request('test/release')
+  },
+)
 
 it('closes prompt subscriptions before yielding the final RunResult', async () => {
   const harness = harnessWith()
@@ -254,6 +269,34 @@ it('closes prompt subscriptions before yielding the final RunResult', async () =
     break
   }
   await receiver.return?.()
+})
+
+it('ends an already-queued read when the receiver closes while yielding idle', async () => {
+  const harness = harnessWith()
+  const subscribed = vi.spyOn(harness.client, 'subscribeSessionTree')
+  const session = harness.session('main')
+  await session.query('complete')
+  const created = subscribed.mock.results[0]
+  if (created?.type !== 'return') throw new Error('query did not create a subscription')
+  const next = created.value.next.bind(created.value)
+  const receiver = session.receiveResponse()
+  let returning: ReturnType<NonNullable<typeof receiver.return>> | undefined
+  const observerErrors: unknown[] = []
+  vi.spyOn(created.value, 'next').mockImplementation(() => {
+    const pending = next()
+    void pending.then((notification) => {
+      if (notification.method === 'session.status' && notification.params.status === 'idle') {
+        queueMicrotask(() => { returning = receiver.return?.() })
+      }
+    }, (error: unknown) => { observerErrors.push(error) })
+    return pending
+  })
+  // Five admitted notifications precede the final result; queue its read before idle is yielded.
+  const reads = await Promise.all(Array.from({ length: 6 }, () => receiver.next()))
+  expect(reads.at(-1)).toEqual({ done: true, value: undefined })
+  expect(reads.filter(item => !item.done && 'finalResponse' in item.value)).toEqual([])
+  await expect(returning).resolves.toEqual({ done: true, value: undefined })
+  expect(observerErrors).toEqual([])
 })
 
 it('reports local request timeout from the receiver and leaves the runtime responsive', async () => {

@@ -493,7 +493,7 @@ def test_unimplemented_slash_remains_plain_text_without_recording_feedback(tmp_p
 
 
 _PERMISSION_FACTS = {"permission/preset", "sandbox/mode", "approval/policy"}
-_ASK_POLICY = "Approval policy: ask."
+_ASK_POLICY = "Approval prompts are enabled in this session"
 _NEVER_POLICY = "Approval prompts are disabled in this session"
 
 
@@ -562,8 +562,6 @@ def test_permission_changes_only_the_selected_session_and_retains_prompt_semanti
             _assert_request_permission(requests[index], "workspace-write", "ask")
         _assert_request_permission(requests[2], "read-only", "ask")
         _assert_request_permission(requests[3], "danger-full-access", "never")
-        assert 'The approval policy changed from "ask" to "never" (changed by the user).' in _request_texts(requests[3])
-        assert 'The approval policy changed from "never" to "ask" (changed by the user).' in _request_texts(requests[4])
         for index in [2, 3, 4]:
             assert requests[index]["system"] == requests[0]["system"]
             assert requests[index]["tools"] == requests[0]["tools"]
@@ -571,6 +569,11 @@ def test_permission_changes_only_the_selected_session_and_retains_prompt_semanti
         assert "/permission" in _request_texts(requests[8])
 
     events = _read_events(runtime.logs)
+    notices = [event["data"]["content"] for event in _of_type(events, "user/message")
+               if event["data"]["source"]["kind"] == "user-approval"]
+    assert len(notices) == 2
+    for content, request in zip(notices, requests[3:5]):
+        assert all(text in _request_texts(request) for text in _text_blocks(content))
     executions = [readonly, invalid, repeated, full, restored]
     assert len(_of_type(events, "command/run")) == len(executions)
     for execution in executions:
@@ -613,12 +616,14 @@ def test_running_permission_change_keeps_the_native_extra_step_and_notifications
         _assert_request_permission(requests[1], "danger-full-access", "never")
         assert requests[0]["system"] == requests[1]["system"]
         assert requests[0]["tools"] == requests[1]["tools"]
-        notice = 'The approval policy changed from "ask" to "never" (changed by the user).'
-        assert notice not in _request_texts(requests[0])
-        assert notice in _request_texts(requests[1])
         assert runtime.harness.config.env["DSH_PERMISSION_MODE"] == "workspace-write"
     events = _read_events(runtime.logs)
     _command_pair(events, execution, "permission")
+    [notice] = [event["data"]["content"] for event in _of_type(events, "user/message")
+                if event["data"]["source"]["kind"] == "user-approval"]
+    for text in _text_blocks(notice):
+        assert text not in _request_texts(requests[0])
+        assert text in _request_texts(requests[1])
     assert [event["data"] for event in _of_type(events, "step/start")] == [
         {"turn": 1, "step": 1}, {"turn": 1, "step": 2},
     ]
