@@ -61,17 +61,19 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
 <a id="query-and-response"></a>
 ## 查询与接收
 
-调用 `session.query(text)` 发送文本，再迭代 `session.receive_response()` 观察结果。`query()` 发送后即返回 `None`，不等待运行时路由或执行。完整 SDK 接管裸 `/compact`、带非空 preset 的 `/permission <preset>` 和 `/plan [off|message]`，包括绑定到其定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/model` 及其余输入仍是普通提示词。此 API 只接受文本字符串。`delivery="queue"` 是默认值；`delivery="steer"` 将普通提示词交给下一个 step。命令执行时机仍由命令决定。
+调用 `session.query(text)` 发送文本，再迭代 `session.receive_response()` 观察结果。`query()` 发送后即返回 `None`，不等待运行时路由或执行。完整 SDK 接管裸 `/compact`、带非空 preset 的 `/permission <preset>`、`/plan [off|message]` 和 `/goal [objective|clear|edit objective|pause|resume]`，包括绑定到其定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/model` 及其余输入仍是普通提示词。此 API 只接受文本字符串。`delivery="queue"` 是默认值；`delivery="steer"` 将普通提示词交给下一个 step。命令执行时机仍由命令决定。
 
 `receive_response()` 按发送顺序领取下一次 query。它先等待路由响应，再逐个产出 `Notification`，最后产出一个终态值：普通提示词从收件箱回执到 idle 区间的 `RunResult`，或命令处理结束后的 `CommandExecution`。通知可以在开始接收前积累。不同接收器可以并行观察各自的 query，也可以在一个接收器等待期间发送另一个 `query()`。关闭未完成的迭代器只释放它自己的本地观察资源，不取消或回滚运行时操作。终态值产出前会释放资源。
 
 `CommandExecution` 包含 `command_id` 和以 `kind` 区分的 `result`。成功结果可以包含 `text` 和 `source_event_seq`；错误结果包含 `text`。处理器错误返回 `kind="error"`；路由、协议和传输失败在接收时抛出。发送失败从 `query()` 抛出。`request_timeout_seconds` 限制路由响应的等待时间，不限制后续提示词活动；已经到达的响应在期限过后仍可接收。
 
-完整 `sdk` profile 提供这些命令；默认 `sdk-minimal` profile 不提供命令执行能力。`/compact` 可能发起辅助模型请求，完成时不要求普通轮次或 idle 通知；空历史可以不生成摘要而成功返回。`run()` 对 slash 文本保留普通提示词语义。底层阻塞式 `HarnessClient.session_command(session_id, line)` 严格接受 `/compact`、`/permission <preset>` 或 `/plan [off|message]`，并拒绝裸 `/permission`。另见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
+完整 `sdk` profile 提供这些命令；默认 `sdk-minimal` profile 不提供命令执行能力。`/compact` 可能发起辅助模型请求，完成时不要求普通轮次或 idle 通知；空历史可以不生成摘要而成功返回。`run()` 对 slash 文本保留普通提示词语义。底层阻塞式 `HarnessClient.session_command(session_id, line)` 严格接受 `/compact`、`/permission <preset>`、`/plan [off|message]` 或 `/goal [objective|clear|edit objective|pause|resume]`，并拒绝裸 `/permission`。另见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
 
 `/permission <preset>` 委托给原生权限 handler。未知 preset 返回 `CommandExecution.result.kind="error"`，不改变权限状态。成功的变更属于该 Session：后续 query 和恢复保留该状态，其他 Session 保留各自状态，新 Session 使用配置的默认值。`DeepSeekHarnessConfig` 仍是启动输入，不是共享的实时状态镜像；命令不重写它或已保存的用户默认值。运行中改变审批策略可能注入通知并触发额外模型 step。另见[权限示例](examples/README.zh.md#change-session-permissions)。
 
 `/plan` 进入计划模式，`/plan off` 退出，`/plan <message>` 进入后通过原生 steer 提交去除首尾空白的正文。返回的 `CommandExecution` 只表示命令完成，不表示规划或审查结束。需要普通活动结果时，可以先用 `/plan` 进入，再单独提交普通 query。组合输入则应在发送前订阅，并在保持问答处理器运行的同时使用 `session/wait`，见[计划示例](examples/README.zh.md#review-a-plan)。计划模式改变指导并渐进披露 `exit_plan_mode`，不修改权限设置。默认指导禁止编辑文件，包括计划文档；实际执行仍由沙箱控制。
+
+`/goal` 显示当前目标；`/goal <objective>`、`edit <objective>`、`pause`、`resume` 和 `clear` 使用原生目标 handler。创建和恢复可在命令返回后启动自动轮次。发送前应订阅通知，观察终态 `goal/change` 操作，再调用 `session/wait` 等待可能的模型收尾回复。轮次之间的 idle 不代表目标完成。恢复的活动目标保持 disarmed，直到显式恢复。目标命令保留权限设置和启动配置。另见[目标示例](examples/README.zh.md#run-a-goal)。
 
 <a id="client-approvals"></a>
 ## 客户端审批
@@ -132,6 +134,8 @@ with DeepSeekHarness(
 ## 结果与通知
 
 `Session.run()` 的活动区间从提示词被持久 inbox 接收时开始，到整个 agent 下一次进入空闲状态时结束，并返回 `RunResult(session_id, final_response, finish_reason, events, notifications)`。`final_response` 是该区间内根会话最后提交的助手文本。`finish_reason` 是最后一个根会话 `turn/end` 的 `kind`，例如 `completed`、`max-tokens` 或 `error`；没有轮次结束时为 `None`。缺少字符串 `data.reason.kind` 的 `turn/end` 违反协议，并会抛出 `SdkProtocolError`。
+
+`NotificationSubscription.next(timeout_seconds=...)` 限制单次本地通知等待，超时抛出 `TimeoutError`；省略参数则无限等待。超时不取消运行时工作，也不关闭订阅，后续调用仍可接收通知。
 
 `HarnessClient` 会在运行时进程的整个生命周期内保留已发现的 subagent 谱系。在 `Session.run()` 期间，`RunResult.notifications` 与 `on_notification` 按协议顺序接收根会话和已知后代的通知。`RunResult.events` 只包含根会话事件，因此后代输出不会替换根响应。底层 `session_prompt()` 会立即返回已排队消息的 id；绕过 `Session.run()` 的调用方自行负责后续活动边界。
 

@@ -6,7 +6,6 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
-import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 import PlanMode from '@deepseek-ai/dsh-plan-mode'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import UserQuestions, { UserQuestionError } from '@deepseek-ai/dsh-user-questions'
@@ -14,27 +13,10 @@ import type { AskUserQuestionRequest } from '@deepseek-ai/dsh-user-questions'
 import { expect, it } from 'vitest'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { HarnessSdkJsonRpcServer } from '../src/server.ts'
+import { modelInput } from './command-model-input.ts'
 
 const PLAN = '# Native plan\n\n- Inspect.\n- Implement after approval.'
 const GUIDANCE = 'You are in plan mode. Do not edit or write files. Present the plan through exit_plan_mode.'
-
-function modelInput(options: GenerateOptions) {
-  return structuredClone({
-    provider: options.provider, model: options.model, system: options.system,
-    messages: options.messages.map(message => ({ role: message.role, content: message.content })),
-    tools: options.tools,
-    toolHistory: options.toolHistory === undefined ? undefined : {
-      tools: options.toolHistory.tools,
-      updates: options.toolHistory.updates.map(({ messageId, additions }) => {
-        const messageIndex = options.messages.findIndex(message => message.id === messageId)
-        expect(messageIndex).toBeGreaterThanOrEqual(0)
-        return { messageIndex, additions }
-      }),
-    },
-    maxTokens: options.maxTokens,
-    reasoningEffort: options.reasoningEffort, temperature: options.temperature, stop: options.stop,
-  })
-}
 
 async function scenario(path: 'sdk' | 'native', outcome: 'approve' | 'dismiss', cwd: string) {
   const ctx = new Context()

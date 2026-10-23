@@ -93,7 +93,7 @@ export interface SessionPromptResult {
   messageId: string
 }
 
-/** Strict invocation of `/compact`, `/permission <preset>`, or `/plan [off|message]`. */
+/** Strict invocation of the supported compact, permission, plan, or goal commands. */
 export interface SessionCommandParams {
   /** SDK-owned Session identity; an unknown id creates its Agent. */
   sessionId: SessionId

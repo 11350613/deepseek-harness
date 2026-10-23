@@ -33,13 +33,15 @@ kind: "package-reference"
 
 插件在注册提醒激活处理方后发布 `sdkSessionActivation` 就绪标记；SDK 组合让 Schedule 依赖此标记，而非 Web Session controller。定时提醒也通过同一个 SDK Session 所有者投递。启动时已到期的提醒等待 SDK 成功初始化，再使用初始化指定的提供方、模型、推理强度和输出上限恢复会话。客户端可以首次接管提醒恢复的 Session；并发的提醒与客户端恢复共用一个 handle。关闭时释放等待初始化的提醒，并等待已经接纳的恢复完成。
 
-`session/query` 是统一文本入口。普通文本保留原文，使用选定的 queue/steer 操作。完整 SDK 识别裸 `/compact`、带非空 preset 的 `/permission <preset>` 和 `/plan [off|message]`，包括绑定到当前定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/compact extra` 以及 `/goal`、`/model` 等其余输入仍是普通提示词。命令缺失时也保留提示词路径；选中的 handler 失败后绝不回退。未知 preset 是原生命令错误。此入口仅接受文本，`session/prompt` 保留内容块 API。
+`session/query` 是统一文本入口。普通文本保留原文，使用选定的 queue/steer 操作。完整 SDK 识别裸 `/compact`、带非空 preset 的 `/permission <preset>`、`/plan [off|message]` 和 `/goal [objective|clear|edit objective|pause|resume]`，包括绑定到当前定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/compact extra` 以及 `/model` 等其余输入仍是普通提示词。命令缺失时也保留提示词路径；选中的 handler 失败后绝不回退。未知 preset 是原生命令错误。此入口仅接受文本，`session/prompt` 保留内容块 API。
 
-`session/command` 接受用于 `/compact`、`/permission <preset>` 或 `/plan [off|message]` 的 `{ sessionId, line }`，并拒绝裸 `/permission`。完整 sdk profile 组成这些原生 handler；缺少所请求命令的 profile 会拒绝调用。服务端解析自己拥有的存活 Agent，并调用 `commands.execute()`，不排入普通 prompt，也不等待 idle。压缩负责其辅助模型请求、历史替换和 checkpoint，并拒绝忙碌 Agent。权限变更保留原生状态和通知行为。Shutdown 取消待决命令，在释放 Agent 前排空 SDK 命令等待者。超时不等于回滚，客户端不能自动重试。结果和错误见[协议](../protocol/README.zh.md)。
+`session/command` 接受用于 `/compact`、`/permission <preset>`、`/plan [off|message]` 或 `/goal [objective|clear|edit objective|pause|resume]` 的 `{ sessionId, line }`，并拒绝裸 `/permission`。完整 sdk profile 组成这些原生 handler；缺少所请求命令的 profile 会拒绝调用。服务端解析自己拥有的存活 Agent，并调用 `commands.execute()`，不排入普通 prompt，也不等待 idle。压缩负责其辅助模型请求、历史替换和 checkpoint，并拒绝忙碌 Agent。权限变更保留原生状态和通知行为。Shutdown 取消待决命令，在释放 Agent 前排空 SDK 命令等待者。超时不等于回滚，客户端不能自动重试。结果和错误见[协议](../protocol/README.zh.md)。
 
 权限命令只修改接收命令的 Session。后续 query 和恢复的 Session 保留其持久化权限事实；其他 Session 保留各自状态，新 Session 使用配置的默认值。调用方的启动配置和已保存的用户默认值均不会被重写。模型选择不是 SDK slash 命令；恢复时的模型覆盖仍按上文描述的独立行为执行。
 
 `/plan` 和 `/plan off` 只改变原生计划状态。带正文时由 handler 通过 steer 提交；命令完成不等待后续模型活动或审查，`session/wait` 可观察后续 Session 工作。问答响应保留批准和反馈语义；`{ cancelled: true }` 转为原生 `ASK_CANCELLED`，使关闭计划审查结束轮次而不退出计划模式。
+
+`/goal` 将完整语法委托给[原生目标命令](../../goal/command-goal/README.zh.md)。创建和恢复会启用自动目标轮次；暂停中止运行中的轮次，清除则停止续跑而不中止当前请求。命令完成与目标完成相互独立。`session/wait` 可能在目标轮次之间返回：应先观察终态 `goal/change` 操作，再等待可能的模型收尾回复。恢复会话保留目标状态，但 activation 保持 disarmed，直到执行 `/goal resume`。目标命令不改变权限或 SDK 初始化设置。
 
 `session/working-directory/get` 接收 `{ sessionId }`；`session/working-directory/set` 接收 `{ sessionId, path }`。两者均返回 `{ cwd }`，并可创建未知 Session，而不启动模型轮次。读取通过工作目录服务恢复缺失目录；修改保留起始目录元数据与权限，并通过已记录的用户上下文告知模型。
 
@@ -179,6 +181,20 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 #### KV Cache 影响
 
 原生系统与工具更新决定前缀复用；SDK 不添加额外计划提示词或失效操作。
+
+### 目标命令
+
+#### 模型看到什么
+
+原生[目标驱动器](../../goal/goal-round-driver/README.zh.md#model-experience) 接纳已记录的 `<goal_round>` 用户消息。目标工具保留其状态与完成策略，包括 `<goal_complete>` 或 `<goal_blocked>` 收尾上下文。命令文本与结果不进入模型历史。
+
+#### Token 影响
+
+每个接纳的轮次和收尾步骤具有各自的原生模型成本；SDK 路由不增加模型输入。
+
+#### KV Cache 影响
+
+目标轮次消息和工具结果按原生驱动器的行为追加到保留历史。
 
 ## 已知限制与延期工作
 

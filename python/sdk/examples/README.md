@@ -70,6 +70,20 @@ python python/sdk/examples/plan.py \
 
 The native plan is carried in `exit_plan_mode`, not written to a workspace document. Permissions remain workspace-write. Dismissal leaves plan mode active and ends the current turn. The example waits through `session/wait`; its question callback is independent of the protocol reader.
 
+<a id="run-a-goal"></a>
+## Run a goal
+
+The [goal example](goal.py) submits `/goal <objective>`, prints goal changes and assistant replies, and waits for the final reply after a terminal goal event. It uses the full SDK profile and workspace-write permissions.
+
+```sh
+python python/sdk/examples/goal.py \
+  --dsh-home /absolute/path/to/goal-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  "Calculate 17 * 19, verify the result, and complete the goal without changing files."
+```
+
+`--timeout-seconds` bounds observation (300 seconds by default). A timeout reports failure and closes the runtime; it does not mark the goal complete. The persisted goal can be inspected after restoration and explicitly resumed. `session/wait` alone is insufficient because automatic rounds have idle gaps.
+
 ## Add plugins
 
 Use the runtime wheel's `dsh` command against the same explicit home for persistent profile changes:

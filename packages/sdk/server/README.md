@@ -33,13 +33,15 @@ Set `initialize.approvalRequests` to `true` to send internal approvals as server
 
 The plugin publishes the `sdkSessionActivation` readiness marker once its reminder activation handler is installed; an SDK composition injects this marker into Schedule instead of the Web Session controller. Scheduled delivery uses this same SDK Session owner. Due startup reminders wait for successful SDK initialization, then resume with its provider, model, reasoning effort, and output limit. The client can resume a reminder-restored Session once; concurrent reminder and client restoration share one handle. Shutdown releases reminders waiting for initialization and drains accepted restorations.
 
-`session/query` is the unified text entry. Ordinary text retains its original content and uses the selected queue/steer operation. The full SDK recognizes bare `/compact`, `/permission <preset>` with a non-blank preset, and `/plan [off|message]`, including Desktop aliases bound to their current definitions. Bare `/permission` or `/权限`, `/compact extra`, and all other input including `/goal` and `/model` remain ordinary prompts. A missing command also preserves the prompt path; a selected handler's failure never falls back. An unknown preset is a native command error. Inputs are text-only; `session/prompt` retains its content-block API.
+`session/query` is the unified text entry. Ordinary text retains its original content and uses the selected queue/steer operation. The full SDK recognizes bare `/compact`, `/permission <preset>` with a non-blank preset, `/plan [off|message]`, and `/goal [objective|clear|edit objective|pause|resume]`, including Desktop aliases bound to their current definitions. Bare `/permission` or `/权限`, `/compact extra`, and all other input including `/model` remain ordinary prompts. A missing command also preserves the prompt path; a selected handler's failure never falls back. An unknown preset is a native command error. Inputs are text-only; `session/prompt` retains its content-block API.
 
-`session/command` accepts `{ sessionId, line }` for `/compact`, `/permission <preset>`, or `/plan [off|message]` and rejects bare `/permission`. The full sdk profile composes these native handlers; profiles without the requested command reject it. The server resolves its own live Agent and calls `commands.execute()` without queueing a prompt or waiting for idle. Compaction owns its auxiliary model request, history replacement and checkpoint, and refuses a busy Agent. Permission changes retain their native state and notification behavior. Shutdown cancels pending commands and drains SDK command waiters before releasing Agents. Timeout is not rollback; clients must not retry automatically. See the [protocol](../protocol/README.md) for results and errors.
+`session/command` accepts `{ sessionId, line }` for `/compact`, `/permission <preset>`, `/plan [off|message]`, or `/goal [objective|clear|edit objective|pause|resume]` and rejects bare `/permission`. The full sdk profile composes these native handlers; profiles without the requested command reject it. The server resolves its own live Agent and calls `commands.execute()` without queueing a prompt or waiting for idle. Compaction owns its auxiliary model request, history replacement and checkpoint, and refuses a busy Agent. Permission changes retain their native state and notification behavior. Shutdown cancels pending commands and drains SDK command waiters before releasing Agents. Timeout is not rollback; clients must not retry automatically. See the [protocol](../protocol/README.md) for results and errors.
 
 Permission commands change only the receiving Session. Later queries and restored Sessions retain its persisted permission facts; other Sessions keep their own state and new Sessions use the configured defaults. Neither the caller's launch configuration nor saved user defaults are rewritten. Model selection is not an SDK slash command; its resume override remains the separate behavior described above.
 
 `/plan` and `/plan off` change only native plan state. A plan body is submitted by its handler through steer; command completion does not wait for that model activity or the review. `session/wait` observes subsequent Session work. User-question answers preserve approval and feedback; `{ cancelled: true }` becomes native `ASK_CANCELLED`, allowing plan review to end the turn without leaving plan mode.
+
+`/goal` delegates its full grammar to the [native goal command](../../goal/command-goal/README.md). Creation and resume arm automatic goal rounds; pause aborts a running turn, while clear stops continuation without aborting the current request. Command completion is separate from goal completion. `session/wait` can return between goal rounds: observe a terminal `goal/change` operation first, then wait for any closing model reply. Restoration retains goal state but leaves activation disarmed until `/goal resume`. Goal commands do not change permissions or SDK initialization settings.
 
 `session/working-directory/get` accepts `{ sessionId }`; `session/working-directory/set` accepts `{ sessionId, path }`. Both return `{ cwd }` and create an unknown Session without starting a model turn. Reads recover missing directories through the working-directory service; changes preserve origin metadata and permissions, and reach the model through logged user context.
 
@@ -179,6 +181,20 @@ Plan guidance, its exit-tool declaration, submitted plan Markdown, and review re
 #### KV Cache effect
 
 Native system and tool updates determine prefix reuse; the SDK adds no extra plan prompt or invalidation.
+
+### Goal commands
+
+#### What the model sees
+
+The native [goal driver](../../goal/goal-round-driver/README.md#model-experience) admits logged `<goal_round>` user messages. Goal tools retain their state and completion policy, including the `<goal_complete>` or `<goal_blocked>` closing context. Command text and results stay outside model history.
+
+#### Token effect
+
+Each admitted round and closing step has its native model cost; SDK routing adds no model input.
+
+#### KV Cache effect
+
+Goal-round messages and tool results append to retained history under the native driver.
 
 ## Known Limitations and Deferred Work
 

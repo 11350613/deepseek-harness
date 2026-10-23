@@ -596,6 +596,15 @@ def test_client_keeps_unmatched_notifications_available_globally_while_subscribe
         assert notification.payload["sessionId"] == "other"
 
 
+def test_notification_timeout_keeps_subscription_available_for_later_events() -> None:
+    client = HarnessClient()
+    with client.subscribe_notifications() as subscription:
+        with pytest.raises(TimeoutError, match="timed out waiting for an SDK notification"):
+            subscription.next(timeout_seconds=0)
+        client._handle_message({"jsonrpc": "2.0", "method": "tick", "params": {"value": 1}})
+        assert subscription.next(timeout_seconds=0).payload == {"value": 1}
+
+
 def test_session_subscription_keeps_descendant_relationships_across_subscriptions() -> None:
     client = HarnessClient()
     with client.subscribe_session_notifications("main") as first:

@@ -84,7 +84,7 @@ describe('SDK command dispatch', () => {
     expect(h.ctx.agents.list()).toEqual([])
   })
 
-  it.each(['text', '/goal', '/unknown', '/permission', '/permission \t\n'])('rejects unsupported input %s without invoking another command', async (line) => {
+  it.each(['text', '/model', '/unknown', '/permission', '/permission \t\n'])('rejects unsupported input %s without invoking another command', async (line) => {
     const h = await setup()
     await h.initialize()
     const handler = vi.fn(() => ({ kind: 'success' as const }))
@@ -268,13 +268,13 @@ describe('SDK query dispatch', () => {
     expect(queued).not.toHaveBeenCalled()
   })
 
-  it.each(['/goal inspect', '/model', '/file', '/export', '/permission', ' \n/权限\t '])('preserves existing prompt behavior for unimplemented input %s', async (text) => {
+  it.each(['/feedback inspect', '/model', '/file', '/export', '/permission', ' \n/权限\t '])('preserves existing prompt behavior for unimplemented input %s', async (text) => {
     const h = await setup()
     const model = new TextModel()
     h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
     await h.server.initialize({ cwd: process.cwd(), provider: 'query-model', model: 'model' })
     const handler = vi.fn(() => ({ kind: 'success' as const }))
-    h.ctx.effect(() => h.ctx.commands.register({ name: 'goal', description: 'Goal', input: { hint: 'Task' }, handler }))
+    h.ctx.effect(() => h.ctx.commands.register({ name: 'feedback', description: 'Feedback', input: { hint: 'Task' }, handler }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', description: 'Permission', input: { hint: 'Preset' }, handler }))
     await expect(h.server.query({ sessionId: SessionId('q'), text, delivery: 'queue' })).resolves.toMatchObject({ kind: 'prompt' })
     await h.server.wait({ sessionId: 'q' })

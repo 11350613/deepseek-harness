@@ -364,7 +364,7 @@ export class HarnessClient {
   /**
    * Execute a strict command without waiting for an inbox receipt or Agent idle.
    * @param sessionId - target Session; an unknown id creates it.
-   * @param line - `/compact`, `/permission <preset>`, or `/plan [off|message]`; handlers validate arguments.
+   * @param line - supported compact, permission, plan, or goal input; handlers validate arguments.
    * @returns the native command result, including a business error when the handler refuses it.
    * @throws on protocol rejection, malformed response, timeout or transport loss; never retries.
    */

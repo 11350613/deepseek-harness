@@ -720,8 +720,12 @@ class NotificationSubscription:
         self.close()
         self._notifications.put(error)
 
-    def next(self) -> Notification:
-        item = self._notifications.get()
+    def next(self, timeout_seconds: float | None = None) -> Notification:
+        """Read one notification; an optional timeout stops only this local wait."""
+        try:
+            item = self._notifications.get(timeout=timeout_seconds)
+        except queue.Empty as exc:
+            raise TimeoutError("timed out waiting for an SDK notification") from exc
         if isinstance(item, BaseException):
             raise item
         return item

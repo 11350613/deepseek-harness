@@ -70,6 +70,20 @@ python python/sdk/examples/plan.py \
 
 原生计划通过 `exit_plan_mode` 携带，而不是写入工作区文档。权限仍为 workspace-write。关闭审查会保留计划模式并结束当前轮次。示例通过 `session/wait` 等待，问答回调独立于协议读取线程。
 
+<a id="run-a-goal"></a>
+## 运行目标
+
+[目标示例](goal.py) 提交 `/goal <objective>`，打印目标变化和助手回复，并在终态目标事件后等待最后的回复。示例使用完整 SDK profile 和 workspace-write 权限。
+
+```sh
+python python/sdk/examples/goal.py \
+  --dsh-home /absolute/path/to/goal-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  "Calculate 17 * 19, verify the result, and complete the goal without changing files."
+```
+
+`--timeout-seconds` 限制观察时间，默认为 300 秒。超时会报告失败并关闭运行时，不会将目标标记为完成。恢复会话后可查看持久化目标，再显式恢复执行。自动轮次之间存在 idle 间隙，因此仅调用 `session/wait` 不足以等待目标结束。
+
 ## 添加插件
 
 对同一个显式 home 使用运行时 wheel 包提供的 `dsh` 命令，以进行持久 profile 变更：

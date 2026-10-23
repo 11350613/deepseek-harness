@@ -21,13 +21,16 @@ describe('SDK query text recognition', () => {
     ['/plan', '/plan'], ['/计划', '/plan'], [' \n/plan off\t ', '/plan off'],
     ['/计划\nDesign the change', '/plan\nDesign the change'],
     ['/plan  off extra', '/plan  off extra'],
+    ['/goal', '/goal'], ['/目标', '/goal'], ['/目标\nfinish the task', '/goal\nfinish the task'],
+    ['/goal edit new objective', '/goal edit new objective'], ['/goal pause', '/goal pause'],
+    ['/goal resume', '/goal resume'], ['/goal clear', '/goal clear'],
   ])('recognizes the Desktop form %j', (text, expected) => {
     expect(queryCommand(text, commands)).toBe(expected)
   })
 
   it.each(['ordinary text', '/', '/unknown', '/usr/bin', '/COMPACT', '/模型', '/文件',
     '/compact extra', '/压缩 extra', '/export path', '/model extra', '/file path',
-    '/plans inspect', '/goal finish', '/反馈 problem',
+    '/plans inspect', '/goals finish', '/反馈 problem',
     '/permission', ' \n/permission \t', '/权限', '/权限\n\t', '/permissions read-only',
     '/导出', '/export', '/model', '/file'])('leaves %j as ordinary text', (text) => {
     expect(queryCommand(text, commands)).toBeUndefined()
@@ -43,7 +46,8 @@ describe('SDK query text recognition', () => {
   })
 
   it('leaves other registered commands and unavailable supported commands unchanged', () => {
-    expect(queryCommand('/goal', commands)).toBeUndefined()
+    expect(queryCommand('/feedback', commands)).toBeUndefined()
+    expect(queryCommand('/goal', [])).toBeUndefined()
     expect(queryCommand('/plan', [])).toBeUndefined()
     expect(queryCommand('/compact', [])).toBeUndefined()
     expect(queryCommand('/export', [])).toBeUndefined()
@@ -54,6 +58,7 @@ describe('SDK query text recognition', () => {
       .toBeUndefined()
     expect(queryCommand('/计划', [{ name: 'planning', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Renamed plan' }]))
       .toBeUndefined()
+    expect(queryCommand('/目标', [{ name: 'goal', description: 'Scoped goal' }])).toBeUndefined()
   })
 
   it('preserves exact-name priority over localized aliases', () => {

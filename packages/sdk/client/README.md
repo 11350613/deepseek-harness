@@ -55,7 +55,7 @@ The subprocess starts lazily on first use and stays owned by the instance across
 
 ### Sending input and receiving responses
 
-`await session.query(text, { delivery: 'queue' })` starts the runtime if needed, sends text, and returns without awaiting runtime routing or execution. Delivery defaults to `queue`; `steer` targets the next available step for ordinary input. The full SDK intercepts bare `/compact`, `/permission <preset>` with a non-blank preset, and `/plan [off|message]`, including their registered Desktop aliases. Bare `/permission` or `/权限`, `/model`, and `/compact extra` remain ordinary prompts. `run()` never dispatches these commands. Query is text-only; use `run()` for content-block prompts.
+`await session.query(text, { delivery: 'queue' })` starts the runtime if needed, sends text, and returns without awaiting runtime routing or execution. Delivery defaults to `queue`; `steer` targets the next available step for ordinary input. The full SDK intercepts bare `/compact`, `/permission <preset>` with a non-blank preset, `/plan [off|message]`, and `/goal [objective|clear|edit objective|pause|resume]`, including their registered Desktop aliases. Bare `/permission` or `/权限`, `/model`, and `/compact extra` remain ordinary prompts. `run()` never dispatches these commands. Query is text-only; use `run()` for content-block prompts.
 
 ```ts
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
@@ -79,7 +79,9 @@ Launch options provide initial values, not a shared live configuration object. A
 
 ### Lower-level control with HarnessClient
 
-`client.query(sessionId, text, delivery, signal?)` waits for a validated prompt receipt or command result. `client.executeCommand(sessionId, line)` is the strict entry for `/compact`, `/permission <preset>`, and `/plan [off|message]`; it rejects bare `/permission`. A non-blank unknown preset reaches the native handler and returns `result.kind === "error"`. Subscribe before these calls when notifications are needed. An optional fourth `request()` argument supplies an `AbortSignal` that abandons only the local wait; runtime work can continue after timeout or local abandonment.
+`client.query(sessionId, text, delivery, signal?)` waits for a validated prompt receipt or command result. `client.executeCommand(sessionId, line)` is the strict entry for `/compact`, `/permission <preset>`, `/plan [off|message]`, and `/goal [objective|clear|edit objective|pause|resume]`; it rejects bare `/permission`. A non-blank unknown preset reaches the native handler and returns `result.kind === "error"`. Subscribe before these calls when notifications are needed. An optional fourth `request()` argument supplies an `AbortSignal` that abandons only the local wait; runtime work can continue after timeout or local abandonment.
+
+`/goal` uses the native goal handler and can start automatic rounds after its `CommandExecution`. Subscribe before sending; observe a terminal `goal/change` operation before using `session/wait` for the closing reply. Idle between rounds is not goal completion. See the [server semantics](../server/README.md) for pause, clear, restoration, and permission behavior.
 
 `HarnessClient` is the protocol client under the run API: explicit `start()`, `initialize()`, `prompt()`, `request()`, and `close()`, plus notification subscriptions. `prompt()` returns the queued message id as soon as the runtime accepts it and never waits for agent activity. `subscribe(filter?)` returns a `NotificationSubscription` (awaitable `next()`, non-blocking `tryNext()`, async iteration); `subscribeSessionTree(id)` scopes to one session and the descendants discovered from `subagent.started` lineage edges — the runtime notifies for every session in its context, and scoping is client-side, exactly like the Python SDK.
 

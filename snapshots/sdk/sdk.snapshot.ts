@@ -174,6 +174,12 @@ const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
     replayStandaloneCommands: true,
     planReviews: ['keep', 'approve', 'dismiss'],
   },
+  'goal-rounds': {
+    environment: { DSH_PERMISSION_MODE: 'workspace-write' },
+    patches: [fileURLToPath(new URL('./goal-rounds/capture.cordis.yml', import.meta.url))],
+    modelRequestsFile: 'goal-requests.jsonl',
+    replayStandaloneCommands: true,
+  },
   'minimal-image-compaction': {
     expectedFinalResponse: 'MINIMAL_IMAGE_OK',
     expectedTools: { bash: ['command'], read_image: ['file_path'], working_directory: [] },
@@ -853,7 +859,10 @@ async function runScenario(scenario: CorpusScenario): Promise<{
             subscription,
             sessionId,
             event => event.type === 'turn/end' && (event.data as JsonObject | undefined)?.turn === action.turn,
-            observe,
+            (notification) => {
+              observe(notification)
+              if (assertions.replayStandaloneCommands === true) notifications.push(notification)
+            },
           )
           continue
         }
@@ -1134,6 +1143,27 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       )
       reconcileCatalogCreationTimes(ordered.map(log => log.content), 'validate')
       const actualContext = contextOf(ordered, cwd)
+      if (scenario.name === 'goal-rounds') {
+        const parent = ordered[0]
+        if (parent === undefined) throw new Error('goal rounds have no persisted Session')
+        const events = parseSessionLog(parent.content)
+        expect(events.filter(event => event.type === 'goal/change').map(event => event.data.operation))
+          .toEqual(['create', 'complete'])
+        expect(events.filter(event => event.type === 'user/message' && event.data.source.kind === 'goal')
+          .map(event => event.data.source)).toMatchObject([{ round: 1, revision: 1 }, { round: 2, revision: 1 }])
+        expect(events.filter(event => event.type === 'turn/start')).toHaveLength(3)
+        expect(events.filter(event => event.type === 'step/start')).toHaveLength(5)
+        expect(modelRequests).toHaveLength(5)
+        expect(JSON.stringify(modelRequests.at(-1)?.messages)).toContain('<goal_complete>')
+        expect(events.findLast(event => event.type === 'assistant/message'))
+          .toMatchObject({ data: { message: { content: [{ type: 'text', text: 'SDK_GOAL_DONE' }] } } })
+        expect(events.filter(event => event.type === 'sandbox/mode').map(event => event.data.mode)).toEqual(['workspace-write'])
+        expect(events.filter(event => event.type === 'approval/policy').map(event => event.data.policy)).toEqual(['ask'])
+        expect(notifications.flatMap(notification => {
+          const event = notificationEvent(notification)
+          return event?.type === 'goal/change' ? [event] : []
+        })).toEqual(events.filter(event => event.type === 'goal/change'))
+      }
       if (scenario.name === 'plan-review') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('plan review has no persisted Session')

@@ -40,7 +40,8 @@ _T = TypeVar("_T")
 class _Completion:
     text: str
     blocked: bool = False
-    tool_call: tuple[str, dict] | None = None
+    tool_call: tuple[str, dict] | Callable[[dict], tuple[str, dict]] | None = None
+    allow_disconnect: bool = False
     entered: threading.Event = field(default_factory=threading.Event)
     release: threading.Event = field(default_factory=threading.Event)
 
@@ -98,13 +99,18 @@ class _ModelServer:
                 completion.entered.set()
                 # The test owns release. This larger bound only contains a failed test.
                 assert completion.release.wait(_WAIT_SECONDS * 2), "model barrier was not released"
-                payload = _messages_response(completion.text, body["model"], ordinal, completion.tool_call)
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-                self.wfile.flush()
+                tool_call = completion.tool_call(body) if callable(completion.tool_call) else completion.tool_call
+                payload = _messages_response(completion.text, body["model"], ordinal, tool_call)
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    if not completion.allow_disconnect:
+                        raise
 
             def log_message(self, _format: str, *_args: object) -> None:
                 pass
@@ -182,6 +188,7 @@ def _runtime(
     tmp_path: Path, completions: list[_Completion], *, capture_patch: Path | None = None,
     initial_permission: str = "danger-full-access",
     on_user_question: UserQuestionHandler | None = None,
+    max_goal_rounds: int | None = None,
 ) -> Iterator[_Runtime]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(exist_ok=True)
@@ -194,6 +201,9 @@ def _runtime(
         + "\n    compression: none\n",
         encoding="utf-8",
     )
+    if max_goal_rounds is not None:
+        with patch.open("a", encoding="utf-8") as extra:
+            extra.write(f"- id: goal\n  config:\n    defaultMaxGoalRounds: {max_goal_rounds}\n")
     patches = (patch,) if capture_patch is None else (patch, capture_patch.resolve())
     dsh_bin = _dsh_bin()
     with _ModelServer(completions) as model, ThreadPoolExecutor(max_workers=2) as workers:
@@ -456,10 +466,10 @@ def test_unknown_slash_and_compact_arguments_follow_the_plain_prompt_path(tmp_pa
     assert len(_of_type(events, "turn/start")) == len(_of_type(events, "turn/end")) == 2
 
 
-def test_unimplemented_slash_remains_plain_text_without_creating_a_goal(tmp_path: Path) -> None:
-    input_text = "/goal DSH_GOAL_TEXT_INPUT"
+def test_unimplemented_slash_remains_plain_text_without_recording_feedback(tmp_path: Path) -> None:
+    input_text = "/feedback DSH_FEEDBACK_TEXT_INPUT"
     following = "DSH_AFTER_PLAN_TEXT_INPUT"
-    reply_before = "DSH_GOAL_TEXT_REPLY"
+    reply_before = "DSH_FEEDBACK_TEXT_REPLY"
     reply = "DSH_AFTER_PLAN_TEXT_REPLY"
     with _runtime(tmp_path, [_Completion(reply_before), _Completion(reply)]) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
@@ -478,7 +488,7 @@ def test_unimplemented_slash_remains_plain_text_without_creating_a_goal(tmp_path
         assert initial["tools"] == continued["tools"]
     events = _read_events(runtime.logs)
     assert not _of_type(events, "command/run")
-    assert not any(event["type"].startswith("goal/") for event in events)
+    assert not any(event["type"].startswith("feedback/") for event in events)
     assert len(_of_type(events, "turn/start")) == len(_of_type(events, "turn/end")) == 2
 
 
