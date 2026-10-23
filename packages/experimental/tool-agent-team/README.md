@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package lets the model create named teammates, send them messages, inspect availability, wait for progress, interrupt stuck work, and coordinate through a shared task board. Every team member receives the same nine tools and guidance for coordinating in a shared workspace. It replaces legacy subagent controls with the same tool names, so compositions that need both must disable the legacy definitions. The package is published under its experimental name and provides no stability guarantee.
+This package lets the model create named teammates, send them messages, inspect availability, wait for progress, interrupt stuck work, and coordinate through a shared task board. Every team member receives the same nine tools and guidance for coordinating in a shared workspace. Team members use teammate delegation instead of inherited ordinary subagent tools. The package is published under its experimental name and provides no stability guarantee.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Add this package on top of `@deepseek-ai/dsh-experimental-agent-team` when the m
 
 ### When to choose it
 
-Choose it when the model should create and coordinate teammates by itself rather than a human driving subagent controls. Avoid it when the legacy global subagent tools with the same names must stay available: the team tools replace them for team members, so a composition that wants both must disable the legacy definitions.
+Choose it when the model should create and coordinate teammates by itself rather than a human driving subagent controls. At member activation, Team masks inherited `subagent`, `subagent_fork`, `list_subagent_models`, and ordinary child controls before installing its own tools. This includes tools contributed by a Web preset. With `interrupt: false`, an inherited ordinary `interrupt_agent` remains hidden. Definitions outside member scopes remain unchanged; unloading the Team tools restores their visibility.
 
 ### Smallest working example
 

@@ -680,6 +680,38 @@ describe('dsh-tool-team', () => {
     expect(JSON.stringify(legacySchema)).toContain('agent_id')
   })
 
+  it('masks ordinary delegation for Lead and teammate and restores it when Team tools unload', async () => {
+    const { ctx, lead, fiber } = await setup(['hang'], true)
+    await fiber.dispose()
+    const ordinary = ['subagent', 'subagent_fork', 'list_subagent_models']
+    for (const name of ordinary) ctx.tools.register(defineContentToolFixture({
+      name, description: 'ordinary delegation', parameters: {},
+      async execute() { return [{ type: 'text', text: 'ordinary' }] },
+    }))
+    const replacement = await ctx.plugin(toolTeam, { interrupt: false })
+    const spawned = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'masked-worker', description: 'scope masking', prompt: 'wait',
+    })
+    const childId = spawnedChildId(ctx, lead, spawned)
+    const child = await waitRunning(ctx, childId)
+    for (const agent of [lead, child]) {
+      const names = ctx.tools.schemas(agent).map(tool => tool.name)
+      for (const name of [...ordinary, 'interrupt_agent']) {
+        expect(names).not.toContain(name)
+        expect((await execute(ctx, agent, name, {})).isError).toBe(true)
+      }
+      expect(names).toContain('spawn_teammate')
+    }
+    expect(ctx.tools.schemas().map(tool => tool.name)).toEqual(expect.arrayContaining(ordinary))
+    await replacement.dispose()
+    for (const agent of [lead, child]) {
+      expect(ctx.tools.schemas(agent).map(tool => tool.name)).toEqual(expect.arrayContaining([...ordinary, 'interrupt_agent']))
+      expect(text(await execute(ctx, agent, 'subagent', {}))).toBe('ordinary')
+    }
+    ctx.agentTeams.interrupt(lead, 'masked-worker')
+    await waitNoAgent(ctx, childId)
+  })
+
   it('rolls back partial scoped installation after a same-scope collision', async () => {
     const { ctx, lead, fiber } = await setup([])
     await fiber.dispose()

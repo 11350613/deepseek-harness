@@ -170,6 +170,10 @@ function install(agent: Agent, ctx: Context, config: Required<Config>): () => vo
   const disposers: Array<() => unknown> = []
   const register = (disposer: () => unknown): void => { disposers.push(disposer) }
   try {
+    // Presets can contribute ordinary delegation after the Team bundle disables base rows.
+    const inherited = ['subagent', 'subagent_fork', 'list_subagent_models', 'list_agents', 'send_message', 'interrupt_agent']
+      .filter(name => scoped.tools.get(name, agent) !== undefined)
+    if (inherited.length > 0) register(scoped.tools.restrict({ deny: inherited }))
     register(scoped.systemPrompt.section({
       name: 'team:policy',
       order: scoped.systemPrompt.getSectionOrder('TEAM_POLICY'),
