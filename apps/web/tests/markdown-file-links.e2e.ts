@@ -168,12 +168,25 @@ describe('web e2e: Markdown file links', () => {
 
     const relative = page.getByRole('button', { name: 'Relative colon:24–30', exact: true })
     await relative.waitFor()
+    expect(await page.getByRole('button', { name: 'Development server', exact: true }).count()).toBe(0)
+    expect(await page.getByRole('link', { name: 'Development server', exact: true }).getAttribute('href')).toBe('localhost:3000')
+    expect(await page.getByRole('link', { name: 'Bare URL', exact: true }).getAttribute('href')).toBe('index.ts:24')
+    expect(await page.getByRole('link', { name: 'Blocked script', exact: true }).count()).toBe(0)
+    expect(await page.getByRole('button', { name: 'Blocked script', exact: true }).count()).toBe(0)
+    expect(await page.getByRole('link', { name: 'Mail', exact: true }).getAttribute('href')).toBe('mailto:10086')
     await compareOrRefreshGolden(
       fileURLToPath(new URL('./expected/markdown-colon-file-links.md', import.meta.url)),
       await relative.locator('..').ariaSnapshot(), MODE,
     )
     const column = page.locator('[data-rightbar-col]')
-    for (const [label, line] of [['Relative colon:24–30', 24], ['Absolute colon:30', 30], ['Fragment:12', 12]] as const) {
+    for (const label of ['Zero line', 'Reversed range']) {
+      await page.getByRole('button', { name: label, exact: true }).click()
+      await expect.poll(() => column.locator('[data-textpreview-path]').textContent())
+        .toBe(join(scaffold.workspaceCwd, 'src/example.txt'))
+      await expect.poll(() => column.locator('[data-textpreview-line="1"]').textContent()).toBe('source line 1\n')
+      expect(await column.locator('[data-dockkit-tab-title]').allTextContents()).toEqual(['example.txt'])
+    }
+    for (const [label, line] of [['Relative colon:24–30', 24], ['Absolute colon:30', 30], ['Column:24:5', 24], ['Fragment:12', 12]] as const) {
       const link = page.getByRole('button', { name: label, exact: true })
       await link.focus()
       await link.press('Enter')
