@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import {
   CodeBlock, DiffBlock, DisclosureRow, IconInspectOutlineRegular, ReadBlock, SearchBlock,
   TerminalBlock, TextShimmer, WebBlock,
-  diffTotals,
+  diffTotals, contextMenuTrigger, useMarkdownDelegate,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRenderSlots, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { OpenFileOptions, UseDisclosure } from '@deepseek-ai/dsh-client-ui-chat/client'
@@ -151,6 +151,7 @@ export const ToolRow = memo(function ToolRow({
   useDisclosure,
 }: ToolRowProps) {
   const { expanded, toggle: toggleExpand } = useDisclosure()
+  const { openContextMenu } = useMarkdownDelegate()
   const terminalLabels = useMemo(() => terminalBlockLabels(t), [t])
   const diffLabels = useMemo(() => diffBlockLabels(t), [t])
   const readLabels = useMemo(() => readBlockLabels(t), [t])
@@ -208,6 +209,12 @@ export const ToolRow = memo(function ToolRow({
   // The code variant's program renders through CodeBlock (shiki), so only its
   // output joins the IN/OUT card; every other variant's input does too.
   const cardBody = variant === 'code' ? null : bodyText
+  const fileMenu = useMemo(() => contextMenuTrigger(openContextMenu === undefined || filePath === undefined ? undefined : (point) => {
+    openContextMenu({ kind: 'file', path: filePath, ...(filePathLine === undefined ? {} : { line: filePathLine }) }, point)
+  }), [openContextMenu, filePath, filePathLine])
+  const urlMenu = useMemo(() => contextMenuTrigger(openContextMenu === undefined || linkHref === undefined ? undefined : (point) => {
+    openContextMenu({ kind: 'url', url: linkHref }, point)
+  }), [openContextMenu, linkHref])
   const collapsedContent = useMemo(() => summaryText !== '' && (
     /* An empty summary drops the separator with it (a row that is only
        its title shows no trailing dot). */
@@ -218,8 +225,12 @@ export const ToolRow = memo(function ToolRow({
           type="button"
           className={css.fileLink}
           data-file-path={filePath}
+          {...fileMenu}
           onClick={openFile}
-          onKeyDown={summaryLinkKeyDown}
+          onKeyDown={(event) => {
+            summaryLinkKeyDown(event)
+            fileMenu.onKeyDown?.(event)
+          }}
         >
           <TextShimmer>{summaryText}</TextShimmer>
         </button>
@@ -227,10 +238,14 @@ export const ToolRow = memo(function ToolRow({
         <a
           className={css.fileLink}
           href={linkHref}
+          {...urlMenu}
           target="_blank"
           rel="noopener noreferrer"
           onClick={stopLinkClick}
-          onKeyDown={summaryLinkKeyDown}
+          onKeyDown={(event) => {
+            summaryLinkKeyDown(event)
+            urlMenu.onKeyDown?.(event)
+          }}
         >
           <TextShimmer>{summaryText}</TextShimmer>
         </a>
@@ -255,7 +270,7 @@ export const ToolRow = memo(function ToolRow({
         </TextShimmer>
       )}
     </>
-  ), [summaryLinkKeyDown, linkHref, openFile, state, suffix, totals, summaryText, exitLabel])
+  ), [summaryLinkKeyDown, fileMenu, urlMenu, linkHref, openFile, state, suffix, totals, summaryText, exitLabel])
   const expandedContent = useMemo(() => open ? (
     <div className={clsx(css.bodyWrap, detailsBody !== null && css.detailsBodyWrap)}>
       {askQuestionBody !== null

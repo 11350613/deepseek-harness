@@ -81,6 +81,7 @@ export class BrowserFileActions implements FileActions {
   }
   async copyImage(source: FileActionSource): Promise<void> {
     const png = this.read(source).then(async (blob) => {
+      this.lifetime.signal.throwIfAborted()
       if (blob.type === 'image/png') return blob
       const objectUrl = URL.createObjectURL(blob)
       const image = new Image()
@@ -100,12 +101,6 @@ export class BrowserFileActions implements FileActions {
         })
       } finally { URL.revokeObjectURL(objectUrl) }
     })
-    if (this.desktop !== undefined) {
-      const bytes = new Uint8Array(await (await png).arrayBuffer())
-      this.lifetime.signal.throwIfAborted()
-      await this.desktop.copyImage(bytes)
-      return
-    }
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
   }
   /** Cancel reads and release browser download URLs when the plugin unloads. */

@@ -1,5 +1,5 @@
-/** Trusted-window original-file saves and clipboard transfers. Saved paths stay in the main process. */
-import { app, clipboard, ClipboardItem, dialog, ipcMain, nativeImage, shell } from 'electron'
+/** Trusted-window original-file saves and image reads. Saved paths stay in the main process. */
+import { app, dialog, ipcMain, shell } from 'electron'
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
 import { open, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
@@ -102,13 +102,6 @@ export function installFileActions(
     if (!(await stat(entry.path)).isFile()) throw new Error('Saved file unavailable')
     assertOwner(event)
     shell.showItemInFolder(entry.path)
-  })
-  ipcMain.handle(DESKTOP_IPC.imageCopy, async (event, bytes: unknown) => {
-    assertOwner(event)
-    if (!(bytes instanceof Uint8Array) || bytes.byteLength > maxBytes) throw new Error('Invalid clipboard image')
-    const image = nativeImage.createFromBuffer(Buffer.from(bytes))
-    if (image.isEmpty()) throw new Error('Image cannot be decoded')
-    await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(image.toPNG())]) })])
   })
   ipcMain.handle(DESKTOP_IPC.imageRead, async (event, value: unknown) => {
     const owner = assertOwner(event)

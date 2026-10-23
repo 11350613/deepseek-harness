@@ -25,7 +25,7 @@ Download and save original files without changing their encoding. Copy images as
 <a id="use-this-package"></a>
 ## Use this package
 
-The Web application bundle mounts this Client plugin without configuration fields. Consumers import `/client` types and inject `fileActions`. Desktop supplies an optional trusted-frame adapter; ordinary Web uses its browser clipboard and download APIs.
+The Web application bundle mounts this Client plugin without configuration fields. Consumers import `/client` types and inject `fileActions`. Desktop supplies an optional trusted-frame adapter for saves and remote image reads. Both Desktop and Web write PNG images through the browser Clipboard API.
 
 ### Original content
 
@@ -35,9 +35,9 @@ Pass an original URL, optional filename and MIME, or an authorized `read(signal)
 
 Filename and MIME normalization reuse the file-drag utility, so saving and dragging retain the same original format and filename policy.
 
-Response MIME takes precedence over a suggested filename or media type when naming downloaded originals. Image copying decodes the original into PNG for clipboard interoperability. Downloads and save-as never use that conversion. Callers own localized success and failure feedback. Rejected reads do not start writes; native download writes reserve a unique filename and remove partial files on failure. Explicit replacements write a sibling temporary file before renaming. Plugin disposal aborts browser reads, discards references, and releases object URLs.
+Response MIME takes precedence over a suggested filename or media type when naming downloaded originals. Image copying decodes the original into PNG for clipboard interoperability. Downloads and save-as never use that conversion. The plugin contributes file and image copy, download, save-as, saved-file reveal, and localized feedback through `ctx.menus`, independently of `ui-open-in-app`. Other service callers own their feedback. Rejected reads do not start writes; native download writes reserve a unique filename and remove partial files on failure. Explicit replacements write a sibling temporary file before renaming. Plugin disposal aborts browser reads, discards references, and releases object URLs.
 
-Desktop remote reads follow HTTP(S) redirects without credentials or referrers, rejecting the application Host at every hop. Other destinations use the machine’s network policy. The configured byte limit also bounds native clipboard input before decoding. Ordinary Web reads require the remote server to allow browser CORS; a denied response produces failure feedback without starting a save.
+Desktop remote reads follow HTTP(S) redirects without credentials or referrers, rejecting the application Host at every hop. Other destinations use the machine’s network policy. Ordinary Web reads require the remote server to allow browser CORS; a denied response produces failure feedback without starting a save.
 
 -----
 

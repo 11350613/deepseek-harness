@@ -8,8 +8,9 @@ import type { DesktopFileDrag } from '@deepseek-ai/dsh-util-file-drag'
 
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
-  fileSave: 'dsh-desktop:file-save', fileReveal: 'dsh-desktop:file-reveal',
-  imageCopy: 'dsh-desktop:image-copy', imageRead: 'dsh-desktop:image-read',
+  fileSave: 'dsh-desktop:file-save',
+  fileReveal: 'dsh-desktop:file-reveal',
+  imageRead: 'dsh-desktop:image-read',
   shortcutsInput: 'dsh-desktop:shortcuts-input',
   shortcutsCloseWindow: 'dsh-desktop:shortcuts-close-window',
   shortcutsGet: 'dsh-desktop:shortcuts-get',

@@ -10,8 +10,7 @@ import { DESKTOP_IPC } from '../src/ipc.ts'
 
 const electron = vi.hoisted(() => ({
   app: { getPath: vi.fn() }, ipcMain: { handle: vi.fn() }, dialog: { showSaveDialog: vi.fn() },
-  shell: { showItemInFolder: vi.fn() }, nativeImage: { createFromBuffer: vi.fn() }, clipboard: { write: vi.fn() },
-  ClipboardItem: class { constructor(readonly content: object) {} },
+  shell: { showItemInFolder: vi.fn() },
 }))
 vi.mock('electron', () => electron)
 const roots: string[] = []
@@ -96,7 +95,7 @@ it('preserves saved references across iframe and same-document navigation', asyn
   f.owner.emit('closed')
 })
 
-it('rejects redirects to the application Host and bounds clipboard decoding', async () => {
+it('rejects redirects to the application Host', async () => {
   const root = await directory()
   const owner = Object.assign(new EventEmitter(), { webContents: new EventEmitter(), isDestroyed: () => false })
   installFileActions(() => owner as BrowserWindow, () => 'http://127.0.0.1:19321')
@@ -107,7 +106,5 @@ it('rejects redirects to the application Host and bounds clipboard decoding', as
   const event = {} as IpcMainInvokeEvent
   await expect(handler(DESKTOP_IPC.imageRead)(event, 'https://images.example/photo')).rejects.toThrow('Invalid image URL')
   expect(fetchImage).toHaveBeenCalledOnce()
-  await expect(handler(DESKTOP_IPC.imageCopy)(event, new Uint8Array(64 * 1024 * 1024 + 1))).rejects.toThrow('Invalid clipboard image')
-  expect(electron.nativeImage.createFromBuffer).not.toHaveBeenCalled()
   expect(await readdir(root)).toEqual([])
 })

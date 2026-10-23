@@ -120,7 +120,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'contextMenu.content\', () => ctx.slots.register(\n      { name: \'contextMenu.content\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-context-menu/src/client/index.ts:24',
+    source: 'packages/client/ui-context-menu/src/client/index.ts:25',
   },
   {
     key: 'conversation.approval.detail',

@@ -1,4 +1,4 @@
-import { menuPoint } from '../menu-point.ts'
+import { menuPoint, contextMenuTrigger } from '../menu-point.ts'
 /**
  * Direct mdast→React markdown renderer. Replaces the react-markdown /
  * remark-rehype pipeline with one switch over parsed nodes so streaming can
@@ -362,9 +362,7 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
               aria-label={mention.label}
               data-file-path={mention.title}
               onClick={mention.open}
-              onContextMenu={mention.openMenu === undefined ? undefined : (event) => {
-                event.preventDefault(); event.stopPropagation(); mention.openMenu?.(menuPoint(event))
-              }}
+              {...contextMenuTrigger(mention.openMenu)}
             >
               <LinkIconMedium kind={classifyLinkPath(value)} className={css.linkIcon} />
               {value}
@@ -600,10 +598,9 @@ function MarkdownAnchor({ href, glyph, children }: {
   return (
     <a
       href={href}
-      onContextMenu={!external || openContextMenu === undefined ? undefined : (event) => {
-        event.preventDefault(); event.stopPropagation()
-        openContextMenu({ kind: 'url', url: href }, menuPoint(event))
-      }}
+      {...contextMenuTrigger(!external || openContextMenu === undefined ? undefined : (point) => {
+        openContextMenu({ kind: 'url', url: href }, point)
+      })}
       {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
       onClick={open === undefined ? undefined : (event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -643,10 +640,9 @@ function MarkdownFileLink({ file, glyph, children }: {
       type="button"
       className={clsx(css.fileMention, css.fileLink)}
       title={src === undefined ? file.path : undefined}
-      onContextMenu={openContextMenu === undefined ? undefined : (event) => {
-        event.preventDefault(); event.stopPropagation()
-        openContextMenu({ kind: 'file', ...file }, menuPoint(event))
-      }}
+      {...contextMenuTrigger(openContextMenu === undefined ? undefined : (point) => {
+        openContextMenu({ kind: 'file', ...file }, point)
+      })}
       data-file-path={file.path} data-file-line={file.line}
       onClick={() => { openFile(file.path, file.line === undefined ? undefined : { line: file.line }) }}
     >

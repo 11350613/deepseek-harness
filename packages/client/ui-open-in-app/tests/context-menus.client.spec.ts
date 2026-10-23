@@ -7,6 +7,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import { OpenInAppPathController } from '../src/client/open-path.ts'
 import { OpenInAppController } from '../src/client/controller.ts'
+import { registerFileMenus } from '@deepseek-ai/dsh-client-ui-file-actions/src/client/context-menus.ts'
 import { registerContextMenus } from '../src/client/context-menus.ts'
 
 afterEach(() => { vi.unstubAllGlobals() })
@@ -36,7 +37,10 @@ it('offers image actions on file targets, copies absolute paths, and keeps save 
   ctx.provide('fileActions', { save, copyImage: copy, canSaveAs: true, savedFile: () => undefined } as never)
   const paths = new OpenInAppPathController(remote)
   const directories = new OpenInAppController()
-  const fiber = ctx.plugin({ apply: (plugin: Context) => { registerContextMenus(plugin, paths, key => key, directories) } })
+  const fiber = ctx.plugin({ apply: (plugin: Context) => {
+    registerContextMenus(plugin, paths, key => key, directories)
+    registerFileMenus(plugin, ctx.fileActions, key => key)
+  } })
   await fiber.await()
   try {
     const file = { kind: 'file' as const, value: { sessionId: id, path: 'original.svg', line: 42 } }
@@ -44,13 +48,13 @@ it('offers image actions on file targets, copies absolute paths, and keeps save 
     await copying.ready
     expect(copying.source.getSnapshot().map(action => action.id)).toEqual([
       'open-in-app.file/sidebar', 'open-in-app.file/reveal', 'open-in-app.file/open',
-      'open-in-app.file/copyPath', 'open-in-app.file/copyImage', 'open-in-app.file/download', 'open-in-app.file/saveAs',
+      'open-in-app.file/copyPath', 'file-actions.file/copyImage', 'file-actions.file/download', 'file-actions.file/saveAs',
     ])
     copying.select('open-in-app.file/copyPath')
     expect(writeText).toHaveBeenCalledWith('/workspace/original.svg')
     const downloading = registry.resolve(file)
     await downloading.ready
-    downloading.select('open-in-app.file/download')
+    downloading.select('file-actions.file/download')
     downloading.dispose()
     await vi.waitFor(() => { expect(notify).toHaveBeenCalledWith('menu.downloaded', true) })
     const source = save.mock.calls[0]?.[0]

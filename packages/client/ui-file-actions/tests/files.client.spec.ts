@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { Blob as NodeBlob } from 'node:buffer'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BrowserFileActions, exportName } from '../src/client/files.ts'
 import type { DesktopFileActions, SavedFileId } from '../src/types.ts'
 import { Context } from '@deepseek-ai/cordis'
@@ -8,6 +8,15 @@ import { apply as clientApply } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+beforeEach(() => {
+  vi.stubGlobal('ClipboardItem', class {
+    constructor(readonly content: Record<string, Promise<Blob>>) {}
+  })
+  vi.stubGlobal('navigator', { clipboard: { write: vi.fn(async (items: { content: Record<string, Promise<Blob>> }[]) => {
+    await items[0]!.content['image/png']
+  }) } })
+})
 
 function fakeImage(width: number, height: number) {
   const image = { naturalWidth: width, naturalHeight: height, src: '', decode: vi.fn(async () => {}) }
@@ -22,7 +31,7 @@ function fakeImage(width: number, height: number) {
 function native(): DesktopFileActions {
   return { save: vi.fn(async () => ({ status: 'saved' as const, fileId: 'saved' as SavedFileId })),
     readImage: vi.fn(async () => ({ bytes: new Uint8Array([1, 2, 3]), mediaType: 'image/webp' })),
-    copyImage: vi.fn(async () => {}), reveal: vi.fn(async () => {}) }
+    reveal: vi.fn(async () => {}) }
 }
 
 describe('original filenames', () => {
@@ -100,7 +109,7 @@ describe('file actions', () => {
     await expect(pending).rejects.toThrow()
     expect(bridge.save).not.toHaveBeenCalled()
   })
-  it('converts a browser-decodable original to PNG before handing it to the native clipboard', async () => {
+  it('converts a browser-decodable original to PNG for the browser clipboard in Desktop', async () => {
     vi.stubGlobal('Blob', NodeBlob)
     const bitmap = fakeImage(2, 3)
     const drawImage = vi.fn()
@@ -108,10 +117,11 @@ describe('file actions', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as never)
     vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => { callback(new Blob(['PNG'], { type: 'image/png' })) })
     const bridge = native(), actions = new BrowserFileActions(bridge)
+    const write = vi.spyOn(navigator.clipboard, 'write')
     await actions.copyImage({ url: 'https://example.org/image' })
     expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0)
     expect(vi.mocked(URL).revokeObjectURL).toHaveBeenCalledWith('blob:conversion')
-    expect(bridge.copyImage).toHaveBeenCalledWith(new Uint8Array([80, 78, 71]))
+    expect(write).toHaveBeenCalledOnce()
     await expect(actions.save({ url: 'file:///private/path' }, 'download')).rejects.toThrow('Unsupported')
     actions.dispose()
   })
@@ -162,17 +172,16 @@ describe('file actions', () => {
     const bridge = native(), actions = new BrowserFileActions(bridge)
     await expect(actions.copyImage({ url: 'identity', read: async () => new Blob([], { type: 'image/gif' }) })).rejects.toThrow('conversion')
     expect(vi.mocked(URL).revokeObjectURL).toHaveBeenCalledWith('blob:conversion')
-    expect(bridge.copyImage).not.toHaveBeenCalled()
     actions.dispose()
   })
 
-  it('passes a PNG promise to the browser clipboard during the gesture', async () => {
+  it.each([false, true])('passes a PNG promise to the browser clipboard during the gesture (Desktop: %s)', async (desktop) => {
     const blob = new Blob(['png'], { type: 'image/png' })
     let content!: Record<string, Promise<Blob>>
     vi.stubGlobal('ClipboardItem', function ClipboardItem(value: Record<string, Promise<Blob>>) { content = value })
     const write = vi.fn(async () => { await content['image/png'] })
     vi.stubGlobal('navigator', { clipboard: { write } })
-    const actions = new BrowserFileActions(undefined)
+    const actions = new BrowserFileActions(desktop ? native() : undefined)
     await actions.copyImage({ url: 'identity', read: async () => blob })
     expect(await content['image/png']).toBe(blob)
     expect(write).toHaveBeenCalledOnce()

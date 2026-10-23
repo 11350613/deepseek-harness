@@ -18,7 +18,6 @@ function createProductApi(): DshDesktopProductApi {
     fileActions: {
       save: request => ipcRenderer.invoke(DESKTOP_IPC.fileSave, request) as Promise<FileSaveResult>,
       reveal: id => ipcRenderer.invoke(DESKTOP_IPC.fileReveal, id) as Promise<void>,
-      copyImage: bytes => ipcRenderer.invoke(DESKTOP_IPC.imageCopy, bytes) as Promise<void>,
       readImage: url => ipcRenderer.invoke(DESKTOP_IPC.imageRead, url) as Promise<{ bytes: Uint8Array; mediaType: string }>,
     },
     browser: createDesktopBrowserBridge(),

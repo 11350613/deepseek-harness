@@ -27,6 +27,8 @@ Add actions to right-click menus without importing a React component. Targets re
 
 The Web application bundle mounts this Client plugin. External Client plugins declare the package in `dsh.client.inject`, import its `/client` types, and inject the `menus` service. `resolutionTimeoutMs` bounds each provider’s preparation (1000ms by default); timed-out providers are aborted and omitted with visible failure feedback.
 
+Ordinary React controls bind `contextMenuTrigger(open)` from ui-primitives to their actual DOM element. The callback supplies an explicit target to `ctx.menus.open()`; no DOM attributes are interpreted as target metadata. Nested controls can prevent handling, and portals bind at their rendered element. Special editors and canvases can call `open()` directly.
+
 ### Register actions
 
 Call `ctx.effect(() => ctx.menus.register({ id, target, order, resolve }))` in the contributing plugin. `resolve` receives the captured target and its cancellation signal; return localized actions with stable IDs, optional icons, disabled state, submenus, and execution callbacks. Contributions sort by `order`, then ID. Duplicate contribution IDs within one target family fail registration; duplicate action paths reject that provider’s result. IDs are encoded by segment before publication.
@@ -35,7 +37,7 @@ Extend `MenuTargetMap` through declaration merging on `@deepseek-ai/dsh-client-u
 
 `ctx.menus.resolve(target)` gives a separate occurrence for another renderer. Subscribe to its immutable action views, select a published ID, and dispose it when its owner closes. Views contain presentation fields only. Callbacks remain in the registry and execute at most once. Dismissal and replacement cancel metadata, but an action already selected owns its own execution and cancellation. Rejected providers and actions produce a persistent overlay toast; an action’s localized `failureLabel` supplies operation-specific recovery guidance.
 
-Shared popups wait for every contribution to settle or time out before appearing. A repeated gesture within four CSS pixels closes the same target; a farther gesture replaces it with a separate fade. `ready` gives custom renderers the same preparation point. Standard action `symbol` values use existing glyphs; custom icon URLs take precedence. Icons align within each divider group, including component contributions. Normal dismissal retains the popup for 80ms, replacement for 10ms; opening waits at least 20ms and fades in over 40ms. Reduced motion suppresses the fade.
+Shared popups wait for every contribution to settle or time out before appearing. A repeated gesture within four CSS pixels closes the same target; a farther gesture replaces it with a separate fade. `ready` gives custom renderers the same preparation point. Standard action `symbol` values use existing glyphs; custom icon URLs take precedence. Structured action icons align within each divider group; component contributions retain their own layout. Normal dismissal retains the popup for 80ms, replacement for 10ms; opening waits at least 20ms and fades in over 40ms. Reduced motion suppresses the fade.
 
 The optional keyed `contextMenu.content` Slot hosts component contributions. Existing Session and tab Slot names remain owned by their feature adapters. Keyboard context keys and Shift+F10 use the focused trigger’s lower edge. `afterContent` places a data action after those rows; ordinary actions render before them.
 

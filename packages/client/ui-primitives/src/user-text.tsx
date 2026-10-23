@@ -1,6 +1,7 @@
 /** Inline text and reference presentation; business rules supply resolved JSON data and actions. */
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
+import { contextMenuTrigger } from './menu-point.ts'
 import { ReferenceIconRegular, type ReferenceIconKind } from './ReferenceIcon.tsx'
 import css from './user-text.module.css'
 import markdownCss from './markdown/MarkdownText.module.css'
@@ -26,6 +27,8 @@ export interface ReferenceChipProps {
   readonly filePath?: string
   /** Base used to interpret a relative file destination. */
   readonly fileBase?: 'workspace' | 'workingDirectory'
+  /** Explicit object-menu callback; absent for display-only references. */
+  readonly openContextMenu?: (point: { x: number; y: number }) => void
   readonly label: string
   readonly title: string
   /** Absent for display-only references and previews. */
@@ -38,20 +41,33 @@ export interface ReferenceChipProps {
  * @param props - resolved visual fields and optional action from the owning renderer.
  * @returns an inline label, or a keyboard-accessible button when activation is supplied.
  */
-export function ReferenceChip({ appearance, label, title, onActivate, filePath, fileBase }: ReferenceChipProps): ReactNode {
+export function ReferenceChip({
+  appearance, label, title, onActivate, filePath, fileBase, openContextMenu,
+}: ReferenceChipProps): ReactNode {
   const slash = appearance === 'skill' || appearance === 'command'
   const contents = <>
     {!slash && <ReferenceIconRegular kind={appearance} size={16} className={css.refIcon} />}
     {label}
   </>
+  const menu = contextMenuTrigger(openContextMenu)
   const className = clsx(css.refChip, slash && css.slashChip)
   return onActivate === undefined
-    ? <span className={className} data-ref-chip={appearance} data-file-path={filePath}
-      data-file-base={fileBase} title={title}>{contents}</span>
+    ? <span
+      {...menu}
+      tabIndex={openContextMenu === undefined ? undefined : 0}
+      className={className}
+      data-ref-chip={appearance}
+      data-file-path={filePath}
+      data-file-base={fileBase}
+      title={title}
+    >{contents}</span>
     : <button
       type="button"
+      {...menu}
       className={clsx(className, markdownCss.fileMention)}
-      data-ref-chip={appearance} data-file-path={filePath} data-file-base={fileBase}
+      data-ref-chip={appearance}
+      data-file-path={filePath}
+      data-file-base={fileBase}
       title={title}
       onClick={(event) => {
         if (event.detail > 1 || (event.detail !== 0 && event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false)) return

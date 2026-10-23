@@ -28,11 +28,6 @@ export interface DesktopFileActions {
    */
   readImage(this: void, url: string): Promise<{ bytes: Uint8Array; mediaType: string }>
   /**
-   * @param bytes - PNG-encoded clipboard image.
-   * @returns after native clipboard accepts the decoded image.
-   */
-  copyImage(this: void, bytes: Uint8Array): Promise<void>
-  /**
    * @param id - reference returned by save.
    * @returns after the file manager accepts the request.
    */

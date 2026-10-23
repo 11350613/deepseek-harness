@@ -39,7 +39,7 @@ One unavailable or failed candidate domain yields no rows for that domain while 
 
 Click a file reference in the composer to preview its current contents in the right Sidebar. Quoted paths retain their spaces, and paths resolve in the composer Session. Folder and Session references retain their editing behavior.
 
-File and folder chips expose their decoded path through `data-file-path` for the enclosing transcript menu.
+Interactive file chips declare workspace-relative menu targets through the scoped Markdown delegate. Display-only chips do not install context-menu handlers.
 
 -----
 

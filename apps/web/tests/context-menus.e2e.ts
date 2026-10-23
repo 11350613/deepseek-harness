@@ -144,9 +144,11 @@ describe('web context menus', () => {
     await page.keyboard.press('Shift+F10')
     await page.getByRole('menuitem', { name: 'Copy file path', exact: true }).waitFor()
     await page.keyboard.press('End')
-    await page.keyboard.press('ArrowUp')
+    const saveAs = page.getByRole('menuitem', { name: 'Save as…', exact: true })
+    if (!await saveAs.isDisabled()) await page.keyboard.press('ArrowUp')
+    expect(await page.getByRole('menuitem', { name: 'Copy file path', exact: true }).evaluate(element => element === document.activeElement)).toBe(true)
     await page.keyboard.press('Enter')
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(join(scaffold.workspaceCwd, 'first.txt'))
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(join(scaffold.workspaceCwd, 'first.txt'))
     expect(await file.evaluate(element => element === document.activeElement)).toBe(true)
     await page.evaluate(() => {
       document.documentElement.style.setProperty('--dsh-frame-overlay-top', '100px')

@@ -16,6 +16,21 @@
     },
     {
       "path": "../../util/file-drag"
+    },
+    {
+      "path": "../locale/tsconfig.client.json"
+    },
+    {
+      "path": "../ui-context-menu"
+    },
+    {
+      "path": "../../api/workspace-files/tsconfig.client.json"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../util/workspace-path"
     }
   ]
 }

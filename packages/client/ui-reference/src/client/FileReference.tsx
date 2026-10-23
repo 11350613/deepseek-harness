@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import type { UserTextNodeProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import { Button, Modal, ReferenceChip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Modal, ReferenceChip, useMarkdownDelegate } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { NS } from './locales.ts'
 import type {} from './user-text-rules.ts'
 
@@ -24,6 +24,7 @@ type FileReferenceProps = UserTextNodeProps<'file'> & InjectFace<FileReferenceIn
  * @returns an inline chip and, after a navigation failure, its body-portaled dialog.
  */
 export function FileReference({ node, raw, interactive, openFile, t }: FileReferenceProps) {
+  const { openContextMenu } = useMarkdownDelegate()
   const [failedPath, setFailedPath] = useState<string | null>(null)
   const { path, label } = node.data
   const close = () => { setFailedPath(null) }
@@ -37,7 +38,17 @@ export function FileReference({ node, raw, interactive, openFile, t }: FileRefer
     setFailedPath(null)
   }
   return <>
-    <ReferenceChip appearance="file" filePath={path} fileBase="workspace" label={label} title={raw} {...interactive ? { onActivate: open } : {}} />
+    <ReferenceChip
+      appearance="file"
+      filePath={path}
+      fileBase="workspace"
+      label={label}
+      title={raw}
+      {...!interactive || openContextMenu === undefined ? {} : {
+        openContextMenu: (point) => { openContextMenu({ kind: 'file', path, base: 'workspace' }, point) },
+      }}
+      {...interactive ? { onActivate: open } : {}}
+    />
     {interactive && failedPath === path && <Modal
       open
       onClose={close}

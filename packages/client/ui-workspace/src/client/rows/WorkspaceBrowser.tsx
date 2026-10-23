@@ -617,7 +617,8 @@ function SessionTree({
               onOpen={open}
               onRenameRequest={onSessionRenameRequest}
               renderSlot={renderSlot}
-              openSessionMenu={openSessionMenu} useMenuTarget={useMenuTarget}
+              openSessionMenu={openSessionMenu}
+              useMenuTarget={useMenuTarget}
               onReveal={node.id === revealSessionId && group.key === revealGroup
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
@@ -750,7 +751,8 @@ function FlatList({
               onOpen={open}
               onRenameRequest={onSessionRenameRequest}
               renderSlot={renderSlot}
-              openSessionMenu={openSessionMenu} useMenuTarget={useMenuTarget}
+              openSessionMenu={openSessionMenu}
+              useMenuTarget={useMenuTarget}
               onReveal={node.id === revealSessionId
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
@@ -1367,7 +1369,8 @@ export function WorkspaceBrowser({
                 open={guardedOpen}
                 onSessionRenameRequest={requestSessionRename}
                 renderSlot={renderSlot}
-                openSessionMenu={openSessionMenu} useMenuTarget={useMenuTarget}
+                openSessionMenu={openSessionMenu}
+                useMenuTarget={useMenuTarget}
                 setSessionOrder={saveSessionOrder}
                 revealSessionId={revealSessionId}
                 onSessionRevealed={acknowledgeSessionReveal}
@@ -1386,7 +1389,9 @@ export function WorkspaceBrowser({
                 useSessionStatus={useSessionStatus}
                 onSessionRenameRequest={requestSessionRename}
                 renderSlot={renderSlot}
-                openSessionMenu={openSessionMenu} openWorkspaceMenu={openWorkspaceMenu} useMenuTarget={useMenuTarget}
+                openSessionMenu={openSessionMenu}
+                openWorkspaceMenu={openWorkspaceMenu}
+                useMenuTarget={useMenuTarget}
                 workspaces={orderedWorkspaces}
                 ungroupedSessionIds={orderedUngroupedSessionIds}
                 workspaceReady={workspaceReady}

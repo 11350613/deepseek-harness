@@ -118,7 +118,7 @@ export type {
 export { CodeBlock } from './markdown/CodeBlock.tsx'
 export type { CodeBlockProps } from './markdown/CodeBlock.tsx'
 export { JsonBlock } from './markdown/JsonBlock.tsx'
-export { MarkdownDelegateProvider } from './markdown/MarkdownDelegate.tsx'
+export { MarkdownDelegateProvider, useMarkdownDelegate } from './markdown/MarkdownDelegate.tsx'
 export type { MarkdownDelegate, MarkdownDelegateProviderProps, MarkdownExternalLinkHandler } from './markdown/MarkdownDelegate.tsx'
 export { DetailDocument, detailDocumentState, useDetailDocumentLabels } from './DetailDocument.tsx'
 export type { DetailDocumentCopy, DetailDocumentLabels, DetailDocumentRead, DetailDocumentState } from './DetailDocument.tsx'
@@ -140,4 +140,4 @@ export { formatQuoteText } from './markdown/quote-text.ts'
 
 export type { MarkdownMenuTarget } from './markdown/MarkdownDelegate.tsx'
 
-export { menuPoint } from './menu-point.ts'
+export { menuPoint, contextMenuTrigger } from './menu-point.ts'

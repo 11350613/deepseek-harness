@@ -10,6 +10,7 @@ import { localizeAutoReviewDenial, normalizeAutoReviewReason } from '../src/clie
 import {
   classifyTool, formatToolBody, resultText, toolRowModel,
 } from '../src/client/tool/models/tool-call-model.ts'
+import { MarkdownDelegateProvider } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ToolRow } from '../src/client/tool/components/ToolRow.tsx'
 import { GenericToolCard, type GenericToolCardProps } from '../src/client/tool/toolviews/GenericToolCard.tsx'
 import { zh } from '@deepseek-ai/dsh-client-ui-conversation/src/client/locales.ts'
@@ -329,6 +330,27 @@ describe('ToolRow', () => {
     variant: 'bash' as const, icon: <i data-testid="tool-icon" />, title: 'Bash',
     summary: 'List files', bodyRaw: '{"a":1}', state: 'ok' as const,
   }
+
+  it('declares file and URL menus without losing line numbers or toggling the row', () => {
+    const open = vi.fn()
+    const view = render(<MarkdownDelegateProvider openContextMenu={open}>
+      <ToolRow {...rowProps} variant="read" summary="file.ts:42" filePath="/workspace/file.ts" filePathLine={42} onOpenFile={() => {}} />
+    </MarkdownDelegateProvider>)
+    const file = view.getByRole('button', { name: 'file.ts:42' })
+    file.getBoundingClientRect = () => new DOMRect(10, 20, 100, 20)
+    fireEvent.contextMenu(file, { clientX: 30, clientY: 40 })
+    fireEvent.keyDown(file, { key: 'F10', shiftKey: true })
+    expect(open.mock.calls).toEqual([
+      [{ kind: 'file', path: '/workspace/file.ts', line: 42 }, { x: 30, y: 40 }],
+      [{ kind: 'file', path: '/workspace/file.ts', line: 42 }, { x: 10, y: 40 }],
+    ])
+    expect(view.container.querySelector('[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false')
+    view.rerender(<MarkdownDelegateProvider openContextMenu={open}>
+      <ToolRow {...rowProps} summary="Website" href="https://example.com?q=1#part" />
+    </MarkdownDelegateProvider>)
+    fireEvent.keyDown(view.getByRole('link'), { key: 'ContextMenu' })
+    expect(open).toHaveBeenLastCalledWith({ kind: 'url', url: 'https://example.com?q=1#part' }, { x: 0, y: 0 })
+  })
 
   it('renders leading icon, title and summary while collapsed', () => {
     const view = render(<ToolRow {...rowProps} />)
