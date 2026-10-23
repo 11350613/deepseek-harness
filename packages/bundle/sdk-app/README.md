@@ -35,6 +35,8 @@ The startup provider binds stdin EOF to the launcher's bounded successful shutdo
 
 The SDK uses the base `read`, `write`, and `edit` defaults. To add `str_replace_editor`, use the explicit insertion patch in the [base configuration guide](../base/README.md#use-this-package). The standalone `sdk-minimal` profile owns its separate tool selection.
 
+The model can use [`plugin_manager`](../../boot/plugin-manager/README.md) in native and PTC modes. Every action requires full access or approval for that call. Saved profile changes report `restart-required` with `no-hmr`; the current runtime and its sessions retain their tools until the caller closes and starts the runtime again. Set `tool-plugin-manager.disabled: true` through a profile patch to hide this tool. The standalone `sdk-minimal` profile does not include it.
+
 The Python runtime exposes explicitly downloaded authoring resources and Office sidecars to this profile. `DSH_PRIMARY_RUNTIME` overrides the authoring payload; an empty value disables its query. Office skills can use either resource independently. Profile patches can disable `skill-office` or replace its `assetRoot` independently of `workspace-dependencies`; filesystem skills with the same name take precedence. See the [runtime package](../../../python/sdk-runtime/README.md) for downloads and configuration.
 
 -----
@@ -75,6 +77,6 @@ The static prefix is stable for a fixed profile, provider, model, and tool roste
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-None.
+The [SDK/Desktop tool comparison](../../../apps/cli/tests/profiles/sdk/desktop-tools.expected.e2e.ts) runs without API credentials in `test:expected`, included in the required PR consumer job. After building, run `CI=true pnpm run test:expected apps/cli/tests/profiles/sdk/desktop-tools.expected.e2e.ts`. Maintain exact, reasoned differences in the adjacent `tool-parity.ts`; resolved differences invalidate their exceptions. Existing SDK session snapshots and installed-runtime smokes independently check model output and packaging.
 
 </details>

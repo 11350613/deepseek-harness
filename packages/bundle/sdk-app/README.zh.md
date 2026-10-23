@@ -35,6 +35,8 @@ kind: "package-bundle"
 
 SDK 使用 base 默认提供的 `read`、`write` 和 `edit`。要添加 `str_replace_editor`，请使用 [base 配置指南](../base/README.zh.md#use-this-package)中的显式插入 patch。独立的 `sdk-minimal` profile 自行决定其工具选择。
 
+模型可以在 native 和 PTC 模式下使用 [`plugin_manager`](../../boot/plugin-manager/README.zh.md)。每个操作都要求完整权限或本次调用的批准。保存的 profile 变更返回 `restart-required` 和 `no-hmr`；当前运行时及其会话保留原有工具，直到调用方关闭并重新启动运行时。通过 profile patch 设置 `tool-plugin-manager.disabled: true` 可隐藏此工具。独立的 `sdk-minimal` profile 不包含它。
+
 Python 运行时向本 profile 提供显式下载的创作资源和 Office sidecar。`DSH_PRIMARY_RUNTIME` 覆盖创作载荷；空值禁用其查询。Office skills 可独立使用任一种资源。Profile patch 可独立于 `workspace-dependencies` 禁用 `skill-office` 或替换其 `assetRoot`；同名文件系统 skills 优先。下载与配置见[运行时包](../../../python/sdk-runtime/README.zh.md)。
 
 -----
@@ -75,6 +77,6 @@ profile 继承 base 系统提示词，包括 `You are an AI agent powered by Dee
 <details>
 <summary>维护者工作上下文——点击展开</summary>
 
-无。
+[SDK/Desktop 工具比较](../../../apps/cli/tests/profiles/sdk/desktop-tools.expected.e2e.ts) 在 `test:expected` 中无需 API 凭据运行，并纳入 PR 必需的 consumer 作业。构建后运行 `CI=true pnpm run test:expected apps/cli/tests/profiles/sdk/desktop-tools.expected.e2e.ts`。在相邻的 `tool-parity.ts` 中维护精确、带理由的差异；差异消除后，对应例外会使检查失败。已有 SDK 会话快照和安装后运行时 smoke 分别检查模型输出和打包结果。
 
 </details>

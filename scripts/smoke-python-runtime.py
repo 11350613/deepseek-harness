@@ -91,6 +91,7 @@ LEGACY_CUSTOM_DISABLED_ROWS = (
     "tool-fs",
     "tool-fs-search",
     "tool-goal",
+    "tool-plugin-manager",
     "tool-schedule",
     "tool-skill",
     "tool-str-replace-editor",
@@ -476,6 +477,7 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
         return text_chunks(RESUME_TEXT)
     if prompt == DYNAMIC_TOOLS_PROMPT:
         assert_advertised_tool(body, "read")
+        assert_advertised_tool(body, "plugin_manager")
         if "snapshot_ping" in advertised_tool_names(body):
             raise AssertionError("dynamic tool was registered before its enabling read")
         return tool_call_chunks("python-dynamic-read", "read", {"file_path": "dynamic-tool-task.txt"})
