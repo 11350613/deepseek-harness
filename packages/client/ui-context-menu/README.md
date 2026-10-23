@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Add actions to right-click menus without importing a React component. Targets retain the clicked Session, file, URL, image, or pane even when selection changes. Contributions can discover metadata asynchronously and disappear safely when their plugin unloads.
+Add actions to right-click menus without importing a React component. Targets retain the clicked Session, Workspace, file, directory, URL, image, or pane even when selection changes. Contributions can discover metadata asynchronously and disappear safely when their plugin unloads.
 
 ## Table of Contents
 

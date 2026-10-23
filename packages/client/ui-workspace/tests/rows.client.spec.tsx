@@ -58,10 +58,12 @@ function SessionNodeItem({ renderSlot = renderNoRowEntries, onRenameRequest = ()
 
 // Direct header specs hold every access answer unless the case refuses one.
 function ProjectRowItem({
-  useRemoteAccess = allowAllAccess.useRemoteAccess, useWorkspaceAccess = allowAllAccess.useWorkspaceAccess, ...props
-}: Omit<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess'>
-  & Partial<Pick<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess'>>) {
-  return <ProjectRowItemComponent {...props} useRemoteAccess={useRemoteAccess} useWorkspaceAccess={useWorkspaceAccess} />
+  useRemoteAccess = allowAllAccess.useRemoteAccess, useWorkspaceAccess = allowAllAccess.useWorkspaceAccess,
+  openWorkspaceMenu = vi.fn(), useMenuTarget = select => select(null), ...props
+}: Omit<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'openWorkspaceMenu' | 'useMenuTarget'>
+  & Partial<Pick<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'openWorkspaceMenu' | 'useMenuTarget'>>) {
+  return <ProjectRowItemComponent {...props} useRemoteAccess={useRemoteAccess} useWorkspaceAccess={useWorkspaceAccess}
+    openWorkspaceMenu={openWorkspaceMenu} useMenuTarget={useMenuTarget} />
 }
 
 /** Half detection reads the row rect; jsdom rects are all-zero by default. */
@@ -643,34 +645,21 @@ describe('workspace browser rows', () => {
     expect(screen.getByRole('treeitem').querySelector('[data-state="done"]')).not.toBeNull()
   })
 
-  it('workspace row menu opens on the ellipsis, renames, and shows the danger delete row', () => {
-    const onRename = vi.fn()
-    const onDelete = vi.fn()
-    const onToggle = vi.fn()
+  it('workspace right-click and ellipsis capture the row without toggling expansion', () => {
+    const openWorkspaceMenu = vi.fn(), onToggle = vi.fn()
     const group: GroupNode = {
       key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
       sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
     }
-    render(<ProjectRowItem
-      group={group} onToggle={onToggle} onCreate={vi.fn()}
-      actions={{ rename: onRename, delete: onDelete }} t={t}
-    />)
+    const view = render(<ProjectRowItem group={group} onToggle={onToggle} onCreate={vi.fn()} openWorkspaceMenu={openWorkspaceMenu} t={t} />)
+    fireEvent.contextMenu(screen.getByRole('treeitem'), { clientX: 36, clientY: 48 })
+    expect(openWorkspaceMenu).toHaveBeenLastCalledWith(wid('project'), '/projects/project', 'Project', { x: 36, y: 48 })
     fireEvent.click(screen.getByRole('button', { name: '工作区“Project”的操作' }))
-    // Opening the menu neither toggles the group nor renames yet.
+    expect(openWorkspaceMenu).toHaveBeenLastCalledWith(wid('project'), '/projects/project', 'Project', { x: 0, y: 0 }, 'toggle')
     expect(onToggle).not.toHaveBeenCalled()
-    expect(screen.getByRole('menuitem', { name: '删除工作区' }).className).toMatch(/danger/)
-    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }))
-    expect(onRename).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('menu')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '工作区“Project”的操作' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '删除工作区' }))
-    expect(screen.queryByRole('menu')).toBeNull()
-    expect(onRename).toHaveBeenCalledOnce()
-    expect(onDelete).toHaveBeenCalledOnce()
-    // Escape closes without selecting (Menu onClose path).
-    fireEvent.click(screen.getByRole('button', { name: '工作区“Project”的操作' }))
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByRole('menu')).toBeNull()
+    view.rerender(<ProjectRowItem group={group} onToggle={onToggle} onCreate={vi.fn()} t={t}
+      useMenuTarget={select => select({ kind: 'workspace', value: { workspaceId: wid('project'), path: group.cwd!, displayTitle: 'Project' } })} />)
+    expect(screen.getByRole('button', { name: '工作区“Project”的操作' }).getAttribute('aria-expanded')).toBe('true')
   })
 
   it('workspace row offers only the actions its Workspace access snapshot allows', () => {
@@ -682,22 +671,17 @@ describe('workspace browser rows', () => {
     const useWorkspaceAccess = vi.fn((_workspaceId: WorkspaceId, endpoint: string) => allowed.has(endpoint))
     const drag = { start: vi.fn(), end: vi.fn() }
     const props = {
-      group, onToggle: vi.fn(), onCreate: vi.fn(), actions: { rename: vi.fn(), delete: vi.fn() }, drag, t,
+      group, onToggle: vi.fn(), onCreate: vi.fn(), drag, t,
     }
     const view = render(<ProjectRowItem {...props} useWorkspaceAccess={useWorkspaceAccess} />)
     expect(useWorkspaceAccess).toHaveBeenCalledWith(wid('project'), 'session/create')
-    // No New Session button, no drag handle, and a menu holding only the allowed rename row.
+    // Mutations stay gated while the menu remains available for file-manager and plugin actions.
     expect(screen.queryByRole('button', { name: '在“Project”中新建会话' })).toBeNull()
     expect(screen.getByRole('treeitem').getAttribute('draggable')).toBe('false')
-    fireEvent.click(screen.getByRole('button', { name: '工作区“Project”的操作' }))
-    expect(screen.getByRole('menuitem', { name: '重命名' })).toBeTruthy()
-    expect(screen.queryByRole('menuitem', { name: '删除工作区' })).toBeNull()
-    fireEvent.keyDown(document, { key: 'Escape' })
-
-    // Without rename either, the header carries no menu at all.
+    expect(screen.getByRole('button', { name: '工作区“Project”的操作' })).toBeTruthy()
     allowed.clear()
     view.rerender(<ProjectRowItem {...props} useWorkspaceAccess={useWorkspaceAccess} />)
-    expect(screen.queryByRole('button', { name: '工作区“Project”的操作' })).toBeNull()
+    expect(screen.getByRole('button', { name: '工作区“Project”的操作' })).toBeTruthy()
 
     // Every answer allowed restores the button, the full menu, and the drag handle.
     for (const endpoint of ['session/create', 'workspace/rename', 'workspace/delete', 'workspace/insertBefore']) {
@@ -721,6 +705,7 @@ describe('workspace browser rows', () => {
     expect(useRemoteAccess).toHaveBeenCalledWith('session/create')
     expect(useWorkspaceAccess).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: /新建会话/ })).toBeNull()
+    expect(fireEvent.contextMenu(screen.getByRole('treeitem'))).toBe(true)
   })
 
   it('session row drags and renames from its title only while its access snapshot allows each', () => {

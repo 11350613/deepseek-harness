@@ -1,5 +1,5 @@
 /** Shared Web renderer; contributions remain independent of React. */
-import { Menu, Toast, IconCopyOutlineRegular, IconDownloadOutlineRegular, IconSaveOutlineRegular, IconFolderOpenOutlineRegular, IconPanelLeftOutlineRegular, IconRightUpOutlineRegular, IconCloseOutlineRegular, IconArchiveOutlineRegular, IconChevronRightOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Menu, Toast, IconCopyOutlineRegular, IconDownloadOutlineRegular, IconSaveOutlineRegular, IconFolderOpenOutlineRegular, IconPanelLeftOutlineRegular, IconRightUpOutlineRegular, IconCloseOutlineRegular, IconArchiveOutlineRegular, IconChevronRightOutlineRegular, IconEditOutlineRegular, IconTrashOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsStore, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createMenuStore } from './store.ts'
@@ -8,6 +8,7 @@ import type { MenuActionView } from './types.ts'
 const SYMBOLS = {
   copy: IconCopyOutlineRegular, download: IconDownloadOutlineRegular, save: IconSaveOutlineRegular,
   folder: IconFolderOpenOutlineRegular, sidebar: IconPanelLeftOutlineRegular, external: IconRightUpOutlineRegular,
+  rename: IconEditOutlineRegular, delete: IconTrashOutlineRegular,
   close: IconCloseOutlineRegular, closeOthers: IconArchiveOutlineRegular, closeRight: IconChevronRightOutlineRegular,
 } satisfies Record<NonNullable<MenuActionView['symbol']>, typeof IconCopyOutlineRegular>
 

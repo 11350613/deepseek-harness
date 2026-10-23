@@ -32,12 +32,13 @@ import css from './FilesBody.module.css'
 /** File-tree readers and actions supplied by its registration. */
 export interface FilesBodyInjected extends FilesInjected {
   /**
-   * Open actions for the captured file and pane.
-   * @param path - workspace file path.
+   * Open actions for the captured file or directory and pane.
+   * @param kind - file or directory row.
+   * @param path - workspace entry path.
    * @param paneId - pane containing the tree.
    * @param point - viewport position of the menu gesture.
    */
-  openContextMenu(this: void, path: string, paneId: PaneId, point: { x: number; y: number }): void
+  openContextMenu(this: void, kind: 'file' | 'directory', path: string, paneId: PaneId, point: { x: number; y: number }): void
 }
 
 /** The body's composed props: the tab it draws, its store, its face, and its copy. */
@@ -87,7 +88,7 @@ interface TreeContext {
   readonly state: FilesTabState
   readonly onToggle: (parent: string, path: string) => void
   readonly onOpen: (path: string) => void
-  readonly onMenu: (path: string, point: { x: number; y: number }) => void
+  readonly onMenu: (kind: 'file' | 'directory', path: string, point: { x: number; y: number }) => void
   readonly t: TranslateNS<'sidebarFiles'>
 }
 
@@ -98,7 +99,11 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
     const expanded = tree.state.expanded.includes(path)
     return (
       <li className={css.item} data-files-entry="directory" data-files-path={path}>
-        <button type="button" className={css.row} aria-expanded={expanded} onClick={() => { tree.onToggle(parent, path) }}>
+        <button type="button" className={css.row} aria-expanded={expanded} onClick={() => { tree.onToggle(parent, path) }}
+          onContextMenu={(event) => {
+            event.preventDefault(); event.stopPropagation()
+            tree.onMenu('directory', path, menuPoint(event))
+          }}>
           {expanded ? <IconFolderOpenRegular className={css.icon} /> : <IconFolderCloseRegular className={css.icon} />}
           <span className={css.name}>{entry.name}</span>
         </button>
@@ -112,7 +117,7 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
         <button type="button" className={css.row} onClick={() => { tree.onOpen(path) }}
           onContextMenu={(event) => {
             event.preventDefault(); event.stopPropagation()
-            tree.onMenu(path, menuPoint(event))
+            tree.onMenu('file', path, menuPoint(event))
           }}>
           <FileTypeIcon kind={classifyFileType(entry.name)} size={16} className={css.fileIcon} />
           <span className={css.name}>{entry.name}</span>
@@ -202,7 +207,7 @@ export function FilesBody({
     state,
     onToggle: (parent, path) => { toggle(tab.id, parent, path, state.expanded, signal) },
     // Every row is under the tree's root, so its address is session-relative.
-    onMenu: (path, point) => { openContextMenu(path, panel.id, point) },
+    onMenu: (kind, path, point) => { openContextMenu(kind, path, panel.id, point) },
     onOpen: (path) => { tabActions.openResource(fileAddressFor(sessionId, state.root, path)) },
     t,
   }
@@ -212,7 +217,10 @@ export function FilesBody({
   return (
     <div className={css.root} data-files-state="tree" data-files-root={state.root}>
       <div className={css.header}>
-        <PathLabel path={state.root} className={css.path} data-files-path />
+        <PathLabel path={state.root} className={css.path} data-files-path onContextMenu={(event) => {
+          event.preventDefault(); event.stopPropagation()
+          openContextMenu('directory', state.root, panel.id, menuPoint(event))
+        }} />
         <span hidden>
           <button type="button" className={css.tool} aria-label={t('autoRefresh')}
             aria-pressed={state.autoRefresh} data-files-auto-refresh

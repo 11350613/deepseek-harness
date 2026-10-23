@@ -6,6 +6,7 @@ import type { PaneId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
 export interface MenuTargetMap {
   session: { readonly sessionId: SessionId; readonly displayTitle: string }
   file: { readonly sessionId: SessionId; readonly path: string; readonly line?: number; readonly paneId?: PaneId }
+  directory: { readonly sessionId: SessionId; readonly path: string }
   url: { readonly sessionId: SessionId; readonly url: string }
   image: {
     readonly sessionId?: SessionId
@@ -28,7 +29,7 @@ export interface MenuActionView {
   readonly disabled?: boolean
   readonly icon?: string
   /** Semantic glyph from the shared icon library; image icons take precedence. */
-  readonly symbol?: 'copy' | 'download' | 'save' | 'folder' | 'sidebar' | 'external' | 'close' | 'closeOthers' | 'closeRight'
+  readonly symbol?: 'copy' | 'download' | 'save' | 'folder' | 'sidebar' | 'external' | 'close' | 'closeOthers' | 'closeRight' | 'rename' | 'delete'
   readonly danger?: boolean
   readonly separatorBefore?: boolean
   /** Render after legacy component contributions in the shared Web popup. */

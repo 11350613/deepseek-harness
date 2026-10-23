@@ -4,22 +4,22 @@ import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
  * all data and callbacks arrive via props. Hover swaps (folder->chevron,
  * time->ellipsis, action buttons) are CSS-only, and a session row's clipped
  * title marquees programmatically while the row is hovered. Workspace row
- * menus are visual-only except Rename/Delete. A Session row's "..." menu and
+ * menus share captured Workspace actions with right-click. A Session row's "..." menu and
  * its hover buttons are the `sidebar.workspaces.session.menu.item` and
  * `sidebar.workspaces.session.row.action` lists, rendered through the
  * browser's `renderSlot` with the menu's open state as the occurrence's hook
  * context; this package's own actions are entries like any plugin's. The
  * session and workspace hover cards are suppressed while a menu is open.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { RefObject } from 'react'
 import clsx from 'clsx'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  HoverCard, IconArchiveOutlineRegular, IconEditOutlineRegular,
+  HoverCard, IconArchiveOutlineRegular,
   IconEllipsisOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular,
-  IconNewChatOutlineRegular, IconPinFillRegular, IconTrashOutlineRegular,
-  IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, Menu, relativeTime, StateDot, Tooltip, useRowDragPreview,
+  IconNewChatOutlineRegular, IconPinFillRegular,
+  IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, relativeTime, StateDot, Tooltip, useRowDragPreview,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -215,20 +215,16 @@ type ProjectRowItemProps = {
   containsCurrentDescendant?: boolean
   onToggle: () => void
   onCreate: () => void
-  /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown). */
-  actions?: { rename: () => void; delete: () => void } | undefined
   /** Present only for real Workspace rows in the grouped view. */
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
   home?: string | undefined
   t: RowTranslate
-} & Pick<WorkspaceBrowserProps, 'useRemoteAccess' | 'useWorkspaceAccess'>
+} & Pick<WorkspaceBrowserProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'openWorkspaceMenu' | 'useMenuTarget'>
 
 /** Which of one header row's actions the caller's access snapshot allows. */
 interface ProjectRowAccess {
   readonly create: boolean
-  readonly rename: boolean
-  readonly delete: boolean
   readonly reorder: boolean
 }
 
@@ -237,9 +233,8 @@ interface ProjectRowAccess {
  * hover reveals the chevron and create button, and dwelling on a real
  * Workspace shows its hover card (the ungrouped bucket has none).
  * `containsCurrent` arrives on the node (derivation fact, no renderer scan).
- * The create button, each Workspace menu row, and the drag handle are absent
- * while the access snapshot excludes their endpoint: a real Workspace asks
- * its own resource, and the ungrouped bucket asks the global resource.
+ * Create and drag follow the Workspace access snapshot. Menu providers own
+ * their access checks; the ungrouped bucket has no Workspace menu.
  * @param props.group - derived group node.
  * @param props.containsCurrentDescendant - highlight an ancestor even when its subtree is collapsed.
  * @param props.onToggle - expand/collapse the group.
@@ -259,7 +254,7 @@ export function ProjectRowItem(props: ProjectRowItemProps) {
 /** The ungrouped bucket's header: no Workspace resource, so starting a Session there asks the global resource. */
 function UngroupedProjectRow(props: ProjectRowItemProps) {
   const create = props.useRemoteAccess('session/create')
-  return <ProjectRow {...props} access={{ create, rename: false, delete: false, reorder: false }} />
+  return <ProjectRow {...props} access={{ create, reorder: false }} />
 }
 
 /** A real Workspace's header: every action asks that Workspace's resource. */
@@ -267,27 +262,24 @@ function WorkspaceProjectRow({ workspaceId, ...props }: ProjectRowItemProps & { 
   const { useWorkspaceAccess } = props
   const access: ProjectRowAccess = {
     create: useWorkspaceAccess(workspaceId, 'session/create'),
-    rename: useWorkspaceAccess(workspaceId, 'workspace/rename'),
-    delete: useWorkspaceAccess(workspaceId, 'workspace/delete'),
     reorder: useWorkspaceAccess(workspaceId, 'workspace/insertBefore'),
   }
   return <ProjectRow {...props} access={access} />
 }
 
 function ProjectRow({
-  group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag: offeredDrag, home, newShortcut, t, access,
+  group, containsCurrentDescendant = false, onToggle, onCreate, drag: offeredDrag, home, newShortcut, t, access,
+  openWorkspaceMenu, useMenuTarget,
 }: ProjectRowItemProps & { access: ProjectRowAccess }) {
   const drag = access.reorder ? offeredDrag : undefined
   const row = group
   // The ungrouped bucket has no workspace title: its label is dictionary copy.
   const label = row.workspaceId === undefined ? t('group.ungrouped') : row.label
   const active = containsCurrentDescendant || (group.expanded && group.containsCurrent)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const menuOpen = useMenuTarget(target => target?.kind === 'workspace' && target.value.workspaceId === row.workspaceId)
   const dragPreview = useRowDragPreview(css.dragPreview as string)
-  const workspaceMenuItems = [
-    ...access.rename ? [{ id: 'rename', label: t('rename'), icon: <IconEditOutlineRegular /> }] : [],
-    ...access.delete ? [{ id: 'delete', label: t('delete.workspace'), icon: <IconTrashOutlineRegular />, danger: true }] : [],
-  ]
+  const workspaceMenuTarget = row.workspaceId !== undefined && row.cwd !== undefined
+    ? { workspaceId: row.workspaceId, path: row.cwd } : undefined
   const ownRow = (
     <div
       className={clsx(css.projectRow, menuOpen && css.menuOpen)}
@@ -295,6 +287,11 @@ function ProjectRow({
       role="treeitem"
       aria-expanded={row.expanded}
       onClick={onToggle}
+      onContextMenu={(event) => {
+        if (row.workspaceId === undefined || row.cwd === undefined) return
+        event.preventDefault(); event.stopPropagation()
+        openWorkspaceMenu(row.workspaceId, row.cwd, label, menuPoint(event))
+      }}
       draggable={drag !== undefined}
       onDragStart={drag === undefined
         ? undefined
@@ -316,33 +313,14 @@ function ProjectRow({
         <span className={css.title}>{label}</span>
       </span>
       <span className={css.rowActions}>
-        {actions !== undefined && workspaceMenuItems.length > 0 && (
-          <Menu
-            open={menuOpen}
-            onClose={() => { setMenuOpen(false) }}
-            items={workspaceMenuItems}
-            onSelect={(id) => {
-              setMenuOpen(false)
-              // Unknown ids leave before the dispatch: a future menu row must
-              // not inherit the destructive branch as an else fallback.
-              /* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
-              if (id !== 'rename' && id !== 'delete') return
-              if (id === 'rename') actions.rename()
-              else actions.delete()
-            }}
-            portal
-            closeOnPointerLeave
-            anchor={(
-              <button
-                type="button"
-                className={css.iconButton}
-                aria-label={t('actions.workspace.aria', { name: label })}
-                onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v) }}
-              >
-                <IconEllipsisOutlineRegular />
-              </button>
-            )}
-          />
+        {workspaceMenuTarget !== undefined && (
+          <button type="button" className={css.iconButton} data-context-menu-trigger
+            aria-label={t('actions.workspace.aria', { name: label })} aria-haspopup="menu" aria-expanded={menuOpen}
+            onClick={(event) => {
+              event.stopPropagation()
+              const rect = event.currentTarget.getBoundingClientRect()
+              openWorkspaceMenu(workspaceMenuTarget.workspaceId, workspaceMenuTarget.path, label, { x: rect.left, y: rect.bottom }, 'toggle')
+            }}><IconEllipsisOutlineRegular /></button>
         )}
         {access.create && (
           <Tooltip label={t('actions.newSession')} shortcutKeys={newShortcut?.keys} side="bottom" align="end" delayMs={500} portal>

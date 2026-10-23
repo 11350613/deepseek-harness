@@ -1,4 +1,5 @@
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
@@ -66,7 +67,9 @@ async function bench(access: 'fake' | 'static' = 'fake') {
     },
     catalog: createSnapshotStore([]),
   })
-  ctx.provide('menus', { active: createSnapshotStore(null), open: vi.fn(), close: vi.fn() } as never)
+  const menuRegistry = new MenuRegistry(vi.fn())
+  onTestFinished(() => { menuRegistry.dispose() })
+  ctx.provide('menus', { register: menuRegistry.register.bind(menuRegistry), resolve: menuRegistry.resolve.bind(menuRegistry), active: createSnapshotStore(null), open: vi.fn(), close: vi.fn() } as never)
   ctx.provide('uiConversation', {})
   await ctx.plugin(SlotRegistry).await()
   const accessSource = vi.fn((_kind: string, _id: string, _action: string): HostObservable<boolean> => ALLOWED)
@@ -916,4 +919,45 @@ describe('ui-workspace apply', () => {
     expect(b.slots.entries('workspace.toast')).toHaveLength(0)
     expect(b.slots.snapshot('factory:workspace.toast.content')).toEqual([])
   })
+})
+
+it('captures Workspace menu requests, rechecks mutable access, and withdraws registrations on unload', async () => {
+  const b = await bench()
+  b.setWorkspaces(workspaceState([workspace('alpha', [])]))
+  declare(b.slots, 'sidebar.workspaces')
+  const fiber = b.ctx.plugin({ inject: [...inject], apply })
+  await fiber.await()
+  const browser = faceOf(b.slots.entries('sidebar.workspaces')[0]!) as WorkspaceBrowserInjected
+  const target = { kind: 'workspace' as const, value: { workspaceId: 'alpha' as WorkspaceId, path: '/projects/alpha', displayTitle: 'Alpha' } }
+  browser.openWorkspaceMenu(target.value.workspaceId, target.value.path, 'Alpha', { x: 20, y: 30 })
+  expect(vi.spyOn(b.ctx.menus, 'open')).toHaveBeenLastCalledWith(target, { x: 20, y: 30 })
+  const active = b.ctx.menus.active as ReturnType<typeof createSnapshotStore<import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget | null>>
+  active.set(target)
+  browser.openWorkspaceMenu(target.value.workspaceId, target.value.path, 'Alpha', { x: 20, y: 30 }, 'toggle')
+  expect(vi.spyOn(b.ctx.menus, 'close')).toHaveBeenCalledOnce()
+  const menu = b.ctx.menus.resolve(target)
+  await menu.ready
+  expect(menu.source.getSnapshot().map(item => item.id)).toEqual(['workspace.rename/rename', 'workspace.delete/delete'])
+  menu.select('workspace.rename/rename')
+  expect(browser.hooks.workspaceActionRequest.getSnapshot()).toEqual({ action: 'rename', workspaceId: 'alpha', displayTitle: 'Alpha', storedTitle: 'alpha' })
+  browser.settleWorkspaceAction()
+  const removed = b.ctx.menus.resolve(target)
+  await removed.ready
+  b.setWorkspaces(workspaceState([]))
+  removed.select('workspace.delete/delete')
+  expect(browser.hooks.workspaceActionRequest.getSnapshot()).toBeNull()
+  b.setWorkspaces(workspaceState([workspace('alpha', [])]))
+  const denied = b.ctx.menus.resolve(target)
+  await denied.ready
+  b.accessSource.mockReturnValueOnce(createSnapshotStore(false))
+  denied.select('workspace.delete/delete')
+  expect(browser.hooks.workspaceActionRequest.getSnapshot()).toBeNull()
+  const deletion = b.ctx.menus.resolve(target)
+  await deletion.ready
+  deletion.select('workspace.delete/delete')
+  expect(browser.hooks.workspaceActionRequest.getSnapshot()?.action).toBe('delete')
+  const pending = b.ctx.menus.resolve(target)
+  await pending.ready
+  await fiber.dispose()
+  expect(pending.source.getSnapshot()).toEqual([])
 })

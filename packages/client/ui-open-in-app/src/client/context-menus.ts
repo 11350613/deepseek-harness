@@ -2,6 +2,7 @@
 import mime from 'mime'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
@@ -43,6 +44,34 @@ export function registerContextMenus(ctx: Context, paths: OpenInAppPathControlle
       return undefined
     }
   }
+  ctx.effect(() => ctx.menus.register({
+    id: 'open-in-app.workspace', target: 'workspace', order: 200,
+    resolve: async ({ path }, signal) => {
+      await directories.load()
+      signal.throwIfAborted()
+      const manager = directories.apps.getSnapshot()?.find(id => ['finder', 'explorer', 'filemanager'].includes(id))
+      return [{ id: 'reveal', symbol: 'folder', label: fileManager(), disabled: manager === undefined,
+        failureLabel: t('path.revealError'),
+        ...manager === undefined ? {} : { run: () => directories.launch(manager, path) } }]
+    },
+  }), 'open-in-app: Workspace context menu')
+  ctx.effect(() => ctx.menus.register({
+    id: 'open-in-app.directory', target: 'directory', order: 100,
+    resolve: async ({ sessionId, path }, signal) => {
+      await paths.load()
+      const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
+      const absolutePath = resolveWorkspacePath(cwd, path)
+      signal.throwIfAborted()
+      return [
+        { id: 'reveal', symbol: 'folder', label: fileManager(), disabled: paths.desktop.getSnapshot() !== true,
+          run: () => open(absolutePath, 'reveal') },
+        { id: 'copyPath', symbol: 'copy', label: t('menu.copyDirectoryPath'), failureLabel: t('menu.copyFailed'), run: async () => {
+          await navigator.clipboard.writeText(absolutePath)
+          ctx.menus.notify(t('menu.copied'), true)
+        } },
+      ]
+    },
+  }), 'open-in-app: directory context menu')
   ctx.effect(() => ctx.menus.register({
     id: 'open-in-app.file', target: 'file', order: 100,
     resolve: async (target, signal) => {

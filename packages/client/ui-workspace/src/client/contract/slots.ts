@@ -56,6 +56,21 @@ import type { StartSessionOptions } from '../navigation.ts'
 import type {} from './toast.ts'
 import type { createWorkspaceViewStore } from '../stores.ts'
 
+declare module '@deepseek-ai/dsh-client-ui-context-menu/client' {
+  interface MenuTargetMap {
+    /** Registered Workspace header; path and title belong to the clicked row. */
+    workspace: { readonly workspaceId: WorkspaceId; readonly path: string; readonly displayTitle: string }
+  }
+}
+
+/** One request for the existing Workspace rename or delete dialog. */
+export type WorkspaceActionRequest = {
+  readonly action: 'rename' | 'delete'
+  readonly workspaceId: WorkspaceId
+  readonly displayTitle: string
+  readonly storedTitle: string
+}
+
 /**
  * Owner share of the directory-flow holes: the complete conversation between
  * the trigger surface and the picking interaction. The occupant reads `open`
@@ -234,9 +249,14 @@ export type DirectoryPickingHooks = PropsHooks<DirectoryPickingInjected['hooks']
  * browsing region drives.
  */
 export type WorkspaceBrowserInjected = {
+  /** Open the registered Workspace actions without changing expansion or selection. */
+  openWorkspaceMenu: (workspaceId: WorkspaceId, path: string, displayTitle: string, point: { x: number; y: number }, mode?: 'toggle') => void
+  /** Dismiss the settled Workspace dialog. */
+  settleWorkspaceAction: () => void
   /** Open actions for the clicked Session without selecting it. */
   openSessionMenu: (sessionId: SessionId, displayTitle: string, point: { x: number; y: number }, mode?: 'toggle') => void
   hooks: DirectoryPickingInjected['hooks'] & {
+    workspaceActionRequest: HostObservable<WorkspaceActionRequest | null>
     menuTarget: HostObservable<import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget | null>
     /**
      * Fixed Host facts, reached through a hook rather than injected as values:

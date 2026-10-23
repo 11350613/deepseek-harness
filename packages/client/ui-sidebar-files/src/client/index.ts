@@ -87,7 +87,8 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     {
       name: 'sidebar.right.pane.tab', key: FILES_ID, locale: NS, store, inject: (sessionId, actions): FilesBodyInjected => ({ ...inject(sessionId, actions),
-        openContextMenu: (path, paneId, point) => { ctx.menus.open({ kind: 'file', value: { sessionId, path, paneId } }, point) },
+        openContextMenu: (kind, path, paneId, point) => { ctx.menus.open(kind === 'directory'
+          ? { kind, value: { sessionId, path } } : { kind: 'file', value: { sessionId, path, paneId } }, point) },
       }),
       children: { 'sidebar.right.tab.files.actions': { kind: 'list', scope: 'session' } },
     },

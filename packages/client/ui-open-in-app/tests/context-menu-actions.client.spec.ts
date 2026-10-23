@@ -174,3 +174,35 @@ it('uses original image reads and enables reveal only for an actual local or sav
   const remote = await h.resolve({ kind: 'image', value: { url: 'https://example.com/file.png' } })
   expect(remote.source.getSnapshot().filter(item => item.id.endsWith('/saveAs') || item.id.endsWith('/reveal')).every(item => item.disabled)).toBe(true)
 })
+
+it('offers only folder reveal and path copy, retaining the captured directory', async () => {
+  const h = await boot()
+  const target = { kind: 'directory', value: { sessionId, path: 'src' } } as const
+  const menu = await h.resolve(target)
+  expect(menu.source.getSnapshot().map(item => item.id)).toEqual(['open-in-app.directory/reveal', 'open-in-app.directory/copyPath'])
+  expect(h.remote.workspaceFiles.stat).not.toHaveBeenCalled()
+  h.sessions.set({ byId: { [sessionId]: { cwd: '/changed' } } })
+  menu.select('open-in-app.directory/reveal')
+  await vi.waitFor(() => { expect(h.remote.session.openWorkspacePath).toHaveBeenCalledWith({ path: '/workspace/src', action: 'reveal' }) })
+  h.sessions.set({ byId: { [sessionId]: { cwd: '/workspace' } } })
+  await h.choose(target, 'open-in-app.directory/copyPath')
+  expect(h.writeText).toHaveBeenLastCalledWith('/workspace/src')
+  h.paths.desktop.set(false)
+  const unavailable = await h.resolve(target)
+  expect(unavailable.source.getSnapshot()[0]?.disabled).toBe(true)
+  expect(unavailable.source.getSnapshot()[1]?.disabled).not.toBe(true)
+  await h.choose({ kind: 'directory', value: { sessionId: SessionId('absent'), path: '/absolute' } }, 'open-in-app.directory/copyPath')
+  expect(h.writeText).toHaveBeenLastCalledWith('/absolute')
+})
+
+it('opens the captured Workspace through the directory app catalog and reports launch failure', async () => {
+  const h = await boot()
+  const target: MenuTarget = { kind: 'workspace', value: { workspaceId: 'workspace' as never, path: '/workspace', displayTitle: 'Workspace' } }
+  await h.choose(target, 'open-in-app.workspace/reveal')
+  expect(h.directoryFetch).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ body: JSON.stringify({ app: 'finder', path: '/workspace' }) }))
+  h.directoryFetch.mockResolvedValueOnce(new Response('', { status: 500 }))
+  await h.choose(target, 'open-in-app.workspace/reveal')
+  await vi.waitFor(() => { expect(h.failure).toHaveBeenCalledWith('path.revealError') })
+  h.directories.apps.set([])
+  expect((await h.resolve(target)).source.getSnapshot()[0]?.disabled).toBe(true)
+})

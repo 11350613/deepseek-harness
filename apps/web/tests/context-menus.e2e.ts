@@ -1,5 +1,5 @@
 /** Context gestures against built plugins, seeded Sessions, and original files. */
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { chromium, type Browser, type Locator, type Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
@@ -39,6 +39,8 @@ describe('web context menus', () => {
   let tripwire: ReturnType<typeof watchConsole>
   beforeAll(async () => {
     scaffold = await launchWebScaffold({ openInAppEnvironment: createLaunchEnvironmentSnapshot([{ source: 'process', values: { SSH_CONNECTION: '10.0.0.2 55000 10.0.0.9 22' } }]) })
+    await mkdir(join(scaffold.workspaceCwd, 'folder'))
+    await scaffold.ctx.workspaceRegistry.create(join(scaffold.workspaceCwd, 'folder'), 'Menu workspace')
     await writeFile(join(scaffold.workspaceCwd, 'first.txt'), 'FIRST\nSECOND\nTHIRD\n')
     await writeFile(join(scaffold.workspaceCwd, 'second.txt'), 'SECOND FILE\n')
     await writeFile(join(scaffold.workspaceCwd, 'original.gif'), GIF)
@@ -51,7 +53,7 @@ describe('web context menus', () => {
     await page.route('https://images.example/original.gif', route => route.fulfill({ body: GIF, contentType: 'image/gif', headers: { 'access-control-allow-origin': '*' } }))
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.goto(scaffold.authenticatedUrl)
-    await page.locator('[role="treeitem"]').first().click()
+    await page.locator('[data-row-key^="workspace:"]').filter({ hasText: 'Ungrouped' }).click()
     await page.locator('[data-row-key="session:context-menu-first"]').click()
     await page.getByText('CONTEXT_MENU_READY', { exact: true }).waitFor()
   })
@@ -98,6 +100,41 @@ describe('web context menus', () => {
     await background.getByRole('button', { name: /actions/i }).click()
     expect(await menu.count()).toBe(0)
     expect(await background.getAttribute('aria-selected')).toBe('false')
+  })
+
+  it('shares Workspace menus and keeps folder gestures independent from expansion', async () => {
+    onTestFailed(() => saveFailureShot(page, 'context-menus-workspace'))
+    const workspace = page.locator('[data-row-key^="workspace:"]').filter({ hasText: 'Menu workspace' })
+    const expanded = await workspace.getAttribute('aria-expanded')
+    await workspace.click({ button: 'right' })
+    const menu = page.getByRole('menu')
+    await menu.getByRole('menuitem', { name: 'Rename', exact: true }).waitFor()
+    const names = await menuLabels(menu)
+    expect(names).toEqual(['Rename', 'Show in folder', 'Delete workspace'])
+    expect(await workspace.getAttribute('aria-expanded')).toBe(expanded)
+    await page.keyboard.press('Escape')
+    await workspace.getByRole('button', { name: /actions/i }).click()
+    await menu.getByRole('menuitem', { name: 'Rename', exact: true }).waitFor()
+    expect(await menuLabels(menu)).toEqual(names)
+    await menu.getByRole('menuitem', { name: 'Rename', exact: true }).click()
+    await page.getByRole('dialog').waitFor()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await workspace.click({ button: 'right' })
+    await menu.getByRole('menuitem', { name: 'Delete workspace', exact: true }).click()
+    await page.getByRole('dialog', { name: 'Delete workspace', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await page.locator('[data-sidebar-right-expand]').click()
+    await page.locator('[data-sidebar-right-guide-entry="files"]').click()
+    await page.locator('[data-files-state="tree"]').waitFor()
+    const folder = page.locator('[data-files-entry="directory"]').filter({ hasText: 'folder' }).getByRole('button').first()
+    await folder.click({ button: 'right' })
+    await menu.getByRole('menuitem', { name: 'Copy folder path', exact: true }).waitFor()
+    expect(await menuLabels(menu)).toEqual(['Show in folder', 'Copy folder path'])
+    expect(await folder.getAttribute('aria-expanded')).toBe('false')
+    await menu.getByRole('menuitem', { name: 'Copy folder path', exact: true }).click()
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(join(scaffold.workspaceCwd, 'folder'))
+    await page.getByText('Copied', { exact: true }).waitFor()
+    await expect(names.join('\n') + '\n').toMatchFileSnapshot(join(import.meta.dirname, 'expected/context-menus/workspace.txt'))
   })
 
   it('prepares complete menus, anchors above the frame inset, and treats repeated gestures as separate occurrences', async () => {

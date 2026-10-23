@@ -124,9 +124,11 @@ it('carries the file tree path and pane into its menu gesture', async () => {
   try {
     const injectBody = h.registered[0]!.inject as (id: import('@deepseek-ai/dsh-session/types').SessionId, actions: never) => Pick<FilesBodyProps, 'openContextMenu'>
     const face = injectBody(SessionId('tree-menu'), {} as never)
-    face.openContextMenu('src/file.ts', 'pane' as never, { x: 45, y: 67 })
+    face.openContextMenu('file', 'src/file.ts', 'pane' as never, { x: 45, y: 67 })
     expect(vi.spyOn(h.ctx.menus, 'open')).toHaveBeenCalledWith({ kind: 'file', value: {
       sessionId: 'tree-menu', path: 'src/file.ts', paneId: 'pane',
     } }, { x: 45, y: 67 })
+    face.openContextMenu('directory', 'src', 'pane' as never, { x: 45, y: 67 })
+    expect(vi.spyOn(h.ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'directory', value: { sessionId: 'tree-menu', path: 'src' } }, { x: 45, y: 67 })
   } finally { await h.fiber.dispose() }
 })

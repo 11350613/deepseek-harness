@@ -43,7 +43,7 @@ import {
   type ArchiveSessionInjected, type ForkSessionInjected, menuOpenStateFactory, type PinSessionInjected,
   type SessionArchiveConfirmInjected, type SessionArchiveConfirmRequest,
   type RenameSessionInjected, type RowToast, type RowToastInjected, type RowToastState, type SessionRenameDialogInjected,
-  type SessionIdInjected, type WorkspaceBrowserInjected, type WorkspacePickerInjected,
+  type WorkspaceActionRequest, type SessionIdInjected, type WorkspaceBrowserInjected, type WorkspacePickerInjected,
 } from './contract/slots.ts'
 import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from './shortcuts.ts'
 import { UiWorkspaceService } from './navigation.ts'
@@ -263,7 +263,30 @@ export function apply(ctx: Context): void {
     hooks: { toast: rowToast },
     dismissToast: () => { rowToast.set(null) },
   })
+  const workspaceActionRequest = createSnapshotStore<WorkspaceActionRequest | null>(null)
+  const requestWorkspaceAction = (workspaceId: WorkspaceId, displayTitle: string, action: 'rename' | 'delete'): void => {
+    const workspace = workspaces.list.getSnapshot().items.find(row => row.workspaceId === workspaceId)
+    if (workspace === undefined || !ctx.remoteAccess.source('workspace', workspaceId, `workspace/${action}`).getSnapshot()) return
+    workspaceActionRequest.set({ action, workspaceId, displayTitle, storedTitle: workspace.title })
+  }
+  ctx.effect(() => ctx.menus.register({
+    id: 'workspace.rename', target: 'workspace', order: 100,
+    resolve: ({ workspaceId, displayTitle }) => ctx.remoteAccess.source('workspace', workspaceId, 'workspace/rename').getSnapshot()
+      ? [{ id: 'rename', label: ctx.locale.bind(NS)('rename'), symbol: 'rename', run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'rename') } }] : [],
+  }), 'workspace: rename menu action')
+  ctx.effect(() => ctx.menus.register({
+    id: 'workspace.delete', target: 'workspace', order: 300,
+    resolve: ({ workspaceId, displayTitle }) => ctx.remoteAccess.source('workspace', workspaceId, 'workspace/delete').getSnapshot()
+      ? [{ id: 'delete', label: ctx.locale.bind(NS)('delete.workspace'), symbol: 'delete', danger: true, separatorBefore: true,
+        run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'delete') } }] : [],
+  }), 'workspace: delete menu action')
   const browserInjected = (): WorkspaceBrowserInjected => ({
+    openWorkspaceMenu: (workspaceId, path, displayTitle, point, mode) => {
+      const target = ctx.menus.active.getSnapshot()
+      if (mode === 'toggle' && target?.kind === 'workspace' && target.value.workspaceId === workspaceId) ctx.menus.close()
+      else ctx.menus.open({ kind: 'workspace', value: { workspaceId, path, displayTitle } }, point)
+    },
+    settleWorkspaceAction: () => { workspaceActionRequest.set(null) },
     openSessionMenu: (sessionId, displayTitle, point, mode) => {
       const target = ctx.menus.active.getSnapshot()
       if (mode === 'toggle' && target?.kind === 'session' && target.value.sessionId === sessionId) ctx.menus.close()
@@ -288,7 +311,7 @@ export function apply(ctx: Context): void {
     requestAddWorkspace: shortcutControls.add,
     closeAddWorkspace: shortcutControls.closeAdd,
     setDirectoryBusy: shortcutControls.directoryBusy,
-    hooks: { menuTarget: ctx.menus.active, directoryFlow: browserFlowSource, hostInfo,
+    hooks: { workspaceActionRequest, menuTarget: ctx.menus.active, directoryFlow: browserFlowSource, hostInfo,
       workspaceShortcuts: shortcutControls.state, shortcuts: ctx.shortcuts.catalog },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
