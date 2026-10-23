@@ -26,6 +26,7 @@ export function SessionRevealMenuItem({ sessionId, useSessions, useMenuOpenState
   const label: OpenInAppKey = applications?.includes('finder') ? 'menu.finder' : 'menu.reveal'
   return <MenuItemButton icon={<IconFolderOpenOutlineRegular />} disabled={!directory || manager === undefined}
     onSelect={() => {
+      /* v8 ignore next -- the native menu button cannot activate without a directory and file manager. */
       if (!directory || manager === undefined) return
       setMenuOpen(false)
       void reveal(manager, directory)
