@@ -404,6 +404,21 @@ describe('incremental DeepSeek session-log upload', () => {
     })
   })
 
+  it('neither uploads nor acknowledges the log for an Auto review call', async () => {
+    const { ctx, session } = await harness('auto-review')
+    session.append('turn/start', { turn: 1 })
+    const review = await ctx.deepseekLlmApiExtensions.prepare({
+      body: body(), signal: SIGNAL, sessionId: session.id, purpose: 'auto-review',
+    })
+    expect(review.fields).not.toHaveProperty('dsh_session_log')
+    await review.accept()
+    expect(SessionLogDeepSeek.acceptedThrough(session)).toBe(-1)
+    expect(session.snapshotEvents()).toHaveLength(1)
+
+    const next = await ctx.deepseekLlmApiExtensions.prepare({ body: body(), signal: SIGNAL, sessionId: session.id })
+    expect(next.fields.dsh_session_log).toMatchObject({ afterSeq: -1, throughSeq: 0 })
+  })
+
   it('contributes complete events without reading request messages', async () => {
     const { ctx, session } = await harness('direct-events')
     session.append('turn/start', { turn: 1 })

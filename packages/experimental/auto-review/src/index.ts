@@ -672,12 +672,15 @@ async function classifyRisk(
   const snapshot = snapshotAutoReview(agent, exec, cwd, shown)
   shown.set(snapshot.pending.key, snapshot.pending.schema)
   // This review prompt is sent only through ctx.llm.stream and never enters a Session log.
+  // The Session id is the provider routing key; the purpose excludes the call from Session-log upload.
   const options: GenerateOptions = deepFreeze({
     provider: snapshot.provider,
     model: snapshot.model,
     system: REVIEW_POLICY,
     messages: reviewMessages(snapshot),
     temperature: 0,
+    sessionId: agent.session.id,
+    purpose: 'auto-review',
     signal,
   })
   return readDecision(ctx.llm.stream(options))

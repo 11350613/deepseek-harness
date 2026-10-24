@@ -48,7 +48,7 @@ DeepSeek 适配器会在 HTTP 2xx 后、消费 SSE（Server-Sent Events）正文
 
 服务端接受后、持久化水位前发生崩溃，可能让恢复后的进程重放已经接受的范围。这是至少一次交付的失败方向：不确定性会制造重复，绝不会跳过序列。普通会话检查点策略会在下一个语义检查点持久化水位；本插件不执行独立 I/O。
 
-缺少存活会话的直接请求会省略 `dsh_session_log`。普通 agent（智能体）、压缩（compaction）与会话标题调用都会携带存活会话 id。
+缺少存活会话的直接请求会省略 `dsh_session_log`。普通 agent（智能体）、压缩（compaction）与会话标题调用都会携带存活会话 id。Auto 审查调用携带被审查会话的 id 与用途 `auto-review`；它们会省略 `dsh_session_log`，也不记录接受。
 
 <a id="model-experience"></a>
 ## 模型体验

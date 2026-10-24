@@ -187,6 +187,8 @@ export function apply(ctx: Context, config: Config): void {
   ctx.deepseekLlmApiExtensions.register('dsh_session_log', {
     prepare: (request) => {
       if (!config.enabled.get()) return undefined
+      // An Auto review call is not part of its Session's conversation, so it neither carries nor acknowledges the log.
+      if (request.purpose === 'auto-review') return undefined
       // TODO: Define an explicit wire result for direct or stale-session calls if they become a supported product path.
       if (request.sessionId === undefined) return undefined
       const session = ctx.sessions.get(brandString<SessionId>(request.sessionId))
