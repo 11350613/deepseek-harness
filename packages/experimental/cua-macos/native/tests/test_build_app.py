@@ -23,6 +23,8 @@ class PublicationTests(unittest.TestCase):
         self.plist.write_text("application identity")
         self.icon = self.root / "DSHComputerUse.icns"
         self.icon.write_bytes(b"computer use icon")
+        for filename in ["LICENSE.computer-use-icon", "LICENSE.cua-driver"]:
+            (self.root / filename).write_text("fixture license notice")
         self.output = self.root / "applications"
         self.sign = patch.object(builder.subprocess, "run")
         self.commands = self.sign.start()

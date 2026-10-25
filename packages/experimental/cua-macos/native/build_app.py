@@ -38,7 +38,8 @@ def publish(binary, output, identity, plist):
         shutil.copy2(plist, staged / "Contents/Info.plist")
         resources = staged / "Contents/Resources"
         resources.mkdir()
-        shutil.copy2(plist.with_name("DSHComputerUse.icns"), resources / "DSHComputerUse.icns")
+        for filename in ["DSHComputerUse.icns", "LICENSE.computer-use-icon", "LICENSE.cua-driver"]:
+            shutil.copy2(plist.with_name(filename), resources / filename)
         subprocess.run(["/usr/bin/codesign", "--force", "--sign", identity, "--options", "runtime",
                         "--timestamp=none" if identity == "-" else "--timestamp", str(staged)], check=True)
         subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(staged)], check=True)
