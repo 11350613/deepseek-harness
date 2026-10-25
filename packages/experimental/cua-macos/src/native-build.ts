@@ -84,7 +84,9 @@ export async function buildNativeExecutable(spec: NativeBuildSpec): Promise<stri
     })
     let outcome: SubprocessOutcome
     try { outcome = await handle.done } finally {
-      try { handle.terminate() } finally { await handle.waitForExit() }
+      try { handle.terminate() } finally {
+        if (!await handle.waitForExit()) throw new Error('Computer use preparation did not release its managed process range')
+      }
     }
     signal.throwIfAborted()
     if (outcome.exitCode !== 0 || outcome.signal !== null) {

@@ -140,6 +140,12 @@ it('reports failed builder range observation before returning an executable', as
   await expect(buildNativeExecutable(f.spec)).rejects.toThrow('compiler range observation failed')
 })
 
+it('rejects a builder whose managed process range remains occupied', async () => {
+  const f = await fixture()
+  f.waitForExit.mockResolvedValue(false)
+  await expect(buildNativeExecutable(f.spec)).rejects.toThrow('did not release its managed process range')
+})
+
 it('serializes builds and cancels a competing preparation before starting it', async () => {
   const f = await fixture()
   const release: PromiseWithResolvers<void> = Promise.withResolvers()
