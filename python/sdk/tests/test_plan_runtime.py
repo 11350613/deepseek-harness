@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from deepseek_harness import CommandExecution, RunResult, Session, UserQuestionRequest
 from test_commands_runtime import (
     _Completion, _Runtime, _SESSION_ID, _WAIT_SECONDS, _assert_request_permission,
-    _command_pair, _of_type, _permission_facts, _read_events, _receive_result,
+    _command_pair, _of_type, _permission_facts, _read_events,
     _request_texts, _runtime, _text_blocks,
 )
 
@@ -25,8 +25,7 @@ class _WaitResult(BaseModel):
 
 
 def _command(runtime: _Runtime, session: Session, text: str) -> CommandExecution:
-    assert runtime.call(session.query, text) is None
-    result = runtime.call(_receive_result, session)
+    result = runtime.call(session.run, text)
     assert isinstance(result, CommandExecution)
     assert result.result.kind == "success", result.result.text
     return result
@@ -94,8 +93,7 @@ def test_plan_body_uses_native_input_then_off_removes_guidance_but_keeps_exit_to
         assert {"exit_plan_mode", "write", "edit"} <= _tool_names(first)
         _assert_request_permission(first, "workspace-write", "ask")
         _command(runtime, session, "/plan off")
-        runtime.call(session.query, "Continue after the user changed the mode.")
-        result = runtime.call(_receive_result, session)
+        result = runtime.call(session.run, "Continue after the user changed the mode.")
         assert isinstance(result, RunResult) and result.final_response == "AFTER_OFF"
         second = runtime.model.captured()[1]
         assert _GUIDANCE not in _effective_system(second)
@@ -112,11 +110,8 @@ def test_plan_body_steers_the_next_step_of_a_running_turn(tmp_path: Path) -> Non
     first = _Completion("FIRST_REPLY", blocked=True)
     with _runtime(tmp_path, [first, _Completion("PLANNING_REPLY")], initial_permission="workspace-write") as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
-        runtime.call(session.query, "Start this task without tools.")
+        observing = runtime.workers.submit(session.run, "Start this task without tools.")
         assert first.entered.wait(_WAIT_SECONDS)
-        claimed = threading.Event()
-        observing = runtime.workers.submit(_receive_result, session, claimed)
-        assert claimed.wait(_WAIT_SECONDS)
         execution = _command(runtime, session, "/plan Design a smaller change.")
         assert not first.release.is_set() and not observing.done()
         first.release.set()
@@ -138,11 +133,8 @@ def test_running_bare_selection_does_not_force_a_step_and_can_be_cancelled(tmp_p
     first = _Completion("FIRST_REPLY", blocked=True)
     with _runtime(tmp_path, [first, _Completion("NEXT_REPLY")], initial_permission="workspace-write") as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
-        runtime.call(session.query, "Start without tools.")
+        observing = runtime.workers.submit(session.run, "Start without tools.")
         assert first.entered.wait(_WAIT_SECONDS)
-        claimed = threading.Event()
-        observing = runtime.workers.submit(_receive_result, session, claimed)
-        assert claimed.wait(_WAIT_SECONDS)
         _command(runtime, session, "/plan")
         if cancel:
             cancelled = _command(runtime, session, "/plan off")
@@ -151,8 +143,7 @@ def test_running_bare_selection_does_not_force_a_step_and_can_be_cancelled(tmp_p
         first.release.set()
         assert isinstance(observing.result(timeout=_WAIT_SECONDS), RunResult)
         assert len(runtime.model.captured()) == 1
-        runtime.call(session.query, "Inspect the next task without tools.")
-        assert isinstance(runtime.call(_receive_result, session), RunResult)
+        assert isinstance(runtime.call(session.run, "Inspect the next task without tools."), RunResult)
         assert (_GUIDANCE in _effective_system(runtime.model.captured()[1])) is (not cancel)
     events = _read_events(runtime.logs)
     assert len(_of_type(events, "turn/start")) == 2
@@ -225,8 +216,7 @@ def test_plan_state_survives_resume_without_changing_permissions(tmp_path: Path)
         _command(runtime, session, "/plan")
     with _runtime(tmp_path, [_Completion("RESTORED_PLAN")], initial_permission="workspace-write") as resumed:
         session = resumed.call(resumed.harness.resume_session, _SESSION_ID)
-        resumed.call(session.query, "Continue planning without tools.")
-        assert isinstance(resumed.call(_receive_result, session), RunResult)
+        assert isinstance(resumed.call(session.run, "Continue planning without tools."), RunResult)
         [request] = resumed.model.captured()
         assert _GUIDANCE in _effective_system(request)
         _assert_request_permission(request, "workspace-write", "ask")
@@ -240,11 +230,9 @@ def test_plan_state_is_local_and_run_keeps_ordinary_text_semantics(tmp_path: Pat
         session = runtime.harness.start_session(_SESSION_ID)
         _command(runtime, session, "/plan")
         other = runtime.harness.start_session("plan-other")
-        runtime.call(other.query, "Inspect your own task without tools.")
-        assert isinstance(runtime.call(_receive_result, other), RunResult)
-        runtime.call(session.query, "Inspect the plan without tools.")
-        assert isinstance(runtime.call(_receive_result, session), RunResult)
-        result = runtime.call(session.run, "/plan off")
+        assert isinstance(runtime.call(other.run, "Inspect your own task without tools."), RunResult)
+        assert isinstance(runtime.call(session.run, "Inspect the plan without tools."), RunResult)
+        result = runtime.call(session.run, [{"type": "text", "text": "/plan off"}])
         assert isinstance(result, RunResult)
         first, second, third = runtime.model.captured()
         assert _GUIDANCE not in _effective_system(first)

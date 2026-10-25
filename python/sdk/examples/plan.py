@@ -72,12 +72,12 @@ def main() -> None:
     ) as harness:
         session = harness.start_session()
         with closing(harness.client.subscribe_session_notifications(session.id)) as notifications:
-            session.query(f"/plan {args.task}")
-            for message in session.receive_response():
-                if isinstance(message, CommandExecution):
-                    print(message.result.text)
-                    if message.result.kind == "error":
-                        raise RuntimeError(message.result.text)
+            execution = session.run(f"/plan {args.task}")
+            if not isinstance(execution, CommandExecution):
+                raise RuntimeError("The SDK profile did not execute the requested command")
+            print(execution.result.text, flush=True)
+            if execution.result.kind == "error":
+                raise RuntimeError(execution.result.text)
             harness.client.request(
                 "session/wait", {"sessionId": session.id}, response_model=WaitResult,
                 on_notification=lambda notice: display(notice, session.id), notification_subscription=notifications,

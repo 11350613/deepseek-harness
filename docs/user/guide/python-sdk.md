@@ -91,14 +91,14 @@ python python/sdk/examples/minimal.py `
 
 :::
 
-The script prints the final assistant response. The selected home receives the generated `sdk-minimal` profile, installed plugins, and uncompressed JSONL session logs under `sessions/`. The example and SDK never silently read `~/.dsh`.
+The script prints the final assistant response or the command result supplied by the selected profile. The selected home receives the generated `sdk-minimal` profile, installed plugins, and uncompressed JSONL session logs under `sessions/`. The example and SDK never silently read `~/.dsh`.
 
 ## Use the SDK in your program
 
 ```python
 from pathlib import Path
 
-from deepseek_harness import DeepSeekHarness
+from deepseek_harness import DeepSeekHarness, RunResult
 
 workspace = Path("/absolute/path/to/disposable-workspace").resolve()
 dsh_home = Path("/absolute/path/to/example-dsh-home").resolve()
@@ -115,7 +115,7 @@ with DeepSeekHarness(
         session_id="example-001",
     )
 
-print(result.final_response)
+print(result.final_response if isinstance(result, RunResult) else result.result.text)
 ```
 
 The SDK starts the bundled `dsh --profile sdk-minimal` process lazily and reuses it until context-manager exit. The profile, its persistent patch, the home patch, and any ordered `patches` tuple form the application configuration. There is no separate Python runtime bin or complete-config option.

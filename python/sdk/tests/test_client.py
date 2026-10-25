@@ -178,7 +178,7 @@ for line in sys.stdin:
             "DEEPSEEK_BASE_URL": "http://127.0.0.1:4321",
         },
     ) as harness:
-        result = harness.run("say hello", session_id="main")
+        result = harness.run([{"type": "text", "text": "say hello"}], session_id="main")
 
     assert result.final_response == "hello from runtime"
     assert result.finish_reason == "max-tokens"
@@ -252,7 +252,7 @@ for line in sys.stdin:
     ) as harness:
         session = harness.start_session("main")
         result = session.run(
-            "spawn a helper",
+            [{"type": "text", "text": "spawn a helper"}],
             on_notification=lambda notification: seen.append(notification.method),
         )
 
@@ -292,7 +292,7 @@ for line in sys.stdin:
             SdkProtocolError,
             match=r"turn/end event requires a string data\.reason\.kind",
         ):
-            harness.run("reject malformed turn ending", session_id="main")
+            harness.run([{"type": "text", "text": "reject malformed turn ending"}], session_id="main")
 
 
 def test_relative_cwd_is_absolute_in_process_environment_and_wire(
@@ -363,7 +363,7 @@ for line in sys.stdin:
         _launch_args=(sys.executable, str(script)),
         cwd=str(tmp_path),
     ) as harness:
-        result = harness.run("spawn a helper", session_id="main")
+        result = harness.run([{"type": "text", "text": "spawn a helper"}], session_id="main")
 
     assert [notification.method for notification in result.notifications] == [
         "session.event",
@@ -413,7 +413,7 @@ for line in sys.stdin:
         cwd=str(tmp_path),
     ) as harness:
         result = harness.run(
-            "delegate recursively",
+            [{"type": "text", "text": "delegate recursively"}],
             session_id="main",
             on_notification=lambda notification: seen.append(notification.method),
         )
@@ -467,7 +467,7 @@ for line in sys.stdin:
         _launch_args=(sys.executable, str(script)),
         cwd=str(tmp_path),
     ) as harness:
-        result = harness.run("stay in your lane", session_id="main")
+        result = harness.run([{"type": "text", "text": "stay in your lane"}], session_id="main")
 
     assert result.final_response == "right session"
     assert [notification.payload.get("sessionId") for notification in result.notifications] == ["main"] * 4
@@ -499,7 +499,7 @@ for line in sys.stdin:
     )
 
     with DeepSeekHarness(_launch_args=(sys.executable, str(script)), cwd=str(tmp_path)) as harness:
-        result = harness.run("one turn", session_id="main")
+        result = harness.run([{"type": "text", "text": "one turn"}], session_id="main")
         assert harness.client._notifications.qsize() == 0
 
 
@@ -539,8 +539,8 @@ for line in sys.stdin:
     )
 
     with DeepSeekHarness(_launch_args=(sys.executable, str(script)), cwd=str(tmp_path)) as harness:
-        first = harness.run("first turn", session_id="main")
-        second = harness.run("second turn", session_id="main")
+        first = harness.run([{"type": "text", "text": "first turn"}], session_id="main")
+        second = harness.run([{"type": "text", "text": "second turn"}], session_id="main")
 
     assert first.final_response == "first"
     assert second.final_response == "second"

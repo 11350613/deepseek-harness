@@ -1,7 +1,6 @@
 /**
- * High-level input and run APIs over {@link HarnessClient}. Sessions can send
- * input independently of receiving its notifications and result, or collect
- * a prompt's receipt-to-idle activity through `run()`.
+ * High-level run API over {@link HarnessClient}: route text to prompts or native
+ * commands, collect prompt activity, and retain literal content-block delivery.
  *
  * @module @deepseek-ai/dsh-sdk-client/api
  */
@@ -9,11 +8,10 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import type { SessionEvent, TurnEndReason } from '@deepseek-ai/dsh-session'
-import type { SessionQueryResult } from '@deepseek-ai/dsh-sdk-protocol'
+import type { CommandExecution } from '@deepseek-ai/dsh-sdk-protocol'
 import { createProcessHarnessClient, HarnessClient, isRecord, SdkProtocolError } from './client.ts'
-import type { NotificationSubscription } from './client.ts'
 import type { RuntimeProcessOptions } from './launch.ts'
-import type { ContentBlock, DeepSeekHarnessOptions, HarnessNotification, QueryMessage, RunResult, SdkPromptContentBlock } from './types.ts'
+import type { ContentBlock, DeepSeekHarnessOptions, HarnessNotification, RunResult, SdkPromptContentBlock } from './types.ts'
 
 /**
  * Reusable SDK for running DeepSeek Harness agent turns in a runtime
@@ -122,12 +120,20 @@ export class DeepSeekHarness implements AsyncDisposable {
   }
 
   /**
-   * Run one prompt on a fresh (or named) session.
-   * @param input - prompt text, or content blocks sent verbatim.
+   * Queue literal content blocks on a fresh or named Session.
+   * @param input - content blocks sent without command routing.
    * @param options - optional session id and per-notification observer.
-   * @returns the owned activity interval.
+   * @returns the prompt activity interval.
    */
-  run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult> {
+  run(input: SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult>
+  /**
+   * Run text or literal content on a fresh or named Session.
+   * @param input - text for native routing, or queued content blocks.
+   * @param options - optional Session identity, text delivery and notification observer.
+   * @returns ordinary prompt activity or the native command result.
+   */
+  run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult | CommandExecution>
+  run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult | CommandExecution> {
     return this.session(options?.sessionId).run(input, options)
   }
 
@@ -169,25 +175,19 @@ export function createProcessDeepSeekHarness(
 export interface RunOptions {
   /** Session id to run on; omitted mints a fresh session per call. */
   sessionId?: string
-  /** Observer invoked with every notification for this session tree, in wire order. */
+  /** Text prompt delivery; content-block arrays require queue delivery. */
+  delivery?: 'queue' | 'steer'
+  /** Observer invoked with this input's notifications in wire order; command notifications follow its response. */
   onNotification?: (notification: HarnessNotification) => void
 }
 
-/** Ordinary prompt delivery for one unified input; command admission remains runtime-owned. */
-export interface QueryOptions {
-  /** Queue a new turn by default, or steer the next available step. */
-  delivery?: 'queue' | 'steer'
-}
-
-type QueryOutcome =
-  | { readonly kind: 'result'; readonly result: SessionQueryResult }
-  | { readonly kind: 'error'; readonly error: unknown }
-
-interface PendingQuery {
-  readonly outcome: Promise<QueryOutcome>
-  readonly subscription: NotificationSubscription
-  readonly abandon: AbortController
-  readonly commandNotifications: HarnessNotification[]
+/** Resolve text delivery while keeping content-block input on its queued prompt path. */
+function resolveRunDelivery(input: string | SdkPromptContentBlock[], requested: RunOptions['delivery']): 'queue' | 'steer' {
+  const delivery = requested ?? 'queue'
+  if (typeof input !== 'string' && delivery === 'steer') {
+    throw new TypeError('content-block input requires queue delivery')
+  }
+  return delivery
 }
 
 /** Collect an ordinary prompt's notifications from its inbox receipt through idle. */
@@ -225,103 +225,11 @@ class PromptActivity {
  * One SDK session: a stable id plus owned activity intervals.
  */
 export class HarnessSession {
-  private readonly pendingQueries: PendingQuery[] = []
-
   /**
    * @param harness - the owning harness (supplies the client and handshake).
    * @param id - the wire session id this handle runs on.
    */
   constructor(readonly harness: DeepSeekHarness, readonly id: string) {}
-
-  /**
-   * Send text for runtime prompt-or-command routing without waiting for its result.
-   * @param text - complete input text; the runtime interprets slash input.
-   * @param options - ordinary prompt delivery, defaulting to a new queued turn.
-   * @returns after initialization and sending; routing failures surface from `receiveResponse()`.
-   */
-  async query(text: string, options: QueryOptions = {}): Promise<void> {
-    await this.harness.start()
-    const client = this.harness.client
-    const subscription = client.subscribeSessionTree(this.id)
-    const abandon = new AbortController()
-    const commandNotifications: HarnessNotification[] = []
-    const outcome = client.query(this.id, text, options.delivery ?? 'queue', abandon.signal).then<QueryOutcome>(
-      (result) => {
-        if (result.kind === 'command') {
-          for (let notification = subscription.tryNext(); notification !== undefined; notification = subscription.tryNext()) {
-            commandNotifications.push(notification)
-            const event = notification.params.event
-            if (notification.method === 'session.event' && notification.params.sessionId === this.id
-              && isRecord(event) && event.type === 'command/done' && isRecord(event.data)
-              && event.data.commandId === result.execution.commandId) break
-          }
-          subscription.close()
-        }
-        return { kind: 'result', result }
-      },
-    ).catch((error: unknown): QueryOutcome => {
-      subscription.close()
-      return { kind: 'error', error }
-    })
-    this.pendingQueries.push({ outcome, subscription, abandon, commandNotifications })
-  }
-
-  /**
-   * Observe the oldest query not yet assigned to a receiver.
-   * @returns an iterator of notifications followed by `RunResult` or `CommandExecution`.
-   * Its resources close before the final result is yielded. Returning early abandons
-   * only local observation, including before the first `next()`; runtime work continues.
-   * @throws when no query awaits reception, or when its request, protocol, or transport fails.
-   */
-  receiveResponse(): AsyncIterableIterator<QueryMessage> {
-    const pending = this.pendingQueries.shift()
-    if (pending === undefined) throw new Error('No query is waiting for a response')
-    const isClosed = (): boolean => pending.abandon.signal.aborted
-    const close = (): void => {
-      if (isClosed()) return
-      pending.abandon.abort(new Error('Query observation closed; runtime work was not cancelled'))
-      pending.subscription.close()
-      pending.commandNotifications.length = 0
-    }
-    const sessionId = this.id
-    const iterator = (async function* (): AsyncGenerator<QueryMessage, void, unknown> {
-      try {
-        const outcome = await pending.outcome
-        if (isClosed()) return
-        if (outcome.kind === 'error') throw outcome.error
-        if (outcome.result.kind === 'command') {
-          for (const notification of pending.commandNotifications) yield notification
-          close()
-          yield outcome.result.execution
-          return
-        }
-        const activity = new PromptActivity(sessionId, outcome.result.messageId)
-        while (!isClosed()) {
-          const notification = await pending.subscription.next()
-          if (isClosed()) return
-          if (!activity.record(notification)) continue
-          yield notification
-          if (notification.method === 'session.status' && notification.params.sessionId === sessionId
-            && notification.params.status === 'idle') break
-        }
-        if (isClosed()) return
-        close()
-        yield activity.result()
-      } catch (error: unknown) {
-        if (!isClosed()) throw error
-      } finally {
-        close()
-      }
-    })()
-    return {
-      [Symbol.asyncIterator]() { return this },
-      next: () => iterator.next(),
-      return: () => {
-        close()
-        return iterator.return(undefined)
-      },
-    }
-  }
 
   /**
    * Read the effective directory and recover a missing directory to the Session origin.
@@ -343,21 +251,45 @@ export class HarnessSession {
   }
 
   /**
-   * Queue one prompt, then observe the whole session through its next idle.
-   * @param input - prompt text, or content blocks sent verbatim.
-   * @param options - optional per-notification observer.
-   * @returns the owned activity interval; rejects on transport loss, timeout,
-   * or a protocol error.
+   * Queue literal content blocks and observe their receipt-to-idle activity.
+   * @param input - content blocks sent without command routing.
+   * @param options - a notification observer; content blocks require queue delivery.
+   * @returns the prompt activity interval.
    */
-  async run(input: string | SdkPromptContentBlock[], options?: Pick<RunOptions, 'onNotification'>): Promise<RunResult> {
+  run(input: SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult>
+  /**
+   * Run text through native input routing, or queue literal content blocks.
+   * @param input - non-blank text, or content blocks sent verbatim.
+   * @param options - text delivery and a per-notification observer.
+   * @returns the prompt's receipt-to-idle activity or a settled command; command
+   * completion does not wait for later model work. Handler errors remain results.
+   * @throws on routing, protocol, transport or observer failure; runtime work is not rolled back.
+   */
+  run(input: string | SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult | CommandExecution>
+  async run(input: string | SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult | CommandExecution> {
+    const delivery = resolveRunDelivery(input, options?.delivery)
     await this.harness.start()
     const client = this.harness.client
-    const contentBlocks = normalizeInput(input)
     const subscription = client.subscribeSessionTree(this.id)
-    let activity: PromptActivity
     try {
-      const messageId = await client.prompt(this.id, contentBlocks)
-      activity = new PromptActivity(this.id, messageId)
+      let messageId: string
+      if (typeof input === 'string') {
+        const response = await client.query(this.id, input, delivery)
+        if (response.kind === 'command') {
+          for (let notification = subscription.tryNext(); notification !== undefined; notification = subscription.tryNext()) {
+            options?.onNotification?.(notification)
+            const event = notification.params.event
+            if (notification.method === 'session.event' && notification.params.sessionId === this.id
+              && isRecord(event) && event.type === 'command/done' && isRecord(event.data)
+              && event.data.commandId === response.execution.commandId) break
+          }
+          return response.execution
+        }
+        messageId = response.messageId
+      } else {
+        messageId = await client.prompt(this.id, input)
+      }
+      const activity = new PromptActivity(this.id, messageId)
       while (true) {
         const notification = await subscription.next()
         if (!activity.record(notification, options?.onNotification)) continue
@@ -365,12 +297,12 @@ export class HarnessSession {
           && notification.params.sessionId === this.id
           && notification.params.status === 'idle') break
       }
+      return activity.result()
     } finally {
       subscription.close()
     }
-
-    return activity.result()
   }
+
 }
 
 /**

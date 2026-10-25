@@ -129,9 +129,9 @@ def test_command_rejects_malformed_results(peer: Path, tmp_path: Path, response:
             sdk.client.session_command("main", "/compact")
 
 
-def test_run_keeps_slash_text_as_an_ordinary_prompt(peer: Path, tmp_path: Path) -> None:
+def test_content_blocks_keep_slash_text_as_an_ordinary_prompt(peer: Path, tmp_path: Path) -> None:
     with harness(peer, tmp_path, {"result": {}}) as sdk:
-        result = sdk.start_session("main").run("/compact")
+        result = sdk.start_session("main").run([{"type": "text", "text": "/compact"}])
         assert result.final_response == "ordinary prompt"
         assert result.finish_reason == "completed"
     sent = frames(tmp_path)

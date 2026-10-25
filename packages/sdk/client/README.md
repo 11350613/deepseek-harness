@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-sdk-client` lets TypeScript programs drive a complete DeepSeek Harness runtime over stdio JSON-RPC. Use `query()` and `receiveResponse()` to send text or slash input separately from receiving notifications and its result; use `run()` to collect a model activity interval. `HarnessClient` provides direct protocol access. Callers may provide `dshBin`; otherwise the client resolves the same-version `@deepseek-ai/dsh` executable. The client owns the subprocess, reports typed failures, and reaps it on `close()` or `await using`.
+`dsh-sdk-client` lets TypeScript programs drive a complete DeepSeek Harness runtime over stdio JSON-RPC. Use `run()` for ordinary text, supported slash commands, or literal content blocks, and `onNotification` to observe its notifications. `HarnessClient` provides direct protocol access. Callers may provide `dshBin`; otherwise the client resolves the same-version `@deepseek-ai/dsh` executable. The client owns the subprocess, reports typed failures, and reaps it on `close()` or `await using`.
 
 ## Table of Contents
 
@@ -41,6 +41,7 @@ import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 
 await using harness = new DeepSeekHarness({
   profile: 'sdk',
+  dshHome: '/absolute/path/to/dsh-home',
   patches: ['./automation.cordis.yml'],
   provider: 'deepseek-official',
   model: 'deepseek-v4-flash',
@@ -48,34 +49,32 @@ await using harness = new DeepSeekHarness({
   maxTokens: 49_152,
 })
 const result = await harness.run('say hi')
-console.log(result.finalResponse)
+console.log('finalResponse' in result ? result.finalResponse : result.result)
 ```
 
-The subprocess starts lazily on first use and stays owned by the instance across `run()` calls; call `close()` (or use `await using`) so the child is always reaped. `start()` memoizes the bounded `initialize` handshake, which carries the workspace cwd, provider/model route, optional adapter-owned `reasoningEffort`, and optional positive `maxTokens` output cap. The server validates that exact route before it accepts prompts; an omitted effort preserves the model's default. `initializeTimeoutMs` defaults to 10 seconds, and its diagnostic names the selected profile with the retained stderr tail. `run(input, { sessionId?, onNotification? })` accepts text or `SdkPromptContentBlock[]`; an inline raster block carries canonical base64 plus `mimeType` and becomes a durable attachment inside the runtime. The call owns one activity interval: it queues the prompt, waits until its message id appears in a durable inbox receipt, then collects through the next whole-agent `idle`. It returns `RunResult { sessionId, finalResponse, events, notifications }`, where `finalResponse` is the last committed root-session assistant text in that interval — not a response causally assigned to the prompt, because steering, injected context, and other queued work may contribute before idle. `session(id?)` opens a named or fresh session handle. When a failed handshake is cleaned up successfully, the instance installs a fresh client so a later call retries with a new process until terminal `close()`; if initialization and cleanup both fail, `start()` returns an ordered `AggregateError` and retains the failed client instead of spawning beside a process whose exit is unproved. `maxTokens` caps each root-agent request output and is inherited by in-process descendants; compaction plugins own their separate summary limits.
+The subprocess starts lazily on first use and stays owned by the instance across `run()` calls; call `close()` (or use `await using`) so the child is always reaped. `start()` memoizes the bounded `initialize` handshake, which carries the workspace cwd, provider/model route, optional adapter-owned `reasoningEffort`, and optional positive `maxTokens` output cap. The server validates that exact route before it accepts prompts; an omitted effort preserves the model's default. `initializeTimeoutMs` defaults to 10 seconds, and its diagnostic names the selected profile with the retained stderr tail. `run(input, { sessionId?, onNotification?, delivery? })` accepts text or `SdkPromptContentBlock[]`; an inline raster block carries canonical base64 plus `mimeType` and becomes a durable attachment inside the runtime. For ordinary input, the call owns one activity interval: it queues the prompt, waits until its message id appears in a durable inbox receipt, then collects through the next whole-agent `idle`. That path returns `RunResult { sessionId, finalResponse, events, notifications }`, where `finalResponse` is the last committed root-session assistant text in that interval — not a response causally assigned to the prompt, because steering, injected context, and other queued work may contribute before idle. `session(id?)` opens a named or fresh session handle. When a failed handshake is cleaned up successfully, the instance installs a fresh client so a later call retries with a new process until terminal `close()`; if initialization and cleanup both fail, `start()` returns an ordered `AggregateError` and retains the failed client instead of spawning beside a process whose exit is unproved. `maxTokens` caps each root-agent request output and is inherited by in-process descendants; compaction plugins own their separate summary limits.
 
-### Sending input and receiving responses
+### Run text and native commands
 
-`await session.query(text, { delivery: 'queue' })` starts the runtime if needed, sends text, and returns without awaiting runtime routing or execution. Delivery defaults to `queue`; `steer` targets the next available step for ordinary input. The runtime recognizes the [supported command forms and Desktop aliases](../server/README.md#command-input); unrecognized input remains ordinary text. `run()` never dispatches these commands. Query is text-only; use `run()` for content-block prompts.
+`await session.run(text, { delivery: 'queue', onNotification })` routes non-blank text through the runtime's [supported command forms and Desktop aliases](../server/README.md#command-input). Unrecognized input remains ordinary text. Delivery defaults to `queue`; `steer` targets the next available step for ordinary text. Content-block arrays remain literal queued prompts; requesting steer for them throws before sending.
 
 ```ts
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
 
-await using harness = new DeepSeekHarness({ profile: 'sdk' })
+await using harness = new DeepSeekHarness({ profile: 'sdk', dshHome: '/absolute/path/to/dsh-home' })
 const session = harness.session()
-await session.query('/compact')
-for await (const message of session.receiveResponse()) {
-  if ('commandId' in message) console.log(message.result)
-  else if ('finalResponse' in message) console.log(message.finalResponse)
-}
+const result = await session.run('/compact')
+if ('commandId' in result) console.log(result.result)
+else console.log(result.finalResponse)
 ```
 
-Each `receiveResponse()` call takes the oldest pending query and returns an independent `AsyncIterableIterator<QueryMessage>`. It yields buffered notifications, then a final `CommandExecution` for a command or `RunResult` for a prompt. Prompt observation starts at its inbox receipt and ends at the next root idle; command observation needs neither a turn nor idle. Routing/protocol/transport failures surface during reception, while command business refusals remain `result.kind === "error"`. A completed command retains `commandId` and any summary `sourceEventSeq`, not an assistant reply.
+Strings return `CommandExecution` for a command or `RunResult` for ordinary prompt activity. Commands settle without requiring a turn or idle notification. Business refusals remain `result.kind === "error"`; routing, protocol, transport and observer failures reject. A command retains `commandId` and optional summary `sourceEventSeq` instead of selecting an assistant reply. To send slash text literally, use `session.run([{ type: 'text', text: '/compact' }])`.
 
-Receivers may run concurrently, so an outstanding model response does not prevent sending and receiving `/compact` with its native busy result. Subscriptions are installed before sending and released before the final result is yielded. Close an unused iterator with `return()`, even before its first `next()`, to discard its buffered events and abandon its local RPC wait. This sends no runtime cancellation and authorizes no automatic retry. Continue servicing the Session until its work finishes or close the harness; command completion does not end independent model activity.
+Every call owns a subscription installed before sending and released before settlement. `onNotification` observes ordinary receipt-to-idle activity in wire order. Command notifications are delivered after its response, stopping at its own `command/done`. Concurrent calls keep their own results, so a running model turn can coexist with a command's native busy result. Timeout or observer failure does not roll back runtime work or authorize automatic retry; command completion does not end independent model activity.
 
-Launch options provide initial values, not a shared live configuration object. A permission command changes only its target Session; later queries retain that state, other Sessions keep their own state, and new Sessions use the configured defaults. It does not update the options object or saved user defaults. An approval-policy change during a running turn can inject a notice and cause another step. See [permission presets](../../interaction/permission-presets/README.md) for native transition and restoration behavior.
+Launch options supply initial values. A permission command changes only its target Session; later inputs and restoration retain that state, other Sessions keep theirs, and new Sessions use configured defaults. It does not update the options object or saved user defaults. An approval-policy change during a running turn can inject a notice and cause another step. See [permission presets](../../interaction/permission-presets/README.md) for native transition and restoration behavior.
 
-`/plan` enters plan mode; `/plan off` leaves; `/plan <message>` enters and steers the message. Reception ends at its `CommandExecution`, while model work and review can continue. Enter first and send a separate ordinary query when a `RunResult` is needed; for combined input, subscribe before query and wait through `client.request('session/wait', { sessionId })`. Keep question handling alive until that work finishes. Plan state does not change permissions; the native guidance and reviewed exit govern planning.
+`run('/plan')` enters plan mode; `/plan off` leaves; `/plan <message>` enters and steers the message. The call returns `CommandExecution` while model work and review can continue. Enter first and run ordinary text when a `RunResult` is needed. For combined input, subscribe before `run()` and wait through `client.request('session/wait', { sessionId })`; keep question handling alive until the work finishes. Plan state does not change permissions.
 
 ### Lower-level control with HarnessClient
 
@@ -114,10 +113,10 @@ The client is two layers over one wire: `DeepSeekHarness` (owned runs) over `Har
 
 | File | Role |
 |---|---|
-| [`src/api.ts`](src/api.ts) | `DeepSeekHarness` + `HarnessSession`: pending queries, independent receivers, owned runs and `finalResponse` |
+| [`src/api.ts`](src/api.ts) | `DeepSeekHarness` + `HarnessSession`: unified input routing, owned activity intervals and command results |
 | [`src/client.ts`](src/client.ts) | `HarnessClient`: spawn, handshake, requests, subscription fan-out, typed errors |
 | [`src/dispose.ts`](src/dispose.ts) | Private teardown ladder: stdin EOF → SIGTERM → SIGKILL to actual exit |
-| [`src/types.ts`](src/types.ts) | Launch and timeout options, notifications, `QueryMessage` and `RunResult` |
+| [`src/types.ts`](src/types.ts) | Launch and timeout options, notifications, `RunResult` and `CommandExecution` |
 | [`src/index.ts`](src/index.ts) | Consumer interface: the two client layers and caller-facing types |
 
 ### Owned activity flow
@@ -162,8 +161,8 @@ None in the client process. Profile, patch, provider, model, and history choices
 These limits define when the client is a poor fit or needs special care. They are current package constraints, not a comparison with other SDK clients or a task backlog.
 
 - **No bundled-runtime resolution** — the client resolves the same-version `@deepseek-ai/dsh` package (or a caller-provided `dshBin`); packaged-executable discovery stays Python-side until a TypeScript distribution consumer exists.
-- **No runtime cancellation request** — closing a receiver abandons local observation, not execution. Stopping runtime work requires closing the harness (see the [protocol limitations](../protocol/README.md#known-limitations-and-deferred-work)).
-- **No exclusive model response** — prompt results cover receipt-to-idle activity and can include steering or other queued work. Query receivers share the Session's actual event stream; a command result does not own a later turn.
+- **No runtime cancellation request** — an RPC timeout or observer failure ends local waiting without stopping runtime work. Stopping runtime work requires closing the harness (see the [protocol limitations](../protocol/README.md#known-limitations-and-deferred-work)).
+- **No exclusive model response** — prompt results cover receipt-to-idle activity and can include steering or other queued work. Concurrent calls observe the Session's actual event stream; a command result does not own a later turn.
 - **Callbacks must release their own resources** — the SDK delivers cancellation through `AbortSignal`; application work that ignores it may continue after the SDK stops awaiting its answer.
 
 <a id="dev-note"></a>

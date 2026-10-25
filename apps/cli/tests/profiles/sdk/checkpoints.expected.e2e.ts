@@ -58,6 +58,7 @@ describe.skipIf(!existsSync(dshBin))('sdk-minimal durability checkpoints', () =>
     })
     onTestFinished(async () => { await harness.close() })
     const result = await harness.run('Reply OK without calling tools.')
+    if ('commandId' in result) throw new Error('Expected prompt activity, received a command result')
     expect(modelRequests).toBe(disabled ? 1 : 0)
     const terminal = result.events.findLast(event => event.type === 'turn/end')
     expect(terminal).toMatchObject({ data: { reason: { kind: disabled ? 'completed' : 'error' } } })

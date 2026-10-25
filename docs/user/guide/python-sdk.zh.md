@@ -91,14 +91,14 @@ python python/sdk/examples/minimal.py `
 
 :::
 
-脚本会打印最终 assistant 响应。所选 home 会保存生成的 `sdk-minimal` profile、已安装插件，以及 `sessions/` 下的未压缩 JSONL 会话日志。示例与 SDK 绝不会静默读取 `~/.dsh`。
+脚本会打印最终 assistant 响应或所选 profile 提供的命令结果。所选 home 会保存生成的 `sdk-minimal` profile、已安装插件，以及 `sessions/` 下的未压缩 JSONL 会话日志。示例与 SDK 绝不会静默读取 `~/.dsh`。
 
 ## 在程序中使用 SDK
 
 ```python
 from pathlib import Path
 
-from deepseek_harness import DeepSeekHarness
+from deepseek_harness import DeepSeekHarness, RunResult
 
 workspace = Path("/absolute/path/to/disposable-workspace").resolve()
 dsh_home = Path("/absolute/path/to/example-dsh-home").resolve()
@@ -115,7 +115,7 @@ with DeepSeekHarness(
         session_id="example-001",
     )
 
-print(result.final_response)
+print(result.final_response if isinstance(result, RunResult) else result.result.text)
 ```
 
 SDK 会延迟启动内置的 `dsh --profile sdk-minimal` 进程，并复用到上下文管理器退出。Profile、其持久 patch、home patch 与任何有序 `patches` tuple 共同组成应用配置。不存在独立 Python 运行时 bin 或完整配置选项。

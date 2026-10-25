@@ -5,30 +5,27 @@ from __future__ import annotations
 
 import argparse
 import os
-from contextlib import closing
 from pathlib import Path
 
-from deepseek_harness import CommandExecution, DeepSeekHarness, RunResult, Session
+from deepseek_harness import CommandExecution, DeepSeekHarness, RunResult
 
 
-def receive(session: Session) -> None:
-    """Print a command or activity result and stop on a reported failure."""
-    with closing(session.receive_response()) as responses:
-        for result in responses:
-            if isinstance(result, CommandExecution):
-                print(f"Command {result.command_id}: {result.result.kind}")
-                if result.result.kind == "error":
-                    raise RuntimeError(result.result.text)
-                if result.result.text is not None:
-                    print(result.result.text)
-            elif isinstance(result, RunResult):
-                if result.finish_reason != "completed":
-                    raise RuntimeError(f"Agent turn ended with {result.finish_reason}")
-                print(result.final_response)
+def display(result: RunResult | CommandExecution) -> None:
+    """Print the input's result and stop on a reported failure."""
+    if isinstance(result, CommandExecution):
+        print(f"Command {result.command_id}: {result.result.kind}")
+        if result.result.kind == "error":
+            raise RuntimeError(result.result.text)
+        if result.result.text is not None:
+            print(result.result.text)
+    else:
+        if result.finish_reason != "completed":
+            raise RuntimeError(f"Agent turn ended with {result.finish_reason}: {result.final_response}")
+        print(result.final_response)
 
 
 def main() -> None:
-    """Send an explicit permission command, then query the same Session."""
+    """Send an explicit permission command, then run another prompt in the same Session."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dsh-home", required=True, type=Path)
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
@@ -45,13 +42,10 @@ def main() -> None:
         env={"DSH_PERMISSION_MODE": "workspace-write"},
     ) as harness:
         session = harness.start_session()
-        session.query("Summarize the current file and approval policy in one sentence. Do not use tools.")
-        receive(session)
-        session.query(f"/permission {args.preset}")
-        receive(session)
+        display(session.run("Summarize the current file and approval policy in one sentence. Do not use tools."))
+        display(session.run(f"/permission {args.preset}"))
         print(f"Launch setting: {harness.config.env['DSH_PERMISSION_MODE']}")
-        session.query("Summarize the current file and approval policy again. Do not use tools.")
-        receive(session)
+        display(session.run("Summarize the current file and approval policy again. Do not use tools."))
 
 
 if __name__ == "__main__":

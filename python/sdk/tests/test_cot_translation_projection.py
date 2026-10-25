@@ -55,7 +55,7 @@ for line in sys.stdin:
         _launch_args=(sys.executable, str(script)), cwd=str(tmp_path),
         env={"MAIN_RESPONSE": expected["finalResponse"], "AUDIT_EVENTS": json.dumps(expected["auditEvents"])},
     ) as harness:
-        result = harness.run("Keep the original response.", session_id="sdk-audit")
+        result = harness.run([{"type": "text", "text": "Keep the original response."}], session_id="sdk-audit")
     audit_notifications = [notification for notification in result.notifications
                            if notification.method == "session.event"
                            and notification.payload["event"]["type"] in ("plugin:translator/request", "plugin:translator/result")]

@@ -35,11 +35,11 @@ kind: "package-reference"
 
 <a id="command-input"></a>
 
-`session/query` 是统一文本入口。普通文本保留原文，使用选定的 queue/steer 操作。完整 SDK 识别裸 `/compact`、带非空 preset 的 `/permission <preset>`、`/plan [off|message]` 和 `/goal [objective|clear|edit objective|pause|resume]`，包括绑定到当前定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/compact extra` 以及 `/model` 等其余输入仍是普通提示词。命令缺失时也保留提示词路径；选中的 handler 失败后绝不回退。未知 preset 是原生命令错误。此入口仅接受文本，`session/prompt` 保留内容块 API。
+`session/query` 是高层 SDK `run()` 发送文本时使用的协议入口。普通文本保留原文，使用选定的 queue/steer 操作。完整 SDK 识别裸 `/compact`、带非空 preset 的 `/permission <preset>`、`/plan [off|message]` 和 `/goal [objective|clear|edit objective|pause|resume]`，包括绑定到当前定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/compact extra` 以及 `/model` 等其余输入仍是普通提示词。命令缺失时也保留提示词路径；选中的 handler 失败后绝不回退。未知 preset 是原生命令错误。此入口仅接受文本，`session/prompt` 保留内容块 API。
 
 `session/command` 接受上述命令名的 `{ sessionId, line }`，要求 permission preset 非空，其余参数由原生 handler 校验。完整 sdk profile 组成这些原生 handler；缺少所请求命令的 profile 会拒绝调用。服务端解析自己拥有的存活 Agent，并调用 `commands.execute()`，不排入普通 prompt，也不等待 idle。压缩负责其辅助模型请求、历史替换和 checkpoint，并拒绝忙碌 Agent。权限变更保留原生状态和通知行为。Shutdown 取消待决命令，在释放 Agent 前排空 SDK 命令等待者。超时不等于回滚，客户端不能自动重试。结果和错误见[协议](../protocol/README.zh.md)。
 
-权限命令只修改接收命令的 Session。后续 query 和恢复的 Session 保留其持久化权限事实；其他 Session 保留各自状态，新 Session 使用配置的默认值。调用方的启动配置和已保存的用户默认值均不会被重写。模型选择不是 SDK slash 命令；恢复时的模型覆盖仍按上文描述的独立行为执行。
+权限命令只修改接收命令的 Session。后续输入和恢复的 Session 保留其持久化权限事实；其他 Session 保留各自状态，新 Session 使用配置的默认值。调用方的启动配置和已保存的用户默认值均不会被重写。模型选择不是 SDK slash 命令；恢复时的模型覆盖仍按上文描述的独立行为执行。
 
 `/plan` 和 `/plan off` 只改变原生计划状态。带正文时由 handler 通过 steer 提交；命令完成不等待后续模型活动或审查，`session/wait` 可观察后续 Session 工作。问答响应保留批准和反馈语义；`{ cancelled: true }` 转为原生 `ASK_CANCELLED`，使关闭计划审查结束轮次而不退出计划模式。
 

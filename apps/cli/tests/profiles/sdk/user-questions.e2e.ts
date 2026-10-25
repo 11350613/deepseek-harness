@@ -77,6 +77,7 @@ it.each([
     return
   }
   const result = await pending
+  if ('commandId' in result) throw new Error('Expected prompt activity, received a command result')
   expect(seen).toEqual([{ requestId: expect.any(String) as string, sessionId: 'question-session', questions }])
   expect(result.finalResponse).toBe('answer received')
   expect(requests).toHaveLength(2)

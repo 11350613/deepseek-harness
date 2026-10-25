@@ -32,7 +32,7 @@ python python/sdk/examples/minimal.py \
 <a id="compact-a-full-sdk-session"></a>
 ## 压缩完整 SDK Session
 
-[压缩示例](compact.py)使用完整 `sdk` profile。它将所选工作区的 `README.md` 读入 `Session.query()` 输入，通过同一方法发送 `/compact`，随后使用保留的上下文继续提问。每次 query 都配对调用 `Session.receive_response()`。模型凭据和 `DSH_MODEL` 默认值与极简示例一致，并且要求显式指定 home：
+[压缩示例](compact.py)使用完整 `sdk` profile。它将所选工作区的 `README.md` 读入 `Session.run()` 输入，通过同一方法执行 `/compact`，随后使用保留的上下文继续提问。模型凭据和 `DSH_MODEL` 默认值与极简示例一致，并且要求显式指定 home：
 
 ```sh
 python python/sdk/examples/compact.py \
@@ -40,12 +40,12 @@ python python/sdk/examples/compact.py \
   --workspace /absolute/path/to/disposable-workspace
 ```
 
-脚本消费通知，并将命令 id 和结果与模型回复分开打印。轮次或命令失败时，示例会停止。完成和错误行为见[查询与接收](../README.zh.md#query-and-response)；`minimal.py` 保留其 `run()` 入口，不启用命令执行。
+脚本将命令 id 和结果与模型回复分开打印。轮次或命令失败时，示例会停止。完成和错误行为见[运行文本与命令](../README.zh.md#run-text-and-commands)；`minimal.py` 使用同一个 `run()` 入口，能力由所选 profile 提供。
 
 <a id="change-session-permissions"></a>
 ## 修改 Session 权限
 
-[权限示例](permission.py)以 `workspace-write` 为默认值启动完整 `sdk` profile，发送 `/permission <preset>`，随后在同一个 Session 中提交普通 query。请显式指定 preset：
+[权限示例](permission.py)以 `workspace-write` 为默认值启动完整 `sdk` profile，发送 `/permission <preset>`，随后在同一个 Session 中运行普通文本。请显式指定 preset：
 
 ```sh
 python python/sdk/examples/permission.py \
@@ -54,12 +54,12 @@ python python/sdk/examples/permission.py \
   --preset read-only
 ```
 
-命令会修改 Session 的策略，而打印出的启动设置仍为 `workspace-write`。后续 query 使用 Session 的当前策略。裸 `/permission` 是普通文本，未知 preset 返回命令错误。结果和状态语义见[查询与接收](../README.zh.md#query-and-response)。
+命令会修改 Session 的策略，而打印出的启动设置仍为 `workspace-write`。后续输入使用 Session 的当前策略。裸 `/permission` 是普通文本，未知 preset 返回命令错误。结果和状态语义见[运行文本与命令](../README.zh.md#run-text-and-commands)。
 
 <a id="review-a-plan"></a>
 ## 审查计划
 
-[计划示例](plan.py) 通过 query 发送 `/plan <task>`，并在命令完成后保持 Session 通知订阅和问答处理器运行。输入 `a` 批准、`k` 提供反馈、`d` 关闭；EOF 也会关闭而不批准。批准后模型可以从后续步骤开始实施，因此应选择隔离的工作区。
+[计划示例](plan.py) 通过 `run()` 发送 `/plan <task>`，并在命令完成后保持 Session 通知订阅和问答处理器运行。输入 `a` 批准、`k` 提供反馈、`d` 关闭；EOF 也会关闭而不批准。批准后模型可以从后续步骤开始实施，因此应选择隔离的工作区。
 
 ```sh
 python python/sdk/examples/plan.py \

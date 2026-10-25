@@ -330,7 +330,17 @@ reader.on('line', (line) => {
       }
       return
     }
+    case 'session/query':
     case 'session/prompt': {
+      if (frame.method === 'session/query' && frame.params?.text === '/compact') {
+        const execution: unknown = env.FAKE_COMMAND_RESULT === undefined
+          ? { commandId: 'command-1', result: { kind: 'success', text: '/compact' } }
+          : JSON.parse(env.FAKE_COMMAND_RESULT)
+        respond({ kind: 'command', execution })
+        return
+      }
+      const promptResult = (messageId: string): object => frame.method === 'session/query'
+        ? { kind: 'prompt', messageId } : { messageId }
       const sessionId = sessionIdOf(frame.params)
       const messageId = `fake-user-${seq}`
       event(sessionId, 'agent/inbox/spliced', {
@@ -355,7 +365,7 @@ reader.on('line', (line) => {
       }
       if (env.FAKE_EXIT_DURING_PROMPT !== undefined) {
         const partial = env.FAKE_TEXT ?? 'partial before exit'
-        respond({ messageId })
+        respond(promptResult(messageId))
         event(sessionId, 'assistant/message', {
           turn: 0,
           step: 0,
@@ -379,7 +389,7 @@ reader.on('line', (line) => {
       runTurn(sessionId)
       notify('session.status', { sessionId, status: 'idle' })
       settledSessions.add(sessionId)
-      respond({ messageId })
+      respond(promptResult(messageId))
       return
     }
     case 'session/wait':

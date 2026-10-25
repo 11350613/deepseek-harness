@@ -4,21 +4,23 @@ from __future__ import annotations
 
 import json
 import time
+import threading
+
+import pytest
 from pathlib import Path
 
 from deepseek_harness import CommandExecution, RunResult, Session
 from deepseek_harness.client import NotificationSubscription
 from test_commands_runtime import (
     _Completion, _Runtime, _SESSION_ID, _WAIT_SECONDS, _assert_request_permission,
-    _command_pair, _of_type, _permission_facts, _read_events, _receive_result,
+    _command_pair, _of_type, _permission_facts, _read_events,
     _request_texts, _runtime, _text_blocks,
 )
-from test_plan_runtime import _wait_activity
+from test_plan_runtime import _WaitResult, _wait_activity
 
 
 def _command(runtime: _Runtime, session: Session, text: str, *, kind: str = "success") -> CommandExecution:
-    runtime.call(session.query, text)
-    result = runtime.call(_receive_result, session)
+    result = runtime.call(session.run, text)
     assert isinstance(result, CommandExecution)
     assert result.result.kind == kind, result.result.text
     return result
@@ -63,7 +65,7 @@ def test_goal_reads_and_invalid_controls_do_not_start_model_work(tmp_path: Path)
         _command_pair(events, execution, "goal")
 
 
-def test_goal_continues_rounds_and_finishes_wrapup_after_completion_event(tmp_path: Path) -> None:
+def test_goal_continues_rounds_and_finishes_wrapup_after_completion_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     final = _Completion("GOAL_DONE", blocked=True)
     with _runtime(tmp_path, [_Completion("PROGRESS"), *_completion_steps(final)],
                   initial_permission="workspace-write", max_goal_rounds=3) as runtime:
@@ -73,13 +75,35 @@ def test_goal_continues_rounds_and_finishes_wrapup_after_completion_event(tmp_pa
             completed = _until(events, "goal/change", "complete")
             assert completed["goal"]["phase"] == "complete" and completed["roundsStarted"] == 2
             assert final.entered.wait(_WAIT_SECONDS)
-            waiting = runtime.harness.client._begin_request("session/wait", {"sessionId": session.id})
-            # A later RPC confirms admission on the same pipe; keep the wait's
-            # response queued so worker scheduling cannot hide an early return.
-            runtime.call(runtime.harness.client.get_working_directory, session.id)
-            assert waiting.waiter.empty() and not final.release.is_set()
+            client = runtime.harness.client
+            sent = threading.Event()
+            replied = threading.Event()
+            wait_ids = set()
+            write = client._write_message
+            handle = client._handle_message
+
+            def record_send(message: dict) -> None:
+                is_wait = message.get("method") == "session/wait"
+                if is_wait:
+                    wait_ids.add(message["id"])
+                write(message)
+                if is_wait:
+                    sent.set()
+
+            def record_response(message: object) -> None:
+                if isinstance(message, dict) and "method" not in message and message.get("id") in wait_ids:
+                    replied.set()
+                handle(message)
+
+            monkeypatch.setattr(client, "_write_message", record_send)
+            monkeypatch.setattr(client, "_handle_message", record_response)
+            waiting = runtime.workers.submit(client.request, "session/wait", {"sessionId": session.id}, response_model=_WaitResult)
+            assert sent.wait(_WAIT_SECONDS)
+            # Observe the reader directly so caller scheduling cannot hide an early response.
+            runtime.call(client.get_working_directory, session.id)
+            assert not replied.is_set() and not final.release.is_set()
             final.release.set()
-            assert runtime.call(runtime.harness.client._wait_request, waiting) == {}
+            assert waiting.result(timeout=_WAIT_SECONDS).model_dump() == {}
             assert _until(events, "turn/end")["turn"] == 2
         requests = runtime.model.captured()
         assert len(requests) == 4
@@ -121,7 +145,7 @@ def test_pause_aborts_then_edit_and_resume_use_revised_goal_without_changing_oth
             assert 'Objective: "Revised objective"' in "\n".join(_request_texts(runtime.model.captured()[1]))
             _command(runtime, session, "/goal clear")
             _command(runtime, session, "/goal clear")
-            result = runtime.call(session.run, "/goal Plain text objective")
+            result = runtime.call(session.run, [{"type": "text", "text": "/goal Plain text objective"}])
             assert isinstance(result, RunResult) and result.final_response == "RAW_GOAL_TEXT"
             assert "/goal Plain text objective" in _request_texts(runtime.model.captured()[-1])
     changes = _of_type(_read_events(runtime.logs), "goal/change")

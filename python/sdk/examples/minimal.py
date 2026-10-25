@@ -7,7 +7,7 @@ import argparse
 import os
 from pathlib import Path
 
-from deepseek_harness import DeepSeekHarness
+from deepseek_harness import CommandExecution, DeepSeekHarness
 
 
 def main() -> None:
@@ -41,7 +41,12 @@ def main() -> None:
         profile=args.profile,
     ) as harness:
         result = harness.run(args.prompt, session_id=args.session_id)
-    print(result.final_response)
+    if isinstance(result, CommandExecution):
+        if result.result.kind == "error":
+            raise RuntimeError(result.result.text)
+        print(result.result.text or "")
+    else:
+        print(result.final_response)
 
 
 if __name__ == "__main__":

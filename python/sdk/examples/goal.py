@@ -52,12 +52,12 @@ def main() -> None:
         session = harness.start_session()
         with harness.client.subscribe_notifications(lambda notice: notice.payload.get("sessionId") == session.id) as notifications:
             deadline = time.monotonic() + args.timeout_seconds
-            session.query(f"/goal {args.objective}")
-            for message in session.receive_response():
-                if isinstance(message, CommandExecution):
-                    print(message.result.text, flush=True)
-                    if message.result.kind == "error":
-                        raise RuntimeError(message.result.text)
+            execution = session.run(f"/goal {args.objective}")
+            if not isinstance(execution, CommandExecution):
+                raise RuntimeError("The SDK profile did not execute the requested command")
+            print(execution.result.text, flush=True)
+            if execution.result.kind == "error":
+                raise RuntimeError(execution.result.text)
             while True:
                 event = display(notifications.next(timeout_seconds=max(0, deadline - time.monotonic())))
                 if event is not None and event["type"] == "goal/change" and event["data"]["operation"] in {

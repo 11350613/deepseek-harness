@@ -7,22 +7,21 @@ import argparse
 import os
 from pathlib import Path
 
-from deepseek_harness import CommandExecution, DeepSeekHarness, RunResult, Session
+from deepseek_harness import CommandExecution, DeepSeekHarness, RunResult
 
 
-def receive(session: Session) -> None:
-    """Consume notifications and print the query's command or activity result."""
-    for result in session.receive_response():
-        if isinstance(result, RunResult):
-            if result.finish_reason != "completed":
-                raise RuntimeError(f"Agent turn ended with {result.finish_reason}: {result.final_response}")
-            print(result.final_response)
-        elif isinstance(result, CommandExecution):
-            print(f"Command {result.command_id}: {result.result.kind}")
-            if result.result.kind == "error":
-                raise RuntimeError(result.result.text)
-            if result.result.text is not None:
-                print(result.result.text)
+def display(result: RunResult | CommandExecution) -> None:
+    """Print the input's result and stop on a reported failure."""
+    if isinstance(result, CommandExecution):
+        print(f"Command {result.command_id}: {result.result.kind}")
+        if result.result.kind == "error":
+            raise RuntimeError(result.result.text)
+        if result.result.text is not None:
+            print(result.result.text)
+    else:
+        if result.finish_reason != "completed":
+            raise RuntimeError(f"Agent turn ended with {result.finish_reason}: {result.final_response}")
+        print(result.final_response)
 
 
 def main() -> None:
@@ -50,15 +49,12 @@ def main() -> None:
         max_tokens=args.max_tokens,
     ) as harness:
         session = harness.start_session(args.session_id)
-        session.query(
+        display(session.run(
             "Read this project README and summarize its purpose and development commands without using tools.\n\n"
             + readme.read_text(encoding="utf-8")
-        )
-        receive(session)
-        session.query("/compact")
-        receive(session)
-        session.query("What are the project's purpose and development commands? Use the earlier README without tools.")
-        receive(session)
+        ))
+        display(session.run("/compact"))
+        display(session.run("What are the project's purpose and development commands? Use the earlier README without tools."))
 
 
 if __name__ == "__main__":

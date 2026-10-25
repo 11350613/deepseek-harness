@@ -59,6 +59,7 @@ async function run(root: string): Promise<ProfileReport> {
     const booted = performance.now()
     for (let turn = 0; turn < WORKLOAD.profileTurns; turn++) {
       const result = await harness.run('Read the synthetic file ' + String(turn), { sessionId: PARENT_ID })
+      if ('commandId' in result) throw new Error('Expected prompt activity, received a command result')
       requests += result.events.filter(event => event.type === 'assistant/message').length
       for (const event of result.events) {
         if (event.type !== 'tool/result') continue

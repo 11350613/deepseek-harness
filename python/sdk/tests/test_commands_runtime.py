@@ -13,7 +13,7 @@ import shutil
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -275,22 +275,6 @@ def _request_texts(request: dict) -> list[str]:
     return [text for message in request["messages"] for text in _text_blocks(message["content"])]
 
 
-def _receive_result(
-    session: Session, response_claimed: threading.Event | None = None,
-) -> RunResult | CommandExecution:
-    result: RunResult | CommandExecution | None = None
-    with closing(session.receive_response()) as responses:
-        if response_claimed is not None:
-            response_claimed.set()
-        for item in responses:
-            assert result is None, "receive_response yielded another item after its terminal result"
-            if not isinstance(item, Notification):
-                assert isinstance(item, (RunResult, CommandExecution)), type(item)
-                result = item
-    assert result is not None, "receive_response ended without a terminal result"
-    return result
-
-
 def _wait_command_done(next_notification: Callable[[], Notification]) -> dict:
     while True:
         notification = next_notification()
@@ -306,10 +290,8 @@ def test_compact_without_history_returns_without_a_model_turn(tmp_path: Path) ->
         session = runtime.harness.start_session(_SESSION_ID)
         observer = runtime.harness.client.subscribe_session_notifications(_SESSION_ID)
         try:
-            assert runtime.call(session.query, " \n/压缩\t ", delivery="queue") is None
-            # Wait independently for completion before starting the query's receiver.
+            execution = runtime.call(session.run, " \n/压缩\t ", delivery="queue")
             done = runtime.call(_wait_command_done, observer.next)
-            execution = runtime.call(_receive_result, session)
         except BaseException:
             # Wake a timed-out observer before unregistering its otherwise blocking queue.
             runtime.harness.close()
@@ -332,20 +314,12 @@ def test_compact_rejects_busy_agent_before_the_model_is_released(tmp_path: Path)
     response = _Completion("DSH_COMMANDS_BUSY_REPLY", blocked=True)
     with _runtime(tmp_path, [response]) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
-        sending = runtime.workers.submit(
-            session.query, "Hold this request while compaction is attempted.", delivery="queue",
+        running = runtime.workers.submit(
+            session.run, "Hold this request while compaction is attempted.", delivery="queue",
         )
         assert response.entered.wait(_WAIT_SECONDS), runtime.model.failures
-        assert sending.result(timeout=_WAIT_SECONDS) is None
-        assert not response.release.is_set(), "query waited for the model before returning"
-
-        # Claim the prompt's FIFO slot before issuing the command for another receiver.
-        receiving = threading.Event()
-        running = runtime.workers.submit(_receive_result, session, receiving)
-        assert receiving.wait(_WAIT_SECONDS), runtime.model.failures
-        assert not running.done()
-        assert runtime.call(session.query, "/compact", delivery="queue") is None
-        execution = runtime.call(_receive_result, session)
+        assert not running.done() and not response.release.is_set()
+        execution = runtime.call(session.run, "/compact", delivery="queue")
         assert isinstance(execution, CommandExecution)
         assert execution.result.kind == "error"
         assert not response.release.is_set()
@@ -371,18 +345,13 @@ def run_compaction_scenario(tmp_path: Path, *, capture_patch: Path | None = None
         session = runtime.harness.start_session(_SESSION_ID)
         # The replaced span is deliberately larger than the framed summary.
         prompt = _HISTORY_MARKER + "\n" + "Keep the original request only in the stored history. " * 256
-        assert runtime.call(session.query, prompt, delivery="queue") is None
-        first_result = runtime.call(_receive_result, session)
+        first_result = runtime.call(session.run, prompt, delivery="queue")
         assert isinstance(first_result, RunResult)
         assert first_result.final_response == _FIRST_REPLY
 
-        sending = runtime.workers.submit(session.query, "/compact", delivery="queue")
+        compacting = runtime.workers.submit(session.run, "/compact", delivery="queue")
         assert summary_response.entered.wait(_WAIT_SECONDS), runtime.model.failures
-        assert sending.result(timeout=_WAIT_SECONDS) is None
-        assert not summary_response.release.is_set(), "query waited for the summary before returning"
-        receiving = threading.Event()
-        compacting = runtime.workers.submit(_receive_result, session, receiving)
-        assert receiving.wait(_WAIT_SECONDS), runtime.model.failures
+        assert not summary_response.release.is_set()
         assert not compacting.done(), "command returned before its summary request completed"
         summary_response.release.set()
         execution = compacting.result(timeout=_WAIT_SECONDS)
@@ -415,8 +384,7 @@ def run_compaction_scenario(tmp_path: Path, *, capture_patch: Path | None = None
         assert "<compacted-summary>" in checkpoint_text and "</compacted-summary>" in checkpoint_text
         assert len(_of_type(checkpointed, "turn/start")) == len(_of_type(checkpointed, "turn/end")) == 1
 
-        assert runtime.call(session.query, _CONTINUE_PROMPT, delivery="queue") is None
-        continued = runtime.call(_receive_result, session)
+        continued = runtime.call(session.run, _CONTINUE_PROMPT, delivery="queue")
         assert isinstance(continued, RunResult)
         assert continued.final_response == _CONTINUE_REPLY
         first, compaction, following = runtime.model.captured()
@@ -452,8 +420,7 @@ def test_unknown_slash_and_compact_arguments_follow_the_plain_prompt_path(tmp_pa
     with _runtime(tmp_path, [_Completion(text) for text in replies]) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
         for prompt, reply in zip(prompts, replies):
-            assert runtime.call(session.query, prompt, delivery="queue") is None
-            result = runtime.call(_receive_result, session)
+            result = runtime.call(session.run, prompt, delivery="queue")
             assert isinstance(result, RunResult)
             assert result.final_response == reply
         requests = runtime.model.captured()
@@ -473,13 +440,11 @@ def test_unimplemented_slash_remains_plain_text_without_recording_feedback(tmp_p
     reply = "DSH_AFTER_PLAN_TEXT_REPLY"
     with _runtime(tmp_path, [_Completion(reply_before), _Completion(reply)]) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
-        assert runtime.call(session.query, input_text, delivery="queue") is None
-        first = runtime.call(_receive_result, session)
+        first = runtime.call(session.run, input_text, delivery="queue")
         assert isinstance(first, RunResult)
         assert first.final_response == reply_before
 
-        assert runtime.call(session.query, following, delivery="queue") is None
-        result = runtime.call(_receive_result, session)
+        result = runtime.call(session.run, following, delivery="queue")
         assert isinstance(result, RunResult)
         assert result.final_response == reply
         initial, continued = runtime.model.captured()
@@ -510,8 +475,7 @@ def _permission_facts(events: list[dict]) -> list[dict]:
 
 
 def _permission_command(runtime: _Runtime, session: Session, preset: str) -> CommandExecution:
-    assert runtime.call(session.query, f"/permission {preset}") is None
-    result = runtime.call(_receive_result, session)
+    result = runtime.call(session.run, f"/permission {preset}")
     assert isinstance(result, CommandExecution)
     return result
 
@@ -524,8 +488,7 @@ def test_permission_changes_only_the_selected_session_and_retains_prompt_semanti
         initial_config = dict(runtime.harness.config.env)
         for session, text in [(main, "Initial main policy; do not use tools."),
                               (other, "Initial other policy; do not use tools.")]:
-            runtime.call(session.query, text)
-            assert isinstance(runtime.call(_receive_result, session), RunResult)
+            assert isinstance(runtime.call(session.run, text), RunResult)
 
         readonly = _permission_command(runtime, main, "read-only")
         invalid = _permission_command(runtime, main, "no-such-preset")
@@ -535,25 +498,20 @@ def test_permission_changes_only_the_selected_session_and_retains_prompt_semanti
         assert "unknown preset" in invalid.result.text
         assert len(runtime.model.captured()) == 2, "idle permission commands woke the model"
 
-        runtime.call(main.query, "Read-only policy after a plain query; do not use tools.")
-        assert isinstance(runtime.call(_receive_result, main), RunResult)
+        assert isinstance(runtime.call(main.run, "Read-only policy after a plain query; do not use tools."), RunResult)
         full = _permission_command(runtime, main, "danger-full-access")
         assert full.result.kind == "success"
         assert len(runtime.model.captured()) == 3
-        runtime.call(main.query, "Full policy after a plain query; do not use tools.")
-        assert isinstance(runtime.call(_receive_result, main), RunResult)
+        assert isinstance(runtime.call(main.run, "Full policy after a plain query; do not use tools."), RunResult)
         restored = _permission_command(runtime, main, "workspace-write")
         assert restored.result.kind == "success"
-        runtime.call(main.query, "Switched-back policy; do not use tools.")
-        assert isinstance(runtime.call(_receive_result, main), RunResult)
+        assert isinstance(runtime.call(main.run, "Switched-back policy; do not use tools."), RunResult)
 
         for session in [other, runtime.harness.start_session("permission-new")]:
-            runtime.call(session.query, "Report your own policy; do not use tools.")
-            assert isinstance(runtime.call(_receive_result, session), RunResult)
-        ordinary = runtime.call(main.run, "/permission danger-full-access")
+            assert isinstance(runtime.call(session.run, "Report your own policy; do not use tools."), RunResult)
+        ordinary = runtime.call(main.run, [{"type": "text", "text": "/permission danger-full-access"}])
         assert isinstance(ordinary, RunResult)
-        runtime.call(main.query, "/permission")
-        assert isinstance(runtime.call(_receive_result, main), RunResult)
+        assert isinstance(runtime.call(main.run, "/permission"), RunResult)
         assert runtime.harness.config.env == initial_config
 
         requests = runtime.model.captured()
@@ -596,11 +554,8 @@ def test_running_permission_change_keeps_the_native_extra_step_and_notifications
     second = _Completion("PERMISSION_SWITCH_SEEN")
     with _runtime(tmp_path, [first, second], initial_permission="workspace-write") as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
-        runtime.call(session.query, "Wait for the policy change, then finish without tools.")
+        observing = runtime.workers.submit(session.run, "Wait for the policy change, then finish without tools.")
         assert first.entered.wait(_WAIT_SECONDS), runtime.model.failures
-        claimed = threading.Event()
-        observing = runtime.workers.submit(_receive_result, session, claimed)
-        assert claimed.wait(_WAIT_SECONDS)
         execution = _permission_command(runtime, session, "danger-full-access")
         assert execution.result.kind == "success"
         assert not first.release.is_set()
@@ -639,8 +594,7 @@ def test_resumed_permission_survives_different_launch_defaults(tmp_path: Path) -
     saved = _permission_facts(_read_events(runtime.logs))
     with _runtime(tmp_path, [_Completion("RESUMED_PERMISSION")], initial_permission="danger-full-access") as resumed:
         session = resumed.call(resumed.harness.resume_session, _SESSION_ID)
-        resumed.call(session.query, "Report the restored policy without using tools.")
-        assert isinstance(resumed.call(_receive_result, session), RunResult)
+        assert isinstance(resumed.call(session.run, "Report the restored policy without using tools."), RunResult)
         [request] = resumed.model.captured()
         _assert_request_permission(request, "read-only", "ask")
         assert resumed.harness.config.env["DSH_PERMISSION_MODE"] == "danger-full-access"

@@ -101,6 +101,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('SDK native tool updates with rea
     const events: SessionEvent[] = []
     const run = async (prompt: string) => {
       const result = await session.run(prompt)
+      if ('commandId' in result) throw new Error('Expected prompt activity, received a command result')
       events.push(...result.events)
       const failures = result.events.filter(event => event.type === 'assistant/attempt').map(event => ({
         turn: event.data.turn,

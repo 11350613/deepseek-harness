@@ -33,7 +33,7 @@ The Python SDK has no separate application entrypoint. It launches the bundled `
 Every launch requires an explicit Harness home. Pass `dsh_home` or provide a non-empty `DSH_HOME` in the child environment. The SDK deliberately never discovers `~/.dsh`.
 
 ```py
-from deepseek_harness import DeepSeekHarness
+from deepseek_harness import DeepSeekHarness, RunResult
 
 with DeepSeekHarness(
     dsh_home="/absolute/path/to/isolated-dsh-home",
@@ -45,10 +45,10 @@ with DeepSeekHarness(
 ) as harness:
     result = harness.run("Say hi.", session_id="example-001")
 
-print(result.final_response)
+print(result.final_response if isinstance(result, RunResult) else result.result.text)
 ```
 
-`DeepSeekHarness` starts lazily and reuses its runtime until `close()` or context-manager exit. The initial profile handshake has an independent 30-second default bound through `initialize_timeout_seconds`; ordinary turns remain unbounded unless `request_timeout_seconds` is set. A timeout names the selected profile and includes retained runtime diagnostics. `cwd` is the agent workspace; `runtime_cwd` independently selects the subprocess working directory. Both become absolute before launch. `provider`, `model`, optional `reasoning_effort`, and optional positive `max_tokens` are sent during JSON-RPC initialization. `base_url` and `api_key` explicitly override `DEEPSEEK_BASE_URL` and `DEEPSEEK_API_KEY` in the child environment.
+`DeepSeekHarness` starts lazily and reuses its runtime until `close()` or context-manager exit. The initial profile handshake has an independent 30-second default bound through `initialize_timeout_seconds`; ordinary activity remains unbounded after its protocol response, whose wait can be limited with `request_timeout_seconds`. A timeout names the selected profile and includes retained runtime diagnostics. `cwd` is the agent workspace; `runtime_cwd` independently selects the subprocess working directory. Both become absolute before launch. `provider`, `model`, optional `reasoning_effort`, and optional positive `max_tokens` are sent during JSON-RPC initialization. `base_url` and `api_key` explicitly override `DEEPSEEK_BASE_URL` and `DEEPSEEK_API_KEY` in the child environment.
 
 `harness.resume_session(saved_session_id)` restores persisted history and returns a `Session` ready for `run()`. Save the original session id and reuse its `dsh_home` and workspace. Restoration preserves the stored directory, repairs an interrupted final turn, and sends no new input. Missing, unreadable, incompatible, or occupied sessions raise without creating a replacement. `start_session(id)` only opens a lazy handle; it does not request persisted restoration. This API does not restore shell, browser, or other external processes.
 
@@ -58,22 +58,24 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
     result = session.run("Continue the task.")
 ```
 
-<a id="query-and-response"></a>
-## Query and response
+<a id="run-text-and-commands"></a>
+## Run text and commands
 
-Call `session.query(text)` to send text, then iterate `session.receive_response()` to observe its result. `query()` returns `None` after sending, without waiting for runtime routing or execution. The runtime recognizes the [supported command forms and Desktop aliases](../../packages/sdk/server/README.md#command-input); unrecognized input remains ordinary text. This API accepts text strings only. `delivery="queue"` is the default; `delivery="steer"` directs an ordinary prompt to the next step. Command timing remains owned by the command.
+`session.run(input, on_notification=..., delivery="queue")` is the high-level input entry. Non-blank strings use the runtime's [supported command forms and Desktop aliases](../../packages/sdk/server/README.md#command-input); unrecognized input remains ordinary text. `delivery="steer"` targets the next available step for ordinary text. Command admission and timing remain owned by the native handler.
 
-`receive_response()` claims the next query in send order. It first waits for the routing response, then yields `Notification` objects followed by one terminal value: `RunResult` for the prompt's inbox-receipt-to-idle interval, or `CommandExecution` after the command settles. Notifications can accumulate before receiving begins. Separate receivers can observe their queries concurrently, and another `query()` can be sent while a receiver waits. Close an unfinished iterator to release only its local observation; this does not cancel or roll back runtime work. Resources are released before yielding the terminal value.
+The call returns `RunResult` for an ordinary prompt's inbox-receipt-to-idle interval, or `CommandExecution` after a command settles. Use `isinstance(result, RunResult)` before reading `final_response`; otherwise inspect the command's `result.kind`. A command retains its `command_id` and optional `source_event_seq`, rather than selecting an earlier assistant reply.
 
-`CommandExecution` contains `command_id` and a `result` discriminated by `kind`. Success may include `text` and `source_event_seq`; an error includes `text`. Handler errors return `kind="error"`; routing, protocol and transport failures raise during receiving. Sending failures raise from `query()`. `request_timeout_seconds` bounds waiting for the routing response, not later prompt activity; an already-arrived response remains receivable after that deadline.
+Content-block arrays stay literal queued prompts and return `RunResult`. For example, `session.run([{"type": "text", "text": "/compact"}])` sends that text to the model, while `session.run("/compact")` invokes native compaction. Content blocks require queue delivery; a steer request raises `ValueError` before sending.
 
-The full `sdk` profile provides these commands; the default `sdk-minimal` profile does not provide command execution. `/compact` can make an auxiliary model request and completes without requiring a normal turn or idle notification; empty history can succeed without a summary. `run()` retains ordinary prompt semantics for slash text. The lower-level blocking `HarnessClient.session_command(session_id, line)` executes supported command names without prompt fallback; it requires a non-blank permission preset. See the [compaction example](examples/README.md#compact-a-full-sdk-session).
+Each call subscribes before sending and releases its subscription before returning or raising. `on_notification` receives the ordinary activity interval in wire order; command notifications are delivered after the command response, ending at its own `command/done`. Calls may overlap without consuming each other's results. Handler refusals return `CommandExecution.result.kind="error"`; routing, protocol, transport and observer failures raise. A timeout or observer failure does not roll back runtime work or authorize an automatic retry. `request_timeout_seconds` bounds the protocol response wait, not later ordinary prompt activity.
 
-`/permission <preset>` delegates to the native permission handler. An unknown preset returns `CommandExecution.result.kind="error"` without changing permission state. A successful change belongs to that Session: later queries and restoration retain it, other Sessions retain their own state, and new Sessions use configured defaults. `DeepSeekHarnessConfig` remains startup input, not a shared live state mirror; the command does not rewrite it or saved user defaults. A running approval-policy change can inject a notice and cause another model step. See the [permission example](examples/README.md#change-session-permissions).
+The default full `sdk` profile provides the supported native commands; `sdk-minimal` keeps unsupported input on its ordinary prompt path. `/compact` can make an auxiliary model request and completes without a normal turn or idle notification; empty history can succeed without a summary. The lower-level `HarnessClient.session_command(session_id, line)` executes supported command names without prompt fallback. See the [compaction example](examples/README.md#compact-a-full-sdk-session).
 
-`/plan` enters plan mode, `/plan off` leaves, and `/plan <message>` enters then submits the trimmed message through native steer. Its `CommandExecution` confirms command completion, not completion of planning or review. To collect a normal activity result, enter with `/plan` then submit a separate ordinary query. For combined input, subscribe before sending and use `session/wait` while keeping the question handler alive, as in the [plan example](examples/README.md#review-a-plan). Plan mode changes guidance and progressively admits `exit_plan_mode`; it does not change permission settings. The default guidance prohibits file edits, including plan documents, while execution remains governed by the sandbox.
+`/permission <preset>` changes only the receiving Session. An unknown preset returns a command error without changing policy. Later input and restoration retain successful changes; other Sessions and the caller's `DeepSeekHarnessConfig` keep their own values. A running approval-policy change can inject a notice and cause another model step. See the [permission example](examples/README.md#change-session-permissions).
 
-`/goal` shows the current goal; `/goal <objective>`, `edit <objective>`, `pause`, `resume`, and `clear` use the native goal handler. Creation and resume can start automatic rounds after the command returns. Subscribe before sending; observe terminal `goal/change` operations, then call `session/wait` for any closing model reply. Idle between rounds is not goal completion. A restored active goal stays disarmed until explicit resume. Goal commands preserve permission settings and startup configuration. See the [goal example](examples/README.md#run-a-goal).
+`/plan` enters plan mode, `/plan off` leaves, and `/plan <message>` enters then submits the trimmed message through native steer. Its `CommandExecution` confirms command completion, not completion of planning or review. Enter with `/plan` then run ordinary text when a `RunResult` is needed. For combined input, subscribe before `run()` and use `session/wait` while keeping the question handler alive, as in the [plan example](examples/README.md#review-a-plan). Plan guidance and `exit_plan_mode` follow their native lifecycle without changing permission settings.
+
+`/goal` shows the current goal; `/goal <objective>`, `edit <objective>`, `pause`, `resume`, and `clear` use the native handler. Creation and resume can start automatic rounds after `run()` returns. Subscribe before sending, observe terminal `goal/change` operations, then call `session/wait` for any closing model reply. Idle between rounds is not goal completion. A restored active goal stays disarmed until explicit resume. See the [goal example](examples/README.md#run-a-goal).
 
 <a id="client-approvals"></a>
 ## Client approvals

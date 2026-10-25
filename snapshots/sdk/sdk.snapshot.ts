@@ -858,12 +858,8 @@ async function runScenario(scenario: CorpusScenario): Promise<{
       let session = harness.session(sessionId)
       for (const action of actions) {
         if (action.kind === 'command') {
-          await session.query(action.line)
-          let execution: CommandExecution | undefined
-          for await (const message of session.receiveResponse()) {
-            if ('commandId' in message) execution = message
-          }
-          if (execution === undefined) throw new Error('SDK command query returned no command result')
+          const execution = await session.run(action.line)
+          if (!('commandId' in execution)) throw new Error('SDK command input returned prompt activity')
           collectCommandNotifications(subscription, sessionId, execution, notifications, observe)
           continue
         }
@@ -894,17 +890,16 @@ async function runScenario(scenario: CorpusScenario): Promise<{
         if (assertions.replayStandaloneCommands === true) {
           const content = action.content[0]
           if (action.content.length !== 1 || content?.type !== 'text' || typeof content.text !== 'string') {
-            throw new Error(`${scenario.name} query fixture requires one text block per prompt`)
+            throw new Error(`${scenario.name} run fixture requires one text block per prompt`)
           }
-          await session.query(content.text)
-          for await (const message of session.receiveResponse()) {
-            if ('finalResponse' in message) result = message
-            else if ('method' in message) {
+          const outcome = await session.run(content.text, {
+            onNotification(message) {
               notifications.push(message)
               observe(message)
-            }
-          }
-          if (result === undefined) throw new Error('SDK prompt query returned no activity result')
+            },
+          })
+          if ('commandId' in outcome) throw new Error('SDK prompt input returned a command result')
+          result = outcome
         } else {
           result = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
             onNotification: (notification) => {
