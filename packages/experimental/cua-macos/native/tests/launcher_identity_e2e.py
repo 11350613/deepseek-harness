@@ -52,6 +52,7 @@ def main():
                         str(bundle), "--args", str(nested_launcher), str(helper), "--ensure-shared", "--runtime-key", key,
                         "--runtime-directory", str(runtime), "--startup-timeout-ms", "10000"],
                        check=True, capture_output=True, text=True, timeout=25)
+        assert ready_file.read_text().strip(), stderr_file.read_text()
         ready = json.loads(ready_file.read_text())
         owner = ready["pid"]
         cleanup.callback(wait_released, runtime / (key + ".lock"), owner)

@@ -253,8 +253,8 @@ final class SharedSocket: @unchecked Sendable {
         }
         let bundle = Bundle.main
         guard bundle.bundleURL.pathExtension == "app", bundle.bundleIdentifier != nil,
-              let executable = bundle.executableURL,
-              executable.resolvingSymlinksInPath().path == NativePlatform.executablePath(getpid()) else {
+              let executable = bundle.executableURL, let processPath = NativePlatform.executablePath(getpid()),
+              executable.resolvingSymlinksInPath() == URL(fileURLWithPath: processPath).resolvingSymlinksInPath() else {
             throw NativeFailure(code: "NATIVE_APPLICATION_REQUIRED",
                                 message: "Computer Use requires its signed application bundle; set helperPath to DSH Computer Use.app/Contents/MacOS/dsh-cua-native")
         }
