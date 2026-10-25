@@ -22,7 +22,7 @@ async function fixture(diagnostics = true) {
   const packageRoot = join(root, 'packages/experimental/cua-macos')
   await mkdir(join(packageRoot, 'native'), { recursive: true })
   const controller = new AbortController()
-  let output = Buffer.from('signed application executable')
+  let output: Buffer = Buffer.from('signed application executable')
   let outcome: SubprocessOutcome = { exitCode: 0, signal: null }
   let beforeExit = async () => {}
   const terminate = vi.fn()
