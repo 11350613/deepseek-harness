@@ -1,4 +1,4 @@
-"""Verify system responsibility across nested GUI launchers and helper reuse; no TCC grants are required."""
+"""Verify independent helper responsibility across nested GUI launchers and helper reuse; no TCC grants are required."""
 import argparse
 import base64
 from contextlib import ExitStack
@@ -12,18 +12,18 @@ import subprocess
 import tempfile
 import uuid
 
-from native_test_support import BINARY, ROOT
+from native_test_support import copy_helper, default_binary, ROOT
 from shared_helper_e2e import Connection, wait_released
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--helper", type=Path, default=BINARY)
+    parser.add_argument("--helper", type=Path, default=None)
     args = parser.parse_args()
+    args.helper = args.helper or default_binary()
     with tempfile.TemporaryDirectory(prefix="cua-", dir="/tmp") as temporary, ExitStack() as cleanup:
         root = Path(temporary)
-        helper = root / "helper"
-        shutil.copy2(args.helper.resolve(strict=True), helper)
+        helper = copy_helper(args.helper, root)
         key = hashlib.sha256(helper.read_bytes()).hexdigest()
         runtime = root / "r"
         bundle = root / "Visual Studio Code.app"
@@ -60,8 +60,8 @@ def main():
         state = first.call("permissionStatus", {})
         assert state["parent"]["pid"] == 1, state["parent"]
         source = state["launchApplication"]
-        assert source["name"] == bundle.name, source["name"]
-        assert Path(source["path"]).resolve() == bundle.resolve(), source["path"]
+        assert source["name"] == helper.parents[2].name, source["name"]
+        assert Path(source["path"]).resolve() == helper.parents[2].resolve(), source["path"]
         assert source["icon"].startswith("data:image/png;base64,")
         image = base64.b64decode(source["icon"].split(",", 1)[1], validate=True)
         assert image[:8] == b"\x89PNG\r\n\x1a\n"
@@ -69,7 +69,7 @@ def main():
         second = Connection(runtime / (key + ".sock"), key)
         cleanup.callback(second.close)
         assert second.call("permissionStatus", {})["launchApplication"] == source
-        print("PASS: system-responsible app wins over the nearest GUI ancestor and survives launcher exit and helper reuse")
+        print("PASS: the helper owns its permission identity independently of nested GUI launchers and retained connections")
 
 
 if __name__ == "__main__":

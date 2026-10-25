@@ -1,4 +1,5 @@
 // Version and executable-path locks outlive every client and release only at process exit.
+import AppKit
 import Foundation
 import Darwin
 import CryptoKit
@@ -10,6 +11,7 @@ struct SharedHelperOptions: Sendable {
     var socketPath: String { "\(directory)/\(runtimeKey).sock" }
     var readyPath: String { "\(directory)/\(runtimeKey).ready" }
     var versionLockPath: String { "\(directory)/\(runtimeKey).lock" }
+    var launchLockPath: String { "\(directory)/\(runtimeKey).launch.lock" }
 
     init(arguments: [String]) throws {
         guard let mode = arguments.first, ["--ensure-shared", "--serve"].contains(mode) else {
@@ -63,7 +65,7 @@ struct SharedHelperOptions: Sendable {
                  "pid": .number(Double(pid)), "instanceId": .string(instanceID)])
     }
 
-    func existingReady() throws -> Data {
+    func existingReady(application: NSRunningApplication? = nil) throws -> Data {
         let until = DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout * 1_000_000_000)
         repeat {
             if let data = try? Data(contentsOf: URL(fileURLWithPath: readyPath)),
@@ -74,6 +76,9 @@ struct SharedHelperOptions: Sendable {
                 var line = data
                 if line.last != 10 { line.append(10) }
                 return line
+            }
+            if application?.isTerminated == true {
+                throw NativeFailure(code: "NATIVE_STARTUP", message: "Computer Use exited before becoming ready; restart DSH and check the helper application signature")
             }
             usleep(10_000)
         } while DispatchTime.now().uptimeNanoseconds < until
@@ -227,63 +232,47 @@ final class SharedSocket: @unchecked Sendable {
     }
 }
 
-enum SharedHelperLauncher {
-    static func ensure(_ options: SharedHelperOptions, publishReady: Bool = true) throws {
+@MainActor enum SharedHelperLauncher {
+    static func ensure(_ options: SharedHelperOptions, publishReady: Bool = true) async throws {
         try options.prepareDirectory()
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(options.startupTimeout * 1_000_000_000)
+        var launchLock: SharedHelperLock?
+        repeat {
+            launchLock = try SharedHelperLock(path: options.launchLockPath)
+            if launchLock != nil { break }
+            usleep(10_000)
+        } while DispatchTime.now().uptimeNanoseconds < deadline
+        guard let launchLock else { throw NativeFailure(code: "NATIVE_STARTUP_TIMEOUT", message: "Computer Use application launch is still in progress") }
+        defer { withExtendedLifetime(launchLock) {} }
         if let lock = try SharedHelperLock(path: options.versionLockPath) {
-            // The serving process acquires its own lock after exec.
             withExtendedLifetime(lock) {}
         } else {
             let ready = try options.existingReady()
             if publishReady { try FileHandle.standardOutput.write(contentsOf: ready) }
             return
         }
-        guard let executable = NativePlatform.executablePath(getpid()) else { throw SharedSocket.failure("Resolving helper executable") }
-        var pipes: [Int32] = [0, 0]
-        guard pipe(&pipes) == 0 else { throw SharedSocket.failure("Creating helper readiness pipe") }
-        let reader = SharedSocket(descriptor: pipes[0])
-        var writeDescriptor = pipes[1]
-        defer { if writeDescriptor >= 0 { close(writeDescriptor) } }
-        var actions: posix_spawn_file_actions_t?
-        let initialized = posix_spawn_file_actions_init(&actions)
-        guard initialized == 0 else { throw NativeFailure(code: "NATIVE_STARTUP", message: "Creating helper spawn actions failed (errno \(initialized))") }
-        defer { posix_spawn_file_actions_destroy(&actions) }
-        let actionResults = [
-            posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0),
-            posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0),
-            posix_spawn_file_actions_adddup2(&actions, pipes[1], STDOUT_FILENO),
-            posix_spawn_file_actions_addclose(&actions, pipes[0]),
-            posix_spawn_file_actions_addclose(&actions, pipes[1]),
-        ]
-        if let failed = actionResults.first(where: { $0 != 0 }) {
-            throw NativeFailure(code: "NATIVE_STARTUP", message: "Configuring helper spawn actions failed (errno \(failed))")
+        let bundle = Bundle.main
+        guard bundle.bundleURL.pathExtension == "app", bundle.bundleIdentifier != nil,
+              let executable = bundle.executableURL,
+              executable.resolvingSymlinksInPath().path == NativePlatform.executablePath(getpid()) else {
+            throw NativeFailure(code: "NATIVE_APPLICATION_REQUIRED",
+                                message: "Computer Use requires its signed application bundle; set helperPath to DSH Computer Use.app/Contents/MacOS/dsh-cua-native")
         }
-        let arguments = [executable, "--serve", "--runtime-key", options.runtimeKey, "--runtime-directory", options.directory,
-                         "--startup-timeout-ms", String(options.startupTimeout * 1000)]
-        let argv = arguments.map { strdup($0) } + [nil]
-        let environment = ProcessInfo.processInfo.environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
-        defer { argv.forEach { free($0) }; environment.forEach { free($0) } }
-        var pid: pid_t = 0
-        let status = argv.withUnsafeBufferPointer { args in
-            environment.withUnsafeBufferPointer { env in
-                posix_spawn(&pid, executable, &actions, nil, UnsafeMutablePointer(mutating: args.baseAddress!), UnsafeMutablePointer(mutating: env.baseAddress!))
-            }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        configuration.addsToRecentItems = false
+        configuration.createsNewApplicationInstance = true
+        configuration.allowsRunningApplicationSubstitution = false
+        configuration.arguments = ["--serve", "--runtime-key", options.runtimeKey,
+                                   "--runtime-directory", options.directory,
+                                   "--startup-timeout-ms", String(options.startupTimeout * 1000)]
+        // LaunchServices gives the application its own TCC identity; direct spawning inherits the terminal's.
+        let application: NSRunningApplication
+        do { application = try await NSWorkspace.shared.openApplication(at: bundle.bundleURL, configuration: configuration) }
+        catch {
+            throw NativeFailure(code: "NATIVE_STARTUP", message: "macOS could not launch Computer Use at \(bundle.bundleURL.path): \(error.localizedDescription)")
         }
-        close(pipes[1])
-        writeDescriptor = -1
-        guard status == 0 else { throw NativeFailure(code: "NATIVE_STARTUP", message: "Starting shared helper failed (errno \(status))") }
-        do {
-            let line = try reader.readHello(timeout: options.startupTimeout)
-            let response = try JSONDecoder().decode(JSONValue.self, from: line)
-            guard response["type"] == .string("ready") else {
-                throw NativeFailure(code: response["code"].string ?? "NATIVE_STARTUP", message: response["message"].string ?? "Shared helper startup failed")
-            }
-            if publishReady { try FileHandle.standardOutput.write(contentsOf: line + Data([10])) }
-        } catch {
-            // This PID is the child this launcher created; unrelated owners are never signalled.
-            kill(pid, SIGKILL)
-            while waitpid(pid, nil, 0) < 0 && errno == EINTR {}
-            throw error
-        }
+        let ready = try options.existingReady(application: application)
+        if publishReady { try FileHandle.standardOutput.write(contentsOf: ready) }
     }
 }

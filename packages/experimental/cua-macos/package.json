@@ -27,6 +27,8 @@
     "lib/index.js",
     "native/bin",
     "native/Package.swift",
+    "native/Info.plist",
+    "native/build_app.py",
     "native/Sources",
     "native/tests/swift",
     "native/tests/test_swift.py",
@@ -91,7 +93,7 @@
     "@deepseek-ai/dsh-storage-domain": "workspace:*"
   },
   "scripts": {
-    "build:native": "swift build --package-path native --configuration release"
+    "build:native": "xcrun python3 native/build_app.py"
   },
   "os": [
     "darwin"
