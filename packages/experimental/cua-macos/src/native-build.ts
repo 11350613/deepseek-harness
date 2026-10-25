@@ -1,6 +1,6 @@
 /** Source-checkout preparation and installed macOS application resolution. */
 import { constants } from 'node:fs'
-import { access, readFile } from 'node:fs/promises'
+import { access, mkdir, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import type { SubprocessOutcome, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
@@ -74,7 +74,8 @@ export async function buildNativeExecutable(spec: NativeBuildSpec): Promise<stri
   const nativeRoot = join(spec.packageRoot, 'native')
   const directory = join(nativeRoot, '.build', 'prepared', spec.architecture)
   const signal = AbortSignal.any([spec.signal, AbortSignal.timeout(spec.timeoutMs)])
-  return withFileLock(join(nativeRoot, 'application-build'), async () => {
+  await mkdir(join(nativeRoot, '.build'), { recursive: true })
+  return withFileLock(join(nativeRoot, '.build', 'application-build'), async () => {
     const handle = spec.subprocess.spawn({
       argv: ['/usr/bin/xcrun', 'python3', join(nativeRoot, 'build_app.py'),
         '--scratch-path', join(nativeRoot, '.build', `runtime-${spec.architecture}`),

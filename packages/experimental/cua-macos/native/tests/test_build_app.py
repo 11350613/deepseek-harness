@@ -69,6 +69,13 @@ class PublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "symbolic link"):
             builder.bundle_digest(application)
 
+    def test_bundle_digest_rejects_a_link_as_the_application_root(self):
+        first = self.publish()
+        linked = self.root / "linked.app"
+        linked.symlink_to(first.parents[2], target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "not a real directory"):
+            builder.bundle_digest(linked)
+
     def test_release_identity_uses_a_secure_timestamp(self):
         builder.publish(self.binary, self.output, "Developer ID Application: Example", self.plist)
         self.assertIn("--timestamp", self.commands.call_args_list[0].args[0])

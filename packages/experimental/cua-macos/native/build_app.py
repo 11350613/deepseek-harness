@@ -12,6 +12,8 @@ import tempfile
 
 def bundle_digest(application):
     """Hash bundle membership and bytes; generated bundles contain only regular files."""
+    if application.is_symlink() or not application.is_dir():
+        raise ValueError(f"Helper application is not a real directory: {application}")
     digest = hashlib.sha256()
     for path in sorted(application.rglob("*")):
         if path.is_symlink():
