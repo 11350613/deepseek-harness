@@ -21,6 +21,8 @@ class PublicationTests(unittest.TestCase):
         self.binary.chmod(0o755)
         self.plist = self.root / "Info.plist"
         self.plist.write_text("application identity")
+        self.icon = self.root / "DSHComputerUse.icns"
+        self.icon.write_bytes(b"computer use icon")
         self.output = self.root / "applications"
         self.sign = patch.object(builder.subprocess, "run")
         self.commands = self.sign.start()
@@ -31,6 +33,7 @@ class PublicationTests(unittest.TestCase):
 
     def test_unchanged_bundles_reuse_the_inode_and_changed_bundles_leave_old_clients_intact(self):
         first = self.publish()
+        self.assertEqual((first.parents[1] / "Resources/DSHComputerUse.icns").read_bytes(), self.icon.read_bytes())
         inode = first.stat().st_ino
         self.assertEqual(self.publish(), first)
         self.assertEqual(first.stat().st_ino, inode)

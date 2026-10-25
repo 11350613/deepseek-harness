@@ -36,6 +36,9 @@ def publish(binary, output, identity, plist):
         executable.parent.mkdir(parents=True)
         shutil.copy2(binary, executable)
         shutil.copy2(plist, staged / "Contents/Info.plist")
+        resources = staged / "Contents/Resources"
+        resources.mkdir()
+        shutil.copy2(plist.with_name("DSHComputerUse.icns"), resources / "DSHComputerUse.icns")
         subprocess.run(["/usr/bin/codesign", "--force", "--sign", identity, "--options", "runtime",
                         "--timestamp=none" if identity == "-" else "--timestamp", str(staged)], check=True)
         subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(staged)], check=True)

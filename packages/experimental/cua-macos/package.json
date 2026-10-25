@@ -28,6 +28,7 @@
     "native/bin",
     "native/Package.swift",
     "native/Info.plist",
+    "native/DSHComputerUse.icns",
     "native/build_app.py",
     "native/Sources",
     "native/tests/swift",
@@ -93,7 +94,8 @@
     "@deepseek-ai/dsh-storage-domain": "workspace:*"
   },
   "scripts": {
-    "build:native": "xcrun python3 native/build_app.py"
+    "build:native": "xcrun python3 native/build_app.py",
+    "build:icon": "node native/generate_icon.mjs"
   },
   "os": [
     "darwin"
