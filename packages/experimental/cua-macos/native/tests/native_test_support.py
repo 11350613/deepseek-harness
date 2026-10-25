@@ -33,6 +33,14 @@ def copy_helper(binary, destination):
     return copied
 
 
+def unregister_helper(binary):
+    """Remove LaunchServices registrations before deleting an owned test application."""
+    application = binary.parents[2]
+    if application.suffix == ".app":
+        subprocess.run(["/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+                        "-u", str(application)], check=True, capture_output=True, timeout=10)
+
+
 def run_cleanup(*actions: Callable[[], None]) -> None:
     """Attempt every cleanup in order and preserve chained cleanup failures."""
     with ExitStack() as pending:

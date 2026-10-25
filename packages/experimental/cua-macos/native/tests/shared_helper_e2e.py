@@ -19,7 +19,7 @@ import subprocess
 import tempfile
 import time
 
-from native_test_support import copy_helper, default_binary, ROOT, line, stop
+from native_test_support import copy_helper, default_binary, ROOT, line, stop, unregister_helper
 
 
 CONFIG = {"maxRequestBytes": 1024 * 1024, "maxResponseBytes": 32 * 1024 * 1024,
@@ -101,9 +101,10 @@ def main():
     parser.add_argument("--without-desktop", action="store_true")
     args = parser.parse_args()
     args.helper = args.helper or default_binary()
-    with tempfile.TemporaryDirectory(prefix="cua-", dir="/tmp") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cua-", dir="/tmp") as temporary, ExitStack() as applications:
         root = Path(temporary)
         helper = copy_helper(args.helper, root)
+        applications.callback(unregister_helper, helper)
         key = hashlib.sha256(helper.read_bytes()).hexdigest()
         runtime = root / "r"
         socket_path = runtime / (key + ".sock")

@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import uuid
 
-from native_test_support import copy_helper, default_binary, ROOT
+from native_test_support import copy_helper, default_binary, ROOT, unregister_helper
 from shared_helper_e2e import Connection, wait_released
 
 
@@ -24,8 +24,15 @@ def main():
     with tempfile.TemporaryDirectory(prefix="cua-", dir="/tmp") as temporary, ExitStack() as cleanup:
         root = Path(temporary)
         helper = copy_helper(args.helper, root)
+        cleanup.callback(unregister_helper, helper)
         key = hashlib.sha256(helper.read_bytes()).hexdigest()
         runtime = root / "r"
+        bare = root / "unbundled-helper"
+        shutil.copy2(helper, bare)
+        rejected = subprocess.run([str(bare), "--ensure-shared", "--runtime-key", key,
+                                   "--runtime-directory", str(runtime), "--startup-timeout-ms", "10000"],
+                                  capture_output=True, text=True, timeout=15)
+        assert rejected.returncode == 1 and "requires its signed application bundle" in rejected.stderr, rejected
         bundle = root / "Visual Studio Code.app"
         binaries = bundle / "Contents" / "MacOS"
         binaries.mkdir(parents=True)
