@@ -13,7 +13,7 @@ English | [中文](guide.zh.md)
 
 ## Migration
 
-1. Import `@deepseek-ai/dsh-compaction-basic/types` for direct compaction requests, or `@deepseek-ai/dsh-session-title-llm` for title requests, using a type-only import when only the declaration is needed.
+1. Import `@deepseek-ai/dsh-compaction-basic` for direct compaction requests, or `@deepseek-ai/dsh-session-title-llm` for title requests, using a type-only import when only the declaration is needed.
 2. For a plugin-owned purpose, augment `LlmRequestPurposeMap` from the plugin's public type entry. Map the purpose key to `true`:
 
    ```ts

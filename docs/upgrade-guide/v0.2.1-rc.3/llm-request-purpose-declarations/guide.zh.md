@@ -13,7 +13,7 @@ description: "辅助 LLM 请求用途改为生产方拥有的类型声明，不�
 
 ## 迁移
 
-1. 直接构造压缩请求时导入 `@deepseek-ai/dsh-compaction-basic/types`，构造标题请求时导入 `@deepseek-ai/dsh-session-title-llm`；只需要声明时使用仅类型导入。
+1. 直接构造压缩请求时导入 `@deepseek-ai/dsh-compaction-basic`，构造标题请求时导入 `@deepseek-ai/dsh-session-title-llm`；只需要声明时使用仅类型导入。
 2. 对插件拥有的用途，在插件公开类型入口中扩展 `LlmRequestPurposeMap`，将用途键映射到 `true`：
 
    ```ts
