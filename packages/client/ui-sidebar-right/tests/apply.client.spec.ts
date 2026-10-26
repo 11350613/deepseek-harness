@@ -360,6 +360,21 @@ it('closes captured pane tabs and rechecks tabs moved or closed while their menu
   instance.clearPersisted()
   instance.actions.open(SESSION)
   instance.actions.setExpanded(SESSION, true)
+  const surface = instance.getSnapshot().bySession[SESSION]!
+  const guide = Object.values(surface.layout.tabs)[0]!
+  const guideTarget = { kind: 'tab', value: { sessionId: SESSION, paneId: surface.layout.activePaneId, tab: guide } } as const
+  const empty = h.menus.resolve(guideTarget)
+  expect(empty.source.getSnapshot()).toEqual([])
+  empty.dispose()
+  const run = vi.fn()
+  const remove = h.menus.register({ id: 'plugin.guide', target: 'tab', order: 200,
+    resolve: () => [{ id: 'inspect', label: 'Inspect', run }],
+  })
+  const extended = h.menus.resolve(guideTarget)
+  expect(extended.source.getSnapshot().map(action => action.id)).toEqual(['plugin.guide/inspect'])
+  extended.select('plugin.guide/inspect')
+  expect(run).toHaveBeenCalledOnce()
+  remove()
   const add = (name: string) => {
     instance.actions.openContent(SESSION, { kind: 'text', contentId: `dsh-resource://file/session/s/${name}`, title: name }, () => {})
     return Object.values(instance.getSnapshot().bySession[SESSION]!.layout.tabs).find(tab => tab.title === name)!

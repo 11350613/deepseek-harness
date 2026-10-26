@@ -34,6 +34,11 @@
   max-width: 360px;
 }
 
+/* Legacy slots can render no rows; keep empty context popups out of layout. */
+.list[data-context-menu]:not(:has([role='menuitem'])) {
+  display: none;
+}
+
 /* Portal mode: fixed in the viewport, coordinates supplied inline from the
  * anchor rect (side/align resolved in JS, the in-place offset rules above
  * don't apply). Portaled lists must layer above modal overlays (z 1000) —

@@ -141,6 +141,7 @@ export function apply(ctx: ClientContext): void {
     resolve: ({ sessionId, paneId, tab }) => {
       const tabId = tab.id
       const tabs = controller.menuTabs(sessionId, paneId, tabId)
+      if (!tabs.close && tabs.all.length === 0) return []
       const closeMany = (ids: readonly TabId[]) => {
         for (const id of ids) {
           if (controller.menuTabs(sessionId, paneId, tabId).all.includes(id)) controller.closeIn(sessionId, id)
