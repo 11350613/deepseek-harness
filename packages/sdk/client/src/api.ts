@@ -177,7 +177,11 @@ export interface RunOptions {
   sessionId?: string
   /** Text prompt delivery; content-block arrays require queue delivery. */
   delivery?: 'queue' | 'steer'
-  /** Observer invoked with this input's notifications in wire order; command notifications follow its response. */
+  /**
+   * Observe prompt activity from receipt through idle. Command callbacks replay
+   * Session-tree notifications from subscription through their own command/done
+   * after the response; either interval can include overlapping work.
+   */
   onNotification?: (notification: HarnessNotification) => void
 }
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import time
 from pathlib import Path
@@ -43,11 +44,12 @@ def main() -> None:
     parser.add_argument("--timeout-seconds", type=float, default=300)
     parser.add_argument("objective", help="Objective for the native /goal command")
     args = parser.parse_args()
-    if not args.objective.strip() or args.timeout_seconds <= 0:
-        parser.error("objective must be non-blank and timeout-seconds must be positive")
+    if not args.objective.strip() or not math.isfinite(args.timeout_seconds) or args.timeout_seconds <= 0:
+        parser.error("objective must be non-blank and timeout-seconds must be finite and positive")
     with DeepSeekHarness(
         dsh_home=str(args.dsh_home.resolve()), cwd=str(args.workspace.resolve()),
         profile="sdk", model=args.model, env={"DSH_PERMISSION_MODE": "workspace-write"},
+        request_timeout_seconds=args.timeout_seconds,
     ) as harness:
         session = harness.start_session()
         with harness.client.subscribe_notifications(lambda notice: notice.payload.get("sessionId") == session.id) as notifications:

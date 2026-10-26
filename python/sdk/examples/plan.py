@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
+import sys
 import threading
 from contextlib import closing
 from pathlib import Path
@@ -19,25 +21,121 @@ class WaitResult(BaseModel):
     """The empty session/wait result."""
 
 
-def review(request: UserQuestionRequest, cancelled: threading.Event) -> dict:
-    """Let the user approve, give feedback, or dismiss the native plan review."""
-    if cancelled.is_set():
-        return {"cancelled": True}
-    if len(request.questions) != 1 or request.questions[0].get("intent", {}).get("kind") != "plan-review":
-        raise RuntimeError("This example handles plan reviews only")
-    question = request.questions[0]
-    print(question["detail"])
+class _PlanReviews:
+    """Own cancellable stdin readers and join review callbacks before interpreter exit."""
+
+    # A buffered reader can consume later answers from a pipe before it exits.
+    _READ_LINE = """import os, sys
+if sys.stdin.isatty():
     try:
-        while True:
-            choice = input("[a] Approve, [k] Keep planning, [d] Dismiss: ").strip().lower()
-            if choice == "d":
-                return {"cancelled": True}
-            if choice == "a":
-                return {"answers": [{"id": question["id"], "selected": ["Approve"]}]}
-            if choice == "k":
-                return {"answers": [{"id": question["id"], "selected": ["Keep planning"], "custom": input("Feedback: ")}]}
+        text = input() + '\\n'
     except EOFError:
-        return {"cancelled": True}
+        text = ''
+else:
+    line = bytearray()
+    while True:
+        value = os.read(0, 1)
+        if not value:
+            break
+        line.extend(value)
+        if value == b'\\n':
+            break
+    text = line.decode(sys.stdin.encoding or 'utf-8')
+sys.stdout.buffer.write(text.encode('utf-8'))
+"""
+
+    def __init__(self) -> None:
+        self._closed = threading.Event()
+        self._lock = threading.Lock()
+        self._question_lock = threading.Lock()
+        self._readers: list[subprocess.Popen[bytes]] = []
+        self._callbacks: set[threading.Thread] = set()
+
+    def __enter__(self) -> _PlanReviews:
+        return self
+
+    def __exit__(self, _exc_type, _exc, _tb) -> None:
+        with self._lock:
+            self._closed.set()
+            readers = tuple(self._readers)
+            callbacks = tuple(self._callbacks)
+        for reader in readers:
+            self._terminate(reader)
+        for reader in readers:
+            reader.wait()
+        for callback in callbacks:
+            if callback is not threading.current_thread():
+                callback.join()
+
+    @staticmethod
+    def _terminate(reader: subprocess.Popen[bytes]) -> None:
+        if reader.poll() is None:
+            try:
+                reader.kill()
+            except ProcessLookupError as error:
+                # The reader exited between poll and kill.
+                pass
+
+    def _read_line(self, prompt: str, cancelled: threading.Event) -> str | None:
+        with self._lock:
+            if self._closed.is_set() or cancelled.is_set():
+                return None
+            reader = subprocess.Popen(
+                [sys.executable, "-c", self._READ_LINE], stdin=sys.stdin,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            self._readers.append(reader)
+        try:
+            print(prompt, end="", flush=True)
+            while True:
+                if self._closed.is_set() or cancelled.is_set():
+                    self._terminate(reader)
+                try:
+                    output, errors = reader.communicate(timeout=0.05)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+            if self._closed.is_set() or cancelled.is_set():
+                return None
+            if reader.returncode != 0:
+                raise RuntimeError(f"Plan review input reader failed: {errors.decode(errors='replace').strip()}")
+            return output.decode("utf-8").removesuffix("\n").removesuffix("\r") if output else None
+        finally:
+            self._terminate(reader)
+            reader.communicate()
+            with self._lock:
+                self._readers.remove(reader)
+
+    def answer(self, request: UserQuestionRequest, cancelled: threading.Event) -> dict:
+        """Serialize plan reviews; cancellation or empty stdin dismisses the current question."""
+        with self._lock:
+            if self._closed.is_set() or cancelled.is_set():
+                return {"cancelled": True}
+            self._callbacks = {callback for callback in self._callbacks if callback.is_alive()}
+            self._callbacks.add(threading.current_thread())
+        while not self._question_lock.acquire(timeout=0.05):
+            if self._closed.is_set() or cancelled.is_set():
+                return {"cancelled": True}
+        try:
+            if self._closed.is_set() or cancelled.is_set():
+                return {"cancelled": True}
+            if len(request.questions) != 1 or request.questions[0].get("intent", {}).get("kind") != "plan-review":
+                raise RuntimeError("This example handles plan reviews only")
+            question = request.questions[0]
+            print(question["detail"], flush=True)
+            while True:
+                choice = self._read_line("[a] Approve, [k] Keep planning, [d] Dismiss: ", cancelled)
+                if choice is None or choice.strip().lower() == "d":
+                    return {"cancelled": True}
+                if choice.strip().lower() == "a":
+                    return {"answers": [{"id": question["id"], "selected": ["Approve"]}]}
+                if choice.strip().lower() == "k":
+                    feedback = self._read_line("Feedback: ", cancelled)
+                    if feedback is None:
+                        return {"cancelled": True}
+                    return {"answers": [{"id": question["id"], "selected": ["Keep planning"], "custom": feedback}]}
+        finally:
+            self._question_lock.release()
 
 
 def display(notification: Notification, session_id: str) -> None:
@@ -65,9 +163,9 @@ def main() -> None:
     args = parser.parse_args()
     if not args.task.strip():
         parser.error("task must be non-blank")
-    with DeepSeekHarness(
+    with _PlanReviews() as reviews, DeepSeekHarness(
         dsh_home=str(args.dsh_home.resolve()), cwd=str(args.workspace.resolve()),
-        profile="sdk", model=args.model, on_user_question=review,
+        profile="sdk", model=args.model, on_user_question=reviews.answer,
         env={"DSH_PERMISSION_MODE": "workspace-write"},
     ) as harness:
         session = harness.start_session()

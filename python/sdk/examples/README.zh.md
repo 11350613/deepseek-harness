@@ -25,7 +25,7 @@ python python/sdk/examples/minimal.py \
 - 配合支持图片输入的模型读取 PNG/JPEG/WebP/GIF 文件的 `read_image`
 - 查询或修改 Session 目录的 `working_directory`
 
-该组合包不包含 `dsh-base`，因此每一个新增配置项都是显式 profile 变更。运行时上下文、文本文件工具、本地指令发现、设置、托管凭据、遥测、Web 工具、subagent 与完整默认工具清单均不存在。配置树保留 SDK 启动与 JSON-RPC 服务、一个由环境配置的 DeepSeek 适配器、本地执行和 JSONL 持久化。[自动上下文压缩](../../../packages/bundle/sdk-minimal/README.zh.md#model-experience)通过额外模型请求生成较早历史的摘要，同时保留完整日志。SDK 提示词文本不会执行斜杠命令。
+该组合包不包含 `dsh-base`，因此每一个新增配置项都是显式 profile 变更。运行时上下文、文本文件工具、本地指令发现、设置、托管凭据、遥测、Web 工具、subagent 与完整默认工具清单均不存在。配置树保留 SDK 启动与 JSON-RPC 服务、一个由环境配置的 DeepSeek 适配器、本地执行和 JSONL 持久化。[自动上下文压缩](../../../packages/bundle/sdk-minimal/README.zh.md#model-experience)通过额外模型请求生成较早历史的摘要，同时保留完整日志。这个最小组合将不支持的斜杠输入保留在普通提示词路径上。
 
 持久 PTY 可以修改运行时进程可访问的任何路径，因此只应在一次性 checkout 或容器中使用。
 
@@ -59,7 +59,7 @@ python python/sdk/examples/permission.py \
 <a id="review-a-plan"></a>
 ## 审查计划
 
-[计划示例](plan.py) 通过 `run()` 发送 `/plan <task>`，并在命令完成后保持 Session 通知订阅和问答处理器运行。输入 `a` 批准、`k` 提供反馈、`d` 关闭；EOF 也会关闭而不批准。批准后模型可以从后续步骤开始实施，因此应选择隔离的工作区。
+[计划示例](plan.py) 通过 `run()` 发送 `/plan <task>`，并在命令完成后保持 Session 通知订阅和问答处理器运行。输入 `a` 批准、`k` 提供反馈、`d` 关闭；取消或作答前遇到 EOF 会关闭审查。批准后模型可以从后续步骤开始实施，因此应选择隔离的工作区。
 
 ```sh
 python python/sdk/examples/plan.py \
@@ -68,7 +68,7 @@ python python/sdk/examples/plan.py \
   "Plan the requested change and present it for review."
 ```
 
-原生计划通过 `exit_plan_mode` 携带，而不是写入工作区文档。权限仍为 workspace-write。关闭审查会保留计划模式并结束当前轮次。示例通过 `session/wait` 等待，并报告根轮次截断或失败；问答回调独立于协议读取线程。
+原生计划通过 `exit_plan_mode` 携带，而不是写入工作区文档。权限仍为 workspace-write。关闭审查会保留计划模式并结束当前轮次。示例通过 `session/wait` 等待，并报告根轮次截断或失败；问答回调独立于协议读取线程。等待输入时也可以通过 Ctrl+C 结束示例。
 
 <a id="run-a-goal"></a>
 ## 运行目标
@@ -82,7 +82,7 @@ python python/sdk/examples/goal.py \
   "Calculate 17 * 19, verify the result, and complete the goal without changing files."
 ```
 
-`--timeout-seconds` 限制观察时间，默认为 300 秒。超时会报告失败并关闭运行时，不会将目标标记为完成。恢复会话后可查看持久化目标，再显式恢复执行。自动轮次之间存在 idle 间隙，因此仅调用 `session/wait` 不足以等待目标结束。
+`--timeout-seconds` 必须是有限正数，用于限制首次命令等待及之后的观察时间，默认为 300 秒。超时会报告失败并关闭运行时，不会将目标标记为完成。恢复会话后可查看持久化目标，再显式恢复执行。自动轮次之间存在 idle 间隙，因此仅调用 `session/wait` 不足以等待目标结束。
 
 ## 添加插件
 

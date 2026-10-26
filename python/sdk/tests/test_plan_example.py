@@ -40,18 +40,14 @@ def test_plan_example_reports_truncation_and_accepts_explicit_dismissal(
             return response(*args).replace(b'"stop_reason": "end_turn"', b'"stop_reason": "max_tokens"')
 
         monkeypatch.setattr(runtime_helpers, "_messages_response", truncated_response)
-    choices: list[str] = []
-
-    def dismiss(prompt: str) -> str:
-        choices.append(prompt)
-        return "d"
-
-    monkeypatch.setattr("builtins.input", dismiss)
+    terminal_input = tmp_path / "stdin.txt"
+    terminal_input.write_text("d\n", encoding="utf-8")
     monkeypatch.setenv("DSH_TELEMETRY_DISABLED", "1")
     monkeypatch.setenv("DSH_TOOLS_MODE", "native")
     monkeypatch.setattr(sys, "argv", [str(_EXAMPLE), "--dsh-home", str(tmp_path / "home"),
                                      "--workspace", str(workspace), "Plan a small change."])
-    with _ModelServer([completion]) as model:
+    with terminal_input.open(encoding="utf-8") as terminal, _ModelServer([completion]) as model:
+        monkeypatch.setattr(sys, "stdin", terminal)
         def configured_harness(**options: object) -> DeepSeekHarness:
             return DeepSeekHarness(
                 **options, dsh_bin=_dsh_bin(), patches=(str(patch),),
@@ -73,8 +69,9 @@ def test_plan_example_reports_truncation_and_accepts_explicit_dismissal(
         "max-tokens" if outcome == "max-tokens" else "completed",
     ]
     assert [event["data"] for event in _of_type(events, "plan/mode")] == [{"active": True}]
-    assert len(choices) == (0 if outcome == "max-tokens" else 1)
-    assert ("PARTIAL_PLAN" if outcome == "max-tokens" else _PLAN) in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert ("[a] Approve" in output) == (outcome == "dismiss")
+    assert ("PARTIAL_PLAN" if outcome == "max-tokens" else _PLAN) in output
 
 
 def test_plan_display_rejects_root_abort_without_rejecting_descendant_abort() -> None:

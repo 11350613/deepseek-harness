@@ -232,8 +232,9 @@ class Session:
         Text returns the prompt's receipt-to-idle RunResult or a settled
         CommandExecution; command completion does not wait for later model work.
         Content blocks stay literal and accept only queue delivery. Notifications
-        retain wire order; command notifications are delivered after its response,
-        up to its own command/done event. Handler errors remain command results;
+        retain wire order. Command callbacks replay Session-tree notifications
+        from subscription through their own command/done after the response,
+        including overlapping work. Handler errors remain command results;
         routing, transport and observer failures raise without rolling back work.
         """
         if delivery not in ("queue", "steer"):

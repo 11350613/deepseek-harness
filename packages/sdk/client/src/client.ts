@@ -379,17 +379,15 @@ export class HarnessClient {
    * @param sessionId - target Session; an unknown id creates it.
    * @param text - complete input text, without client-side command interpretation.
    * @param delivery - ordinary prompt delivery; commands retain their own admission rules.
-   * @param signal - abandons this client's wait without cancelling runtime work.
    * @returns the prompt receipt or native command execution.
    */
   async query(
     sessionId: string,
     text: string,
     delivery: SessionQueryParams['delivery'],
-    signal?: AbortSignal,
   ): Promise<SessionQueryResult> {
     const params: SessionQueryParams = { sessionId: SessionId(sessionId), text, delivery }
-    const value = await this.request('session/query', params, undefined, signal)
+    const value = await this.request('session/query', params)
     if (isRecord(value)) {
       if (value.kind === 'prompt' && typeof value.messageId === 'string' && value.messageId.length > 0) {
         return { kind: 'prompt', messageId: value.messageId }
@@ -442,13 +440,11 @@ export class HarnessClient {
    * @param method - the wire method name.
    * @param params - the params object; omitted params send `{}`.
    * @param timeoutMs - per-call override of {@link HarnessClientOptions.requestTimeoutMs}.
-   * @param signal - abandon only this local request wait; no cancellation is sent to the runtime.
    * @returns the raw result; rejects with {@link JsonRpcResponseError} on a
    * protocol error response, {@link RequestTimeoutError} on timeout, and
    * {@link TransportClosedError} when the runtime is gone.
    */
-  async request(method: string, params?: object, timeoutMs?: number, signal?: AbortSignal): Promise<unknown> {
-    signal?.throwIfAborted()
+  async request(method: string, params?: object, timeoutMs?: number): Promise<unknown> {
     this.start()
     // A dead runtime cannot answer; fail with process context instead of
     // writing into a destroyed pipe and hanging until the timeout.
@@ -461,7 +457,7 @@ export class HarnessClient {
     if (transport === undefined) throw new TransportClosedError('DeepSeek Harness runtime is not running')
     const timeout = timeoutMs ?? this.runtime.requestTimeoutMs
     try {
-      if (timeout === undefined) return await transport.request(method, params ?? {}, signal)
+      if (timeout === undefined) return await transport.request(method, params ?? {})
       // The abort signal makes the timeout an abandonment: the transport drops
       // its pending entry, so repeated bounded requests against a hung method
       // retain no per-call state (the server-side work still runs to close).
@@ -471,13 +467,12 @@ export class HarnessClient {
         abandon.abort(new RequestTimeoutError(`${method} timed out after ${timeout}ms waiting for ${this.runtime.description}${stderr}`))
       }, timeout)
       try {
-        return await transport.request(method, params ?? {}, signal === undefined
-          ? abandon.signal : AbortSignal.any([signal, abandon.signal]))
+        return await transport.request(method, params ?? {}, abandon.signal)
       } finally {
         clearTimeout(timer)
       }
     } catch (error) {
-      if (error instanceof JsonRpcResponseError || error instanceof RequestTimeoutError || signal?.aborted) throw error
+      if (error instanceof JsonRpcResponseError || error instanceof RequestTimeoutError) throw error
       // Transport-level failures gain process context: exit code + stderr tail.
       await this.settleStreams()
       throw this.closedError(errorMessage(error))

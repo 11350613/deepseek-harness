@@ -70,7 +70,7 @@ else console.log(result.finalResponse)
 
 字符串被识别为命令时返回 `CommandExecution`，普通提示词活动返回 `RunResult`。命令完成不需要 turn 或 idle 通知。业务拒绝仍为 `result.kind === "error"`；路由、协议、传输和观察回调失败会拒绝 Promise。命令保留 `commandId` 及可选摘要 `sourceEventSeq`，不会选取助手回复作为结果。要原样发送斜杠文本，使用 `session.run([{ type: 'text', text: '/compact' }])`。
 
-每次调用都拥有自己的订阅，在发送前安装，在调用完成前释放。`onNotification` 按线上的顺序观察普通输入从入队回执到 idle 的活动。命令通知在其响应到达后交付，止于自身的 `command/done`。并发调用保留各自结果，所以运行中的模型轮次可以与命令的原生 busy 结果并存。超时或观察回调失败不回滚运行时工作，也不授权自动重试；命令完成不会结束独立的模型活动。
+每次调用都拥有自己的订阅，在发送前安装，在调用完成前释放。`onNotification` 按线上的顺序观察普通输入从入队回执到 idle 的活动。命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知；该区间可能包含重叠工作的通知。并发调用保留各自结果，所以运行中的模型轮次可以与命令的原生 busy 结果并存。超时或观察回调失败不回滚运行时工作，也不授权自动重试；命令完成不会结束独立的模型活动。
 
 启动选项提供初始值。权限命令只修改目标 Session；后续输入与恢复保留该状态，其他 Session 保留自己的状态，新 Session 使用配置默认值。命令不修改选项对象或已保存的用户默认值。运行中的审批策略变化可以注入通知并触发下一步骤。原生转换与恢复行为见[权限 preset](../../interaction/permission-presets/README.zh.md)。
 
@@ -78,7 +78,7 @@ else console.log(result.finalResponse)
 
 ### 用 HarnessClient 做低层控制
 
-`client.query(sessionId, text, delivery, signal?)` 等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 执行支持的命令名，不回退为提示词；permission preset 必须非空。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。`request()` 的可选第四个参数接受 `AbortSignal`，仅放弃本地等待；超时或本地放弃后，运行时工作仍可继续。
+`client.query(sessionId, text, delivery)` 等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 执行支持的命令名，不回退为提示词；permission preset 必须非空。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。请求超时仅放弃本地等待，运行时工作仍可继续。
 
 `/goal` 使用原生目标 handler，可在 `CommandExecution` 返回后启动自动轮次。发送前应订阅；先观察终态 `goal/change` 操作，再用 `session/wait` 等待收尾回复。轮次之间的 idle 不代表目标完成。暂停、清除、恢复和权限行为见[服务端语义](../server/README.zh.md)。
 

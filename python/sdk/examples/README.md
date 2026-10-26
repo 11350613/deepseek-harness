@@ -59,7 +59,7 @@ The command changes the Session's policy while the printed launch setting remain
 <a id="review-a-plan"></a>
 ## Review a plan
 
-The [plan example](plan.py) sends `/plan <task>` through `run()` and keeps the Session notification subscription and question handler alive after command completion. Enter `a` to approve, `k` to give feedback, or `d` to dismiss; EOF dismisses without approving. Approval allows implementation from a later model step, so choose an isolated workspace.
+The [plan example](plan.py) sends `/plan <task>` through `run()` and keeps the Session notification subscription and question handler alive after command completion. Enter `a` to approve, `k` to give feedback, or `d` to dismiss; cancellation or EOF before an answer dismisses the review. Approval allows implementation from a later model step, so choose an isolated workspace.
 
 ```sh
 python python/sdk/examples/plan.py \
@@ -68,7 +68,7 @@ python python/sdk/examples/plan.py \
   "Plan the requested change and present it for review."
 ```
 
-The native plan is carried in `exit_plan_mode`, not written to a workspace document. Permissions remain workspace-write. Dismissal leaves plan mode active and ends the current turn. The example waits through `session/wait` and rejects truncated or failed root turns; its question callback is independent of the protocol reader.
+The native plan is carried in `exit_plan_mode`, not written to a workspace document. Permissions remain workspace-write. Dismissal leaves plan mode active and ends the current turn. The example waits through `session/wait` and rejects truncated or failed root turns; its question callback is independent of the protocol reader. Ctrl+C stops the example even while it is waiting for input.
 
 <a id="run-a-goal"></a>
 ## Run a goal
@@ -82,7 +82,7 @@ python python/sdk/examples/goal.py \
   "Calculate 17 * 19, verify the result, and complete the goal without changing files."
 ```
 
-`--timeout-seconds` bounds observation (300 seconds by default). A timeout reports failure and closes the runtime; it does not mark the goal complete. The persisted goal can be inspected after restoration and explicitly resumed. `session/wait` alone is insufficient because automatic rounds have idle gaps.
+`--timeout-seconds` requires a finite positive value and bounds the initial command wait and subsequent observation (300 seconds by default). A timeout reports failure and closes the runtime; it does not mark the goal complete. The persisted goal can be inspected after restoration and explicitly resumed. `session/wait` alone is insufficient because automatic rounds have idle gaps.
 
 ## Add plugins
 

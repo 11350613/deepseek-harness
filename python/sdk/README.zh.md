@@ -67,7 +67,7 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
 
 内容块数组保持原样排队输入，并返回 `RunResult`。例如，`session.run([{"type": "text", "text": "/compact"}])` 将该文本发送给模型，而 `session.run("/compact")` 调用原生压缩。内容块要求 queue 投递；请求 steer 会在发送前抛出 `ValueError`。
 
-每次调用在发送前订阅，并在返回或抛出异常前释放自己的订阅。`on_notification` 按线上的顺序接收普通活动区间通知；命令通知在命令响应到达后交付，止于其自身的 `command/done`。调用可以重叠，不会消耗彼此的结果。处理器拒绝返回 `CommandExecution.result.kind="error"`，路由、协议、传输和观察回调失败则抛出异常。超时或观察回调失败不回滚运行时工作，也不授权自动重试。`request_timeout_seconds` 限制协议响应等待，不限制之后的普通提示词活动。
+每次调用在发送前订阅，并在返回或抛出异常前释放自己的订阅。`on_notification` 按线上的顺序接收普通活动区间通知；命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知，因此该区间可能包含重叠工作的通知。调用可以重叠，不会消耗彼此的结果。处理器拒绝返回 `CommandExecution.result.kind="error"`，路由、协议、传输和观察回调失败则抛出异常。超时或观察回调失败不回滚运行时工作，也不授权自动重试。`request_timeout_seconds` 限制协议响应等待，不限制之后的普通提示词活动。
 
 默认的完整 `sdk` profile 提供已支持的原生命令；`sdk-minimal` 将未支持的输入保留在普通提示词路径。`/compact` 可以发起辅助模型请求，其完成不需要普通 turn 或 idle 通知；空历史可以在不生成摘要时成功。底层 `HarnessClient.session_command(session_id, line)` 严格执行支持的命令名，不回退为提示词。见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
 
@@ -125,7 +125,7 @@ with DeepSeekHarness(
 
 `provider` 选择指定 Cordis 组合所注册的提供方路由；`model` 是该适配器解析出的模型 ID。`reasoning_effort` 是该确切路由可选的非空适配器自有标识符；省略时保留模型自身的默认值。`max_tokens` 是一个可选的正整数，用于限制根 agent 及其进程内后代在每次请求中输出的 token 数量；省略该参数时，由提供方的默认行为决定输出上限。缺少适配器、模型不可用或推理强度不受支持时，初始化会在提示词运行前拒绝。压缩（compaction）摘要继续使用压缩插件单独配置的上限。内置默认组合注册 `deepseek-official`。自定义组合可以挂载 `llm-pi-ai`，在其中配置各提供方专属的凭据和端点，并选择 pi-ai 已安装 catalog 中存在的任意提供方／模型组合。
 
-随附的 `sdk-minimal` profile 是独立显式配置树，而不是 `dsh-base` 上的 overlay。使用 `profile="sdk-minimal"` 选择它；普通 `model` 参数是唯一运行时模型选择，也适用于不在适配器建议目录中的模型 ID。它提供按平台选择的持久 shell、`read_image`、`working_directory`、本地执行、JSONL 会话和自动压缩。文本文件工具、设置、托管凭据、遥测、Web 工具与完整默认工具清单仍由独立的完整 `sdk` 与 `web` profile 提供。SDK 提示词文本不会执行 `/compact`。
+随附的 `sdk-minimal` profile 是独立显式配置树，而不是 `dsh-base` 上的 overlay。使用 `profile="sdk-minimal"` 选择它；普通 `model` 参数是唯一运行时模型选择，也适用于不在适配器建议目录中的模型 ID。它提供按平台选择的持久 shell、`read_image`、`working_directory`、本地执行、JSONL 会话和自动压缩。文本文件工具、设置、托管凭据、遥测、Web 工具与完整默认工具清单仍由独立的完整 `sdk` 与 `web` profile 提供。`sdk-minimal` profile 将不支持的斜杠输入保留在普通提示词路径上。
 
 ## 原生用户问答
 
@@ -135,7 +135,7 @@ with DeepSeekHarness(
 
 ## 结果与通知
 
-`Session.run()` 的活动区间从提示词被持久 inbox 接收时开始，到整个 agent 下一次进入空闲状态时结束，并返回 `RunResult(session_id, final_response, finish_reason, events, notifications)`。`final_response` 是该区间内根会话最后提交的助手文本。`finish_reason` 是最后一个根会话 `turn/end` 的 `kind`，例如 `completed`、`max-tokens` 或 `error`；没有轮次结束时为 `None`。缺少字符串 `data.reason.kind` 的 `turn/end` 违反协议，并会抛出 `SdkProtocolError`。
+对于普通提示词，`Session.run()` 的活动区间从提示词被持久 inbox 接收时开始，到整个 agent 下一次进入空闲状态时结束，并返回 `RunResult(session_id, final_response, finish_reason, events, notifications)`。`final_response` 是该区间内根会话最后提交的助手文本。`finish_reason` 是最后一个根会话 `turn/end` 的 `kind`，例如 `completed`、`max-tokens` 或 `error`；没有轮次结束时为 `None`。缺少字符串 `data.reason.kind` 的 `turn/end` 违反协议，并会抛出 `SdkProtocolError`。
 
 `NotificationSubscription.next(timeout_seconds=...)` 限制单次本地通知等待，超时抛出 `TimeoutError`；省略参数则无限等待。超时不取消运行时工作，也不关闭订阅，后续调用仍可接收通知。
 
