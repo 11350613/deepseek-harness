@@ -317,6 +317,7 @@ export class HarnessSdkJsonRpcServer {
 
   /**
    * Execute supported compact, permission, plan, or goal input through the native command registry.
+   * Only English canonical names are accepted; Chinese aliases and custom renamed commands are rejected.
    * @param params - target Session and complete command line.
    * @returns the native handler result; command errors remain result values.
    * @throws for unsupported input, unavailable commands, or runtime/transport failure.

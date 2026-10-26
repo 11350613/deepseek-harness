@@ -1,11 +1,13 @@
 import { Context } from '@deepseek-ai/cordis'
+import { once } from 'node:events'
+import { PassThrough } from 'node:stream'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import CommandRuntime, { CommandDefinitionId, type CommandDefinition, type CommandInvocation } from '@deepseek-ai/dsh-commands'
 import { AttachmentId, type AttachmentStore, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { JsonRpcTransportPeer } from '@deepseek-ai/dsh-sdk-protocol'
+import { JsonRpcLineTransport, JsonRpcResponseError, type JsonRpcTransportPeer } from '@deepseek-ai/dsh-sdk-protocol'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { HarnessSdkJsonRpcServer } from '../src/server.ts'
 
@@ -35,14 +37,14 @@ class TextModel extends LlmAdapter {
   }
 }
 
-async function setup(registry = true) {
+async function setup(registry = true, peer?: JsonRpcTransportPeer) {
   const ctx = new Context()
   onTestFinished(() => ctx.fiber.dispose())
   await mountAgentLoopTestDependencies(ctx, { workingDirectory: true })
   const loop = await ctx.plugin(AgentLoop, { agents: [] })
   if (registry) await ctx.plugin(CommandRuntime)
   ctx.llm.registerAdapter(['mock'], new UnusedModel())
-  const transport: JsonRpcTransportPeer = {
+  const transport: JsonRpcTransportPeer = peer ?? {
     request: async () => { throw new Error('Unexpected runtime request') },
     notify: () => {},
   }
@@ -206,6 +208,65 @@ describe('SDK command dispatch', () => {
     await expect(h.server.handleRequest('session/command', { sessionId: 's', line })).rejects.toThrow('only /compact')
     expect(handler).not.toHaveBeenCalled()
     expect(h.ctx.agents.list()).toEqual([])
+  })
+
+  it.each([
+    ['compact', '@deepseek-ai/dsh-command-compact', '/compact', '/压缩'],
+    ['permission', '@deepseek-ai/dsh-permission-presets', '/permission read-only', '/权限 read-only'],
+    ['plan', '@deepseek-ai/dsh-plan-mode', '/plan', '/计划'],
+    ['goal', '@deepseek-ai/dsh-command-goal', '/goal', '/目标'],
+  ])('accepts the %s alias only through query and delivers its lifecycle before resolution', async (name, definitionId, line, alias) => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const serverWire = new JsonRpcLineTransport(input, output)
+    const client = new JsonRpcLineTransport(output, input)
+    onTestFinished(async () => {
+      serverWire.close()
+      client.close()
+      const closed = [once(input, 'close'), once(output, 'close')]
+      input.destroy()
+      output.destroy()
+      await Promise.all(closed)
+    })
+    const h = await setup(true, serverWire)
+    const received: { method: string; params: Record<string, unknown> }[] = []
+    let receivedAtQueryResolution: typeof received = []
+    client.onNotification((method, params) => { received.push({ method, params }) })
+    serverWire.onRequest(async (method, params) => {
+      const result = await h.server.handleRequest(method, params)
+      if (method === 'session/query') receivedAtQueryResolution = [...received]
+      return result
+    })
+    serverWire.start()
+    client.start()
+    await client.request('initialize', { cwd: process.cwd(), provider: 'mock', model: 'mock' })
+    const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const, text: 'native outcome' }))
+    h.ctx.effect(() => h.ctx.commands.register({
+      name, definitionId: CommandDefinitionId(definitionId), description: 'Fixture command', handler,
+    }))
+    const sessionId = SessionId('alias-command')
+    const rejected = client.request('session/command', { sessionId, line: alias })
+    await expect(rejected).rejects.toBeInstanceOf(JsonRpcResponseError)
+    await expect(rejected).rejects.toMatchObject({ code: -32603 })
+    await expect(rejected).rejects.toThrow('only /compact')
+    expect(handler).not.toHaveBeenCalled()
+    expect(received).toEqual([])
+    expect(h.ctx.agents.list()).toEqual([])
+
+    await expect(client.request('session/command', { sessionId, line }))
+      .resolves.toMatchObject({ result: { kind: 'success', text: 'native outcome' } })
+    expect(handler).toHaveBeenCalledOnce()
+    received.length = 0
+    const result = await client.request('session/query', { sessionId, contentBlocks: [{ type: 'text', text: alias }], delivery: 'queue' })
+    expect(handler).toHaveBeenCalledTimes(2)
+    const commandId = handler.mock.calls[1]![0].commandId
+    expect(result).toMatchObject({ kind: 'command', execution: { commandId, result: { kind: 'success', text: 'native outcome' } } })
+    expect(receivedAtQueryResolution).toMatchObject([
+      { method: 'session.event', params: { sessionId, event: { type: 'command/run', data: { commandId, name } } } },
+      { method: 'session.event', params: { sessionId, event: { type: 'command/done', data: { commandId, kind: 'success' } } } },
+    ])
+    expect(h.ctx.agents.get(sessionId)!.session.snapshotEvents().map(event => event.type))
+      .toEqual(['command/run', 'command/done', 'command/run', 'command/done'])
   })
 
   it('requires initialization and the composed registry and command', async () => {

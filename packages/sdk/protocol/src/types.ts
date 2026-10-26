@@ -99,7 +99,7 @@ export interface SessionPromptResult {
 export interface SessionCommandParams {
   /** SDK-owned Session identity; an unknown id creates its Agent. */
   sessionId: SessionId
-  /** Complete command line; invalid arguments are handled by the native command. */
+  /** Complete command line using the canonical English name; the native command validates arguments. */
   line: string
 }
 
@@ -113,7 +113,10 @@ export interface SessionQueryParams {
   delivery: 'queue' | 'steer'
 }
 
-/** A prompt's enqueue receipt or a settled native command; neither means all Session work ended. */
+/**
+ * A prompt's enqueue receipt or a settled native command; neither means all Session work ended.
+ * Command lifecycle notifications precede the command response on the same stream.
+ */
 export type SessionQueryResult =
   | ({ kind: 'prompt' } & SessionPromptResult)
   | { kind: 'command'; execution: CommandExecution }

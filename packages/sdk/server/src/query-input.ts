@@ -3,10 +3,12 @@
 import type { CommandDescriptor } from '@deepseek-ai/dsh-commands/types'
 
 /**
- * Recognize compact, explicit permission changes, plan, and goal input; other text remains a prompt.
+ * Recognize compact, explicit permission changes, plan, and goal using fixed names or Chinese aliases.
+ * Aliases require the official definitionId and canonical registered name; custom renaming is unsupported.
+ * Other text remains a prompt.
  * @param text - original input; the caller preserves it on the ordinary-prompt path.
  * @param commands - exact receiving Agent's current command descriptors.
- * @returns the supported command line using its effective name and a native-compatible separator, otherwise undefined.
+ * @returns the supported command line using its canonical name and a native-compatible separator, otherwise undefined.
  */
 export function queryCommand(text: string, commands: readonly CommandDescriptor[]): string | undefined {
   const trimmed = text.trim()

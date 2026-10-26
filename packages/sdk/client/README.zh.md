@@ -80,7 +80,7 @@ else console.log(result.finalResponse)
 
 ### 用 HarnessClient 做低层控制
 
-`client.query(sessionId, input, delivery)` 接受字符串或内容块数组，等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 执行支持的命令名，不回退为提示词，也不接受附件；permission preset 必须非空。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。请求超时仅放弃本地等待，运行时工作仍可继续。
+`client.query(sessionId, input, delivery)` 接受字符串或内容块数组，等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 只接受受支持的英文规范命令名，不回退为提示词，也不接受附件；permission preset 必须非空。中文别名使用 `run()` 或 `query()`。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。请求超时仅放弃本地等待，运行时工作仍可继续。
 
 `/goal` 使用原生目标 handler，可在 `CommandExecution` 返回后启动自动轮次。发送前应订阅；先观察终态 `goal/change` 操作，再用 `session/wait` 等待收尾回复。轮次之间的 idle 不代表目标完成。暂停、清除、恢复和权限行为见[服务端语义](../server/README.zh.md)。
 
