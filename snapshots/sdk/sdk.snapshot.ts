@@ -113,6 +113,8 @@ interface SdkAssertions {
   modelRequestsFile?: string
   /** Replay caller-owned commands between turns; profile fixtures own any in-turn commands. */
   replayStandaloneCommands?: boolean
+  /** Submit all manifest images with each standalone command, including rejected invocations. */
+  commandAttachments?: boolean
   /** Native plan-review choices in the order the fixture requests them. */
   planReviews?: readonly ('keep' | 'approve' | 'dismiss')[]
   /** Wait for the recorded provider title before sending each subsequent prompt. */
@@ -179,6 +181,13 @@ const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
     patches: [fileURLToPath(new URL('./goal-rounds/capture.cordis.yml', import.meta.url))],
     modelRequestsFile: 'goal-requests.jsonl',
     replayStandaloneCommands: true,
+  },
+  'command-attachments': {
+    environment: { DSH_PERMISSION_MODE: 'workspace-write' },
+    patches: [fileURLToPath(new URL('./command-attachments/capture.cordis.yml', import.meta.url))],
+    modelRequestsFile: 'command-attachment-requests.jsonl',
+    replayStandaloneCommands: true,
+    commandAttachments: true,
   },
   'minimal-image-compaction': {
     expectedFinalResponse: 'MINIMAL_IMAGE_OK',
@@ -858,7 +867,12 @@ async function runScenario(scenario: CorpusScenario): Promise<{
       let session = harness.session(sessionId)
       for (const action of actions) {
         if (action.kind === 'command') {
-          const execution = await session.run(action.line)
+          const execution = await session.run(assertions.commandAttachments === true ? [
+            ...scenario.manifest.input?.attachments?.map(image => ({
+              type: 'image' as const, data: image.data, mimeType: image.mediaType,
+            })) ?? [],
+            { type: 'text', text: action.line },
+          ] : action.line)
           if (!('commandId' in execution)) throw new Error('SDK command input returned prompt activity')
           collectCommandNotifications(subscription, sessionId, execution, notifications, observe)
           continue
@@ -901,12 +915,14 @@ async function runScenario(scenario: CorpusScenario): Promise<{
           if ('commandId' in outcome) throw new Error('SDK prompt input returned a command result')
           result = outcome
         } else {
-          result = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
+          const outcome = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
             onNotification: (notification) => {
               notifications.push(notification)
               observe(notification)
             },
           })
+          if ('commandId' in outcome) throw new Error('SDK prompt input returned a command result')
+          result = outcome
         }
         results.push(result)
         if (titleSubscription !== undefined) {
@@ -1151,6 +1167,51 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       )
       reconcileCatalogCreationTimes(ordered.map(log => log.content), 'validate')
       const actualContext = contextOf(ordered, cwd)
+      if (scenario.name === 'command-attachments') {
+        const parent = ordered[0]
+        if (parent === undefined) throw new Error('command attachments have no persisted Session')
+        const events = parseSessionLog(parent.content)
+        const commands = events.filter(event => event.type === 'command/run')
+        expect(commands.map(event => ({ name: event.data.name, args: event.data.args }))).toEqual([
+          { name: 'plan', args: ' Reply SDK_COMMAND_IMAGE_OK without tools.' },
+          { name: 'plan', args: ' off' },
+          { name: 'compact', args: '' },
+          { name: 'permission', args: ' read-only' },
+          { name: 'goal', args: '' },
+          { name: 'goal', args: ' pause' },
+          { name: 'goal', args: ' resume' },
+          { name: 'goal', args: ' clear' },
+        ])
+        const completed = events.filter(event => event.type === 'command/done')
+        expect(completed.map(event => event.data.commandId)).toEqual(commands.map(event => event.data.commandId))
+        expect(completed.map(event => ({ kind: event.data.kind, text: event.data.text }))).toEqual([
+          { kind: 'success', text: 'Plan mode on. Use /plan off to leave.' },
+          { kind: 'error', text: 'Attachments cannot accompany /plan off.' },
+          { kind: 'error', text: '/compact does not accept attachments' },
+          { kind: 'error', text: '/permission does not accept attachments' },
+          ...Array.from({ length: 4 }, () => ({ kind: 'error',
+            text: 'Attachments only accompany a goal objective: /goal <objective> or /goal edit <objective>.' })),
+        ])
+        expect(events.filter(event => event.type === 'plan/mode').map(event => event.data.active)).toEqual([true])
+        expect(events.filter(event => event.type === 'permission/preset').map(event => event.data.preset)).toEqual(['workspace-write'])
+        expect(events.filter(event => event.type === 'goal/change')).toEqual([])
+        expect(events.filter(event => event.type === 'turn/start')).toHaveLength(1)
+        expect(events.filter(event => event.type === 'step/start')).toHaveLength(1)
+        expect(modelRequests).toHaveLength(1)
+        const userMessages = events.filter(event => event.type === 'user/message' && event.data.source.kind === 'user')
+        expect(userMessages).toHaveLength(1)
+        const content = userMessages[0]?.data.content
+        expect(content).toEqual([
+          { type: 'image', attachment: { attachmentId: scenario.manifest.input?.attachments?.[0]?.id,
+            mediaType: 'image/png', bytes: 69, width: 1, height: 1 } },
+          { type: 'text', text: 'Reply SDK_COMMAND_IMAGE_OK without tools.' },
+        ])
+        const requestMessages = modelRequests[0]?.messages as JsonObject[]
+        expect(requestMessages.map(message => message.content)).toContainEqual(content)
+        expect(JSON.stringify(requestMessages)).toContain('You are in plan mode.')
+        expect(events.findLast(event => event.type === 'assistant/message'))
+          .toMatchObject({ data: { message: { content: [{ type: 'text', text: 'SDK_COMMAND_IMAGE_OK' }] } } })
+      }
       if (scenario.name === 'goal-rounds') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('goal rounds have no persisted Session')

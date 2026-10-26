@@ -82,6 +82,8 @@ export interface SdkEncodedImageBlock {
   data: string
   /** Declared raster MIME type, verified during admission. */
   mimeType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+  /** Optional display name; never interpreted as a filesystem path. */
+  name?: string
 }
 
 /** SDK prompt input: ordinary durable blocks plus inline images awaiting admission. */
@@ -101,12 +103,12 @@ export interface SessionCommandParams {
   line: string
 }
 
-/** Text submitted through the SDK's ordinary-input and slash-command entry. */
+/** Content submitted through the SDK's ordinary-input and slash-command entry. */
 export interface SessionQueryParams {
   /** SDK-owned Session identity; an unknown id creates its Agent. */
   sessionId: SessionId
-  /** Non-blank input text, retained verbatim when it is an ordinary prompt. */
-  text: string
+  /** Ordered prompt blocks; a native command occupies its only text block and may accompany encoded images. */
+  contentBlocks: SdkPromptContentBlock[]
   /** Ordinary prompt delivery; commands keep their native execution timing. */
   delivery: 'queue' | 'steer'
 }

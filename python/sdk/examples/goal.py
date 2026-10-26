@@ -54,6 +54,19 @@ def main() -> None:
         session = harness.start_session()
         with harness.client.subscribe_notifications(lambda notice: notice.payload.get("sessionId") == session.id) as notifications:
             deadline = time.monotonic() + args.timeout_seconds
+
+            def remaining_seconds() -> float:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Goal observation timed out")
+                return remaining
+
+            def observe(notification: Notification) -> dict | None:
+                remaining_seconds()
+                event = display(notification)
+                remaining_seconds()
+                return event
+
             execution = session.run(f"/goal {args.objective}")
             if not isinstance(execution, CommandExecution):
                 raise RuntimeError("The SDK profile did not execute the requested command")
@@ -61,7 +74,7 @@ def main() -> None:
             if execution.result.kind == "error":
                 raise RuntimeError(execution.result.text)
             while True:
-                event = display(notifications.next(timeout_seconds=max(0, deadline - time.monotonic())))
+                event = observe(notifications.next(timeout_seconds=remaining_seconds()))
                 if event is not None and event["type"] == "goal/change" and event["data"]["operation"] in {
                     "complete", "block", "pause", "clear",
                 }:
@@ -69,9 +82,10 @@ def main() -> None:
             # A terminal goal event can precede the model's closing reply.
             harness.client.request(
                 "session/wait", {"sessionId": session.id}, response_model=WaitResult,
-                timeout_seconds=max(0, deadline - time.monotonic()),
-                on_notification=display, notification_subscription=notifications,
+                timeout_seconds=remaining_seconds(),
+                on_notification=observe, notification_subscription=notifications,
             )
+            remaining_seconds()
 
 
 if __name__ == "__main__":

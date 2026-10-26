@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-`dsh-sdk-client` 让 TypeScript 程序通过 stdio JSON-RPC 驱动完整的 DeepSeek Harness 运行时。使用 `run()` 运行普通文本、支持的 slash 命令或原样内容块，通过 `onNotification` 观察其通知。`HarnessClient` 提供直接协议访问。调用方可以提供 `dshBin`；否则客户端解析同版本的 `@deepseek-ai/dsh` 可执行文件。客户端持有子进程，报告类型化错误，并在 `close()` 或 `await using` 时回收进程。
+`dsh-sdk-client` 让 TypeScript 程序通过 stdio JSON-RPC 驱动完整的 DeepSeek Harness 运行时。使用 `run()` 运行普通文本、支持的 slash 命令和图片内容块，通过 `onNotification` 观察其通知。`HarnessClient` 提供直接协议访问。调用方可以提供 `dshBin`；否则客户端解析同版本的 `@deepseek-ai/dsh` 可执行文件。客户端持有子进程，报告类型化错误，并在 `close()` 或 `await using` 时回收进程。
 
 ## 目录
 
@@ -56,7 +56,9 @@ console.log('finalResponse' in result ? result.finalResponse : result.result)
 
 ### 运行文本与原生命令
 
-`await session.run(text, { delivery: 'queue', onNotification })` 将非空白文本交给运行时的[命令形式与 Desktop 别名](../server/README.zh.md#command-input)识别规则。未识别的输入保持普通文本。delivery 默认为 `queue`；对普通文本，`steer` 指向下一个可用步骤。内容块数组仍作为原样内容排队输入；为其请求 steer 会在发送前抛出异常。
+`await session.run(input, { delivery: 'queue', onNotification })` 接受字符串或 `SdkPromptContentBlock[]`，两者都交给运行时的[命令形式与 Desktop 别名](../server/README.zh.md#command-input)识别规则。未识别的输入保持普通提示词及原始内容块顺序。delivery 默认为 `queue`；对普通输入，包括图片，`steer` 指向下一个可用步骤。命令保留原生接纳规则与执行时序。
+
+先选择支持图片输入的模型。通过现有内容块数组同时提交命令和图片，例如 `session.run([{ type: 'text', text: '/plan Analyze this image.' }, { type: 'image', data: imageBase64, mimeType: 'image/png' }])`；`harness.run()` 接受相同输入。计划输入和目标创建、编辑接受图片；`/plan off`、目标控制、压缩和权限命令按[原生附件规则](../server/README.zh.md#command-input)拒绝图片。原生命令输入支持编码栅格图片，不支持一般文件上传或客户端提供的附件引用。
 
 ```ts
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
@@ -68,7 +70,7 @@ if ('commandId' in result) console.log(result.result)
 else console.log(result.finalResponse)
 ```
 
-字符串被识别为命令时返回 `CommandExecution`，普通提示词活动返回 `RunResult`。命令完成不需要 turn 或 idle 通知。业务拒绝仍为 `result.kind === "error"`；路由、协议、传输和观察回调失败会拒绝 Promise。命令保留 `commandId` 及可选摘要 `sourceEventSeq`，不会选取助手回复作为结果。要原样发送斜杠文本，使用 `session.run([{ type: 'text', text: '/compact' }])`。
+字符串和内容块输入被识别为命令时都返回 `CommandExecution`，普通提示词活动返回 `RunResult`。命令完成不需要 turn 或 idle 通知。业务拒绝仍为 `result.kind === "error"`；路由、协议、传输和观察回调失败会拒绝 Promise。命令保留 `commandId` 及可选摘要 `sourceEventSeq`，不会选取助手回复作为结果。要绕过原生命令路由，使用低层 `client.prompt(sessionId, blocks)` 并自行管理后续订阅与等待；运行时 skill（技能）识别仍然适用。
 
 每次调用都拥有自己的订阅，在发送前安装，在调用完成前释放。`onNotification` 按线上的顺序观察普通输入从入队回执到 idle 的活动。命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知；该区间可能包含重叠工作的通知。并发调用保留各自结果，所以运行中的模型轮次可以与命令的原生 busy 结果并存。超时或观察回调失败不回滚运行时工作，也不授权自动重试；命令完成不会结束独立的模型活动。
 
@@ -78,7 +80,7 @@ else console.log(result.finalResponse)
 
 ### 用 HarnessClient 做低层控制
 
-`client.query(sessionId, text, delivery)` 等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 执行支持的命令名，不回退为提示词；permission preset 必须非空。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。请求超时仅放弃本地等待，运行时工作仍可继续。
+`client.query(sessionId, input, delivery)` 接受字符串或内容块数组，等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 执行支持的命令名，不回退为提示词，也不接受附件；permission preset 必须非空。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。请求超时仅放弃本地等待，运行时工作仍可继续。
 
 `/goal` 使用原生目标 handler，可在 `CommandExecution` 返回后启动自动轮次。发送前应订阅；先观察终态 `goal/change` 操作，再用 `session/wait` 等待收尾回复。轮次之间的 idle 不代表目标完成。暂停、清除、恢复和权限行为见[服务端语义](../server/README.zh.md)。
 

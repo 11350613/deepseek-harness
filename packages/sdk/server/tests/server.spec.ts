@@ -325,7 +325,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     expect(otherHandle.dispose).toHaveBeenCalledOnce()
   })
 
-  it('admits inline SDK images before the user message enters the session', async () => {
+  it.each(['prompt', 'query', 'image-only', 'whitespace'] as const)('admits SDK images before the %s message enters the session', async (entry) => {
     const followup = vi.fn<Agent['followup']>()
     const agent = ({ id: SessionId('image'), followup } satisfies Pick<Agent, 'id' | 'followup'>) as unknown as Agent
     const handle = { agent, dispose: vi.fn(() => Promise.resolve()) }
@@ -346,18 +346,18 @@ describe('HarnessSdkJsonRpcServer', () => {
     // This isolated prompt test begins after the handshake boundary.
     ;(server as unknown as { initialized: boolean }).initialized = true
 
-    await server.prompt({
-      sessionId: 'image',
-      contentBlocks: [
-        { type: 'text', text: 'inspect' },
-        { type: 'image', data: 'AQ==', mimeType: 'image/png' },
-      ],
-    })
+    const text = entry === 'image-only' ? '' : entry === 'whitespace' ? '  ' : 'inspect'
+    const image = { type: 'image' as const, data: 'AQ==', mimeType: 'image/png' as const, name: 'diagram.png' }
+    const contentBlocks = entry === 'image-only' ? [image] : [{ type: 'text' as const, text }, image]
+    if (entry === 'prompt') {
+      await server.prompt({ sessionId: 'image', contentBlocks })
+    } else {
+      await server.handleRequest('session/query', { sessionId: 'image', contentBlocks, delivery: 'queue' })
+    }
 
-    expect(saveImages).toHaveBeenCalledWith([{ data: Uint8Array.of(1), mediaType: 'image/png' }])
+    expect(saveImages).toHaveBeenCalledWith([{ data: Uint8Array.of(1), mediaType: 'image/png', name: 'diagram.png' }])
     expect(followup.mock.calls[0]?.[0].content).toEqual([
-      { type: 'text', text: 'inspect' },
-      { type: 'image', attachment: ref },
+      ...entry === 'image-only' ? [] : [{ type: 'text', text }], { type: 'image', attachment: ref },
     ])
     await server.shutdown()
   })

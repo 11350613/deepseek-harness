@@ -7,6 +7,7 @@ import runpy
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,7 +17,7 @@ from deepseek_harness import DeepSeekHarness
 _EXAMPLE = Path(__file__).resolve().parents[1] / "examples/goal.py"
 
 
-@pytest.mark.parametrize("pending", ["command", "goal-event", "wrapup", "complete"])
+@pytest.mark.parametrize("pending", ["command", "goal-event", "wrapup", "complete", "goal-queue", "wrapup-queue"])
 def test_goal_example_bounds_pending_work_and_reaps_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], pending: str,
 ) -> None:
@@ -39,21 +40,26 @@ for line in sys.stdin:
     if method == "initialize":
         send({"id": frame["id"], "result": {"serverInfo": {"name": "goal-example-peer"}}})
     elif method == "session/query":
-        assert frame["params"]["text"] == "/goal Finish this task"
+        assert frame["params"]["contentBlocks"] == [{"type": "text", "text": "/goal Finish this task"}]
         session = frame["params"]["sessionId"]
         if pending == "command":
             continue
-        if pending in ("wrapup", "complete"):
+        if pending in ("wrapup", "complete", "wrapup-queue"):
             send({"method": "session.event", "params": {"sessionId": session, "event": {
                 "type": "goal/change", "data": {"operation": "complete"}}}})
+        elif pending == "goal-queue":
+            for operation in ("create", "edit"):
+                send({"method": "session.event", "params": {"sessionId": session, "event": {
+                    "type": "goal/change", "data": {"operation": operation}}}})
         send({"id": frame["id"], "result": {"kind": "command", "execution": {
             "commandId": "goal-command", "result": {"kind": "success", "text": "Goal set"}}}})
     elif method == "session/wait":
         if pending == "wrapup":
             continue
-        send({"method": "session.event", "params": {"sessionId": session, "event": {
-            "type": "assistant/message", "data": {"message": {
-                "content": [{"type": "text", "text": "Closing reply"}]}}}}})
+        for _ in range(2 if pending == "wrapup-queue" else 1):
+            send({"method": "session.event", "params": {"sessionId": session, "event": {
+                "type": "assistant/message", "data": {"message": {
+                    "content": [{"type": "text", "text": "Closing reply"}]}}}}})
         send({"id": frame["id"], "result": {}})
     elif method == "shutdown":
         send({"id": frame["id"], "result": {}})
@@ -73,7 +79,24 @@ for line in sys.stdin:
         return harness
 
     monkeypatch.setitem(example["main"].__globals__, "DeepSeekHarness", configured_harness)
-    timeout = "10" if pending == "complete" else "1"
+    queued = pending in {"goal-queue", "wrapup-queue"}
+    displayed = []
+    if queued:
+        clock = [0.0]
+        display = example["display"]
+
+        def advance_after_display(notification):
+            event = display(notification)
+            if event is not None:
+                displayed.append(event["type"])
+                if pending == "goal-queue" or event["type"] == "assistant/message":
+                    clock[0] = 11.0
+            return event
+
+        # Advance only the example clock while the real transport retains its own timeout.
+        monkeypatch.setitem(example["main"].__globals__, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+        monkeypatch.setitem(example["main"].__globals__, "display", advance_after_display)
+    timeout = "10" if pending == "complete" or queued else "1"
     monkeypatch.setattr(sys, "argv", [str(_EXAMPLE), "--dsh-home", str(tmp_path / "home"),
                                      "--workspace", str(tmp_path), "--timeout-seconds", timeout, "Finish this task"])
     # The outer bound also releases an implementation that forgets its own deadline.
@@ -84,7 +107,8 @@ for line in sys.stdin:
                 execution.result(timeout=30)
             else:
                 expected = {"command": "session/query timed out", "goal-event": "SDK notification",
-                            "wrapup": "session/wait timed out"}[pending]
+                            "wrapup": "session/wait timed out", "goal-queue": "Goal observation timed out",
+                            "wrapup-queue": "Goal observation timed out"}[pending]
                 with pytest.raises(TimeoutError, match=expected):
                     execution.result(timeout=30)
         finally:
@@ -94,7 +118,10 @@ for line in sys.stdin:
     assert harness.client._proc is None
     frames = [json.loads(line) for line in observed.read_text(encoding="utf-8").splitlines()]
     methods = [frame["method"] for frame in frames]
-    assert methods == ["initialize", "session/query", *(["session/wait"] if pending in {"wrapup", "complete"} else []), "shutdown"]
+    assert methods == ["initialize", "session/query",
+                       *(["session/wait"] if pending in {"wrapup", "complete", "wrapup-queue"} else []), "shutdown"]
+    if queued:
+        assert displayed == (["goal/change"] if pending == "goal-queue" else ["goal/change", "assistant/message"])
     if pending == "complete":
         output = capsys.readouterr().out
         assert "Goal: complete" in output

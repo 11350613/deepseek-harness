@@ -1,6 +1,6 @@
 /**
  * High-level run API over {@link HarnessClient}: route text to prompts or native
- * commands, collect prompt activity, and retain literal content-block delivery.
+ * commands and collect prompt activity for text and image input.
  *
  * @module @deepseek-ai/dsh-sdk-client/api
  */
@@ -120,19 +120,11 @@ export class DeepSeekHarness implements AsyncDisposable {
   }
 
   /**
-   * Queue literal content blocks on a fresh or named Session.
-   * @param input - content blocks sent without command routing.
-   * @param options - optional session id and per-notification observer.
-   * @returns the prompt activity interval.
-   */
-  run(input: SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult>
-  /**
-   * Run text or literal content on a fresh or named Session.
-   * @param input - text for native routing, or queued content blocks.
-   * @param options - optional Session identity, text delivery and notification observer.
+   * Run text or content blocks on a fresh or named Session through native input routing.
+   * @param input - prompt or command text, optionally accompanied by image content blocks.
+   * @param options - optional Session identity, delivery and notification observer.
    * @returns ordinary prompt activity or the native command result.
    */
-  run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult | CommandExecution>
   run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult | CommandExecution> {
     return this.session(options?.sessionId).run(input, options)
   }
@@ -171,11 +163,11 @@ export function createProcessDeepSeekHarness(
   }, () => createProcessHarnessClient(runtime))
 }
 
-/** Per-run options: target session and streaming observer. */
+/** Per-run Session identity, input delivery, and notification observer. */
 export interface RunOptions {
   /** Session id to run on; omitted mints a fresh session per call. */
   sessionId?: string
-  /** Text prompt delivery; content-block arrays require queue delivery. */
+  /** Ordinary prompt delivery, defaulting to queue; commands retain their native execution timing. */
   delivery?: 'queue' | 'steer'
   /**
    * Observe prompt activity from receipt through idle. Command callbacks replay
@@ -185,13 +177,9 @@ export interface RunOptions {
   onNotification?: (notification: HarnessNotification) => void
 }
 
-/** Resolve text delivery while keeping content-block input on its queued prompt path. */
-function resolveRunDelivery(input: string | SdkPromptContentBlock[], requested: RunOptions['delivery']): 'queue' | 'steer' {
-  const delivery = requested ?? 'queue'
-  if (typeof input !== 'string' && delivery === 'steer') {
-    throw new TypeError('content-block input requires queue delivery')
-  }
-  return delivery
+/** Resolve omitted delivery to the ordinary prompt queue. */
+function resolveRunDelivery(requested: RunOptions['delivery']): 'queue' | 'steer' {
+  return requested ?? 'queue'
 }
 
 /** Collect an ordinary prompt's notifications from its inbox receipt through idle. */
@@ -255,45 +243,31 @@ export class HarnessSession {
   }
 
   /**
-   * Queue literal content blocks and observe their receipt-to-idle activity.
-   * @param input - content blocks sent without command routing.
-   * @param options - a notification observer; content blocks require queue delivery.
-   * @returns the prompt activity interval.
-   */
-  run(input: SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult>
-  /**
-   * Run text through native input routing, or queue literal content blocks.
-   * @param input - non-blank text, or content blocks sent verbatim.
-   * @param options - text delivery and a per-notification observer.
+   * Run text or content blocks through native prompt-or-command routing.
+   * @param input - prompt or command text, optionally accompanied by image content blocks; image-only input is an ordinary prompt.
+   * @param options - input delivery and a per-notification observer.
    * @returns the prompt's receipt-to-idle activity or a settled command; command
    * completion does not wait for later model work. Handler errors remain results.
    * @throws on routing, protocol, transport or observer failure; runtime work is not rolled back.
    */
-  run(input: string | SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult | CommandExecution>
   async run(input: string | SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult | CommandExecution> {
-    const delivery = resolveRunDelivery(input, options?.delivery)
+    const delivery = resolveRunDelivery(options?.delivery)
     await this.harness.start()
     const client = this.harness.client
     const subscription = client.subscribeSessionTree(this.id)
     try {
-      let messageId: string
-      if (typeof input === 'string') {
-        const response = await client.query(this.id, input, delivery)
-        if (response.kind === 'command') {
-          for (let notification = subscription.tryNext(); notification !== undefined; notification = subscription.tryNext()) {
-            options?.onNotification?.(notification)
-            const event = notification.params.event
-            if (notification.method === 'session.event' && notification.params.sessionId === this.id
-              && isRecord(event) && event.type === 'command/done' && isRecord(event.data)
-              && event.data.commandId === response.execution.commandId) break
-          }
-          return response.execution
+      const response = await client.query(this.id, input, delivery)
+      if (response.kind === 'command') {
+        for (let notification = subscription.tryNext(); notification !== undefined; notification = subscription.tryNext()) {
+          options?.onNotification?.(notification)
+          const event = notification.params.event
+          if (notification.method === 'session.event' && notification.params.sessionId === this.id
+            && isRecord(event) && event.type === 'command/done' && isRecord(event.data)
+            && event.data.commandId === response.execution.commandId) break
         }
-        messageId = response.messageId
-      } else {
-        messageId = await client.prompt(this.id, input)
+        return response.execution
       }
-      const activity = new PromptActivity(this.id, messageId)
+      const activity = new PromptActivity(this.id, response.messageId)
       while (true) {
         const notification = await subscription.next()
         if (!activity.record(notification, options?.onNotification)) continue
@@ -307,15 +281,6 @@ export class HarnessSession {
     }
   }
 
-}
-
-/**
- * Normalize run input: a string becomes one text block; blocks pass verbatim.
- * @param input - prompt text or content blocks.
- * @returns the content blocks to send.
- */
-export function normalizeInput(input: string | SdkPromptContentBlock[]): SdkPromptContentBlock[] {
-  return typeof input === 'string' ? [{ type: 'text', text: input }] : input
 }
 
 /** Validate the provider-read fields of one wire turn-end reason. */

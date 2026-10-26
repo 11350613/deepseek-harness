@@ -8,6 +8,7 @@ interface Frame {
 }
 
 const queries: Record<string, unknown>[] = []
+const commands: Record<string, unknown>[] = []
 const methods: string[] = []
 const promptFinishes = new Map<string, () => void>()
 const commandFinishes = new Map<string, () => void>()
@@ -35,7 +36,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     const params = frame.params ?? {}
     queries.push(params)
     const sessionId = String(params.sessionId)
-    const text = String(params.text)
+    const blocks = params.contentBlocks as { type: string; text?: string }[]
+    const text = blocks.filter(block => block.type === 'text').map(block => block.text).join('\n')
     if (process.env.QUERY_DISCONNECT !== undefined) {
       process.exit(13)
     }
@@ -91,8 +93,12 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       finish()
       respond({ kind: 'prompt', messageId })
     }
+  } else if (frame.method === 'session/command') {
+    const params = frame.params ?? {}
+    commands.push(params)
+    respond({ commandId: `strict-command-${commands.length}`, result: { kind: 'success' } })
   } else if (frame.method === 'test/state') {
-    respond({ queries, methods, waitingPrompts: promptFinishes.size, waitingCommands: commandFinishes.size })
+    respond({ queries, commands, methods, waitingPrompts: promptFinishes.size, waitingCommands: commandFinishes.size })
   } else if (frame.method === 'test/release') {
     for (const finish of [...promptFinishes.values(), ...commandFinishes.values()]) finish()
     respond({})

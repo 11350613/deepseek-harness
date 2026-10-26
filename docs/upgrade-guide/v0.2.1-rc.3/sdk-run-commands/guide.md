@@ -1,6 +1,6 @@
 ---
 kind: upgrade-guide
-description: "SDK run methods route supported slash-command strings and can return a native command result."
+description: "SDK run methods route supported slash commands in strings and content-block arrays and can return a native command result."
 ---
 
 # SDK run accepts native commands
@@ -9,13 +9,14 @@ English | [中文](guide.zh.md)
 
 ## Change
 
-Python `DeepSeekHarness.run()` and `Session.run()`, and their TypeScript equivalents, route non-blank strings through the runtime's ordinary-input and command entry. Supported slash commands execute their native handler. Ordinary text returns `RunResult`; commands return `CommandExecution`. Existing callers that assume every string produces an assistant response must distinguish these results.
+Python `DeepSeekHarness.run()` and `Session.run()`, and their TypeScript equivalents, route strings and content-block arrays through one ordinary-input and command entry. Supported slash commands execute their native handler. Ordinary input returns `RunResult`; commands return `CommandExecution`. Both input forms support queue or steer delivery for ordinary prompts. Callers that assume every run returns an assistant response must distinguish these results.
 
-Content-block arrays remain literal queued prompts and return `RunResult`. Command completion does not mean that planning, review, or automatic goal rounds have finished. Handler refusals return a command error result; routing and transport failures raise or reject.
+Content-block arrays no longer bypass native slash-command routing. For example, `run([{"type": "text", "text": "/compact"}])` executes compaction. Arrays containing command text and encoded raster images follow Desktop's native attachment rules; `/plan off` with an image returns a command error without changing plan state. Command completion does not mean planning, review, or automatic goal rounds have finished. Handler refusals return a command error result; routing and transport failures raise or reject.
 
 ## Migration
 
 1. Check the result before reading `final_response` in Python or `finalResponse` in TypeScript. In Python, use `isinstance(result, RunResult)`; in TypeScript, use `'finalResponse' in result`. A command result carries `command_id` in Python or `commandId` in TypeScript, plus `result.kind` and command-owned details.
-2. To send slash-prefixed text literally, pass content blocks, for example `session.run([{"type": "text", "text": "/compact"}])`. Use a string when the runtime should recognize commands: `session.run("/compact")`.
-3. Keep `on_notification` / `onNotification` for activity notifications. For plan or goal commands that start later work, follow the [SDK command completion rules](../../../../packages/sdk/server/README.md#command-input) before treating the work as finished.
-4. Verify that ordinary text still produces the expected `RunResult`, that a supported command returns `CommandExecution`, and that literal content blocks preserve their text.
+2. To bypass native command routing, move the blocks to Python `client.session_prompt(session_id, blocks)` or TypeScript `client.prompt(sessionId, blocks)`. Subscribe before sending and manage subsequent notifications and `session/wait` yourself; these methods return an enqueue receipt, not `RunResult`. Runtime skill recognition still applies.
+3. Select a model that supports image input. Submit command text and images together through `run([text_block, image_block])`; an encoded image contains `type: "image"`, base64 `data`, and `mimeType`. Place the complete command in the first text block; a recognized command rejects extra text blocks or non-encoded-image blocks instead of falling back to a prompt. Images may precede the text block. No additional input option is required.
+4. Custom `session/query` clients must send `{ sessionId, contentBlocks, delivery }`; convert text into a `{ type: "text", text }` block. The text-only `session/command` and queued `session/prompt` methods retain their request fields.
+5. Keep `on_notification` / `onNotification` for activity notifications. Follow the [SDK command completion rules](../../../../packages/sdk/server/README.md#command-input) for subsequent plan or goal work. Verify equivalent routing for strings and arrays, ordinary prompt delivery, `/plan off` image rejection, and low-level prompt bypass.

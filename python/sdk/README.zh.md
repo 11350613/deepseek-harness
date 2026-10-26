@@ -61,15 +61,17 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
 <a id="run-text-and-commands"></a>
 ## 运行文本与命令
 
-`session.run(input, on_notification=..., delivery="queue")` 是高层输入入口。非空白字符串使用运行时的[命令形式与 Desktop 别名](../../packages/sdk/server/README.zh.md#command-input)识别规则；未识别的输入保持普通文本。对普通文本，`delivery="steer"` 指向下一个可用步骤。命令的接纳规则与执行时序仍由原生处理器负责。
+`session.run(input, on_notification=..., delivery="queue")` 是字符串和内容块数组共用的高层输入入口。两者都使用运行时的[命令形式与 Desktop 别名](../../packages/sdk/server/README.zh.md#command-input)识别规则；未识别的输入保持普通提示词及原始内容块顺序。对普通输入，包括图片，`delivery="steer"` 指向下一个可用步骤。命令的接纳规则与执行时序仍由原生处理器负责。
 
 普通提示词返回其入队回执到下一次 idle 区间的 `RunResult`，命令则在执行结束后返回 `CommandExecution`。读取 `final_response` 前使用 `isinstance(result, RunResult)` 检查类型，否则检查命令的 `result.kind`。命令保留自己的 `command_id` 和可选 `source_event_seq`，不会选取更早的助手回复作为结果。
 
-内容块数组保持原样排队输入，并返回 `RunResult`。例如，`session.run([{"type": "text", "text": "/compact"}])` 将该文本发送给模型，而 `session.run("/compact")` 调用原生压缩。内容块要求 queue 投递；请求 steer 会在发送前抛出 `ValueError`。
+内容块数组与字符串使用相同的命令路由。`session.run([{"type": "text", "text": "/compact"}])` 和 `session.run("/compact")` 都调用原生压缩并返回 `CommandExecution`。要绕过原生命令路由，调用低层 `client.session_prompt(session_id, blocks)` 并自行管理后续订阅与等待；运行时 skill（技能）识别仍然适用。
+
+先选择支持图片输入的模型。通过现有内容块数组同时提交命令和图片，例如 `session.run([{"type": "text", "text": "/plan Analyze this image."}, {"type": "image", "data": image_base64, "mimeType": "image/png"}])`；`harness.run()` 接受相同输入。计划输入和目标创建、编辑接受图片；`/plan off`、目标控制、压缩和权限命令按[原生附件规则](../../packages/sdk/server/README.zh.md#command-input)拒绝图片。原生命令输入支持编码栅格图片，不支持一般文件上传或客户端提供的附件引用。
 
 每次调用在发送前订阅，并在返回或抛出异常前释放自己的订阅。`on_notification` 按线上的顺序接收普通活动区间通知；命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知，因此该区间可能包含重叠工作的通知。调用可以重叠，不会消耗彼此的结果。处理器拒绝返回 `CommandExecution.result.kind="error"`，路由、协议、传输和观察回调失败则抛出异常。超时或观察回调失败不回滚运行时工作，也不授权自动重试。`request_timeout_seconds` 限制协议响应等待，不限制之后的普通提示词活动。
 
-默认的完整 `sdk` profile 提供已支持的原生命令；`sdk-minimal` 将未支持的输入保留在普通提示词路径。`/compact` 可以发起辅助模型请求，其完成不需要普通 turn 或 idle 通知；空历史可以在不生成摘要时成功。底层 `HarnessClient.session_command(session_id, line)` 严格执行支持的命令名，不回退为提示词。见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
+默认的完整 `sdk` profile 提供已支持的原生命令；`sdk-minimal` 将未支持的输入保留在普通提示词路径。`/compact` 可以发起辅助模型请求，其完成不需要普通 turn 或 idle 通知；空历史可以在不生成摘要时成功。底层 `HarnessClient.session_command(session_id, line)` 严格执行支持的命令名，不回退为提示词，也不接受附件。见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
 
 `/permission <preset>` 只修改接收命令的 Session。未知 preset 返回命令错误，不改变策略。后续输入与恢复保留成功的修改，其他 Session 和调用方的 `DeepSeekHarnessConfig` 保留自己的值。运行中的审批策略变化可以注入通知并触发下一模型步骤。见[权限示例](examples/README.zh.md#change-session-permissions)。
 

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { createProcessDeepSeekHarness } from '../src/api.ts'
 import { JsonRpcResponseError, RequestTimeoutError, SdkProtocolError, TransportClosedError } from '../src/index.ts'
+import type { SdkEncodedImageBlock, SdkPromptContentBlock } from '../src/index.ts'
 import type { CommandExecution, HarnessNotification, RunResult } from '../src/types.ts'
 
 function harnessWith(environment: Record<string, string> = {}, requestTimeoutMs?: number) {
@@ -22,6 +23,11 @@ function activity(result: RunResult | CommandExecution): RunResult {
   if ('commandId' in result) throw new Error('expected ordinary prompt activity')
   return result
 }
+
+const images: [SdkEncodedImageBlock, SdkEncodedImageBlock] = [
+  { type: 'image', data: 'aW1hZ2U=', mimeType: 'image/png', name: 'diagram.png' },
+  { type: 'image', data: 'c2Vjb25k', mimeType: 'image/jpeg' },
+]
 
 it.each(['session', 'harness'])('runs a native command through the %s entry without waiting for idle', async (entry) => {
   const harness = harnessWith()
@@ -44,6 +50,73 @@ it('preserves prompt text and observes its receipt-to-idle activity', async () =
   expect(result.notifications).toEqual(notifications)
   expect(result.events.some(event => event.type === 'assistant/message' && event.data.message.content.some(block =>
     block.type === 'text' && block.text === 'before receipt'))).toBe(false)
+})
+
+it.each(['session', 'harness'])('forwards native command content blocks through the %s entry', async (entry) => {
+  const execution = { commandId: 'plan-command', result: { kind: 'success' } }
+  const harness = harnessWith({ QUERY_RESULT: JSON.stringify({ kind: 'command', execution }) })
+  const contentBlocks: SdkPromptContentBlock[] = [{ type: 'text', text: '/plan explain the diagram' }, ...images]
+  const result = entry === 'session'
+    ? await harness.session('images').run(contentBlocks)
+    : await harness.run(contentBlocks, { sessionId: 'images' })
+  expect(result).toEqual(execution)
+  expect(await harness.client.request('test/state')).toHaveProperty('queries', [
+    { sessionId: 'images', contentBlocks, delivery: 'queue' },
+  ])
+})
+
+it.each([
+  { entry: 'session', text: ' explain the diagram\n', delivery: 'queue' },
+  { entry: 'harness', text: 'explain the diagram', delivery: 'steer' },
+  { entry: 'harness', text: '/unknown explain the diagram', delivery: 'queue' },
+  { entry: 'session', text: undefined, delivery: 'steer' },
+] as const)('preserves image content for $entry text "$text" with $delivery delivery', async ({ entry, text, delivery }) => {
+  const harness = harnessWith()
+  const contentBlocks: SdkPromptContentBlock[] = text === undefined ? images : [{ type: 'text', text }, ...images]
+  const result = entry === 'session'
+    ? await harness.session('images').run(contentBlocks, { delivery })
+    : await harness.run(contentBlocks, { sessionId: 'images', delivery })
+  expect(activity(result).finalResponse).toBe(`reply:${text ?? ''}`)
+  expect(await harness.client.request('test/state')).toHaveProperty('queries', [
+    { sessionId: 'images', contentBlocks, delivery },
+  ])
+})
+
+it('normalizes text and preserves block order in low-level routing requests', async () => {
+  const harness = harnessWith()
+  await harness.start()
+  const contentBlocks: SdkPromptContentBlock[] = [
+    images[0], { type: 'text', text: 'inspect ' }, images[1], { type: 'text', text: 'both' },
+  ]
+  expect(await harness.client.query('images', ' inspect\n', 'steer')).toEqual({ kind: 'prompt', messageId: 'input-1' })
+  expect(await harness.client.query('images', contentBlocks, 'queue')).toEqual({ kind: 'prompt', messageId: 'input-2' })
+  expect(await harness.client.executeCommand('images', ' /plan inspect ')).toEqual({
+    commandId: 'strict-command-1', result: { kind: 'success' },
+  })
+  const state = await harness.client.request('test/state')
+  expect(state).toHaveProperty('queries', [
+    { sessionId: 'images', contentBlocks: [{ type: 'text', text: ' inspect\n' }], delivery: 'steer' },
+    { sessionId: 'images', contentBlocks, delivery: 'queue' },
+  ])
+  expect(state).toHaveProperty('commands', [{ sessionId: 'images', line: ' /plan inspect ' }])
+})
+
+it('returns native command results for text-only blocks', async () => {
+  const harness = harnessWith()
+  const contentBlocks: SdkPromptContentBlock[] = [{ type: 'text', text: '/compact' }]
+  expect(await harness.session('blocks').run(contentBlocks)).toEqual({
+    commandId: 'command-1', result: { kind: 'success', text: 'compacted', sourceEventSeq: 0 },
+  })
+  expect(await harness.client.request('test/state')).toHaveProperty('queries', [
+    { sessionId: 'blocks', contentBlocks, delivery: 'queue' },
+  ])
+})
+
+it('retains a rejected command outcome without retrying its content as a prompt', async () => {
+  const execution = { commandId: 'rejected-command', result: { kind: 'error', text: 'command rejected images' } }
+  const harness = harnessWith({ QUERY_RESULT: JSON.stringify({ kind: 'command', execution }) })
+  expect(await harness.session('images').run([{ type: 'text', text: '/plan off' }, ...images])).toEqual(execution)
+  expect(await harness.client.request('test/state')).toHaveProperty('methods', ['initialize', 'session/query', 'test/state'])
 })
 
 it('steers ordinary text when delivery requests the next step', async () => {
@@ -138,7 +211,9 @@ it('reports runtime loss from run', async () => {
   await expect(harnessWith({ QUERY_DISCONNECT: '1' }).session('main').run('disconnect')).rejects.toThrow(TransportClosedError)
 })
 
-it('rejects steer delivery for literal content blocks', async () => {
-  await expect(harnessWith().session('main').run([{ type: 'text', text: 'literal' }], { delivery: 'steer' }))
-    .rejects.toThrow('content-block input requires queue delivery')
+it('steers text content blocks when delivery requests the next step', async () => {
+  const result = activity(await harnessWith().session('main').run([{ type: 'text', text: 'next' }], { delivery: 'steer' }))
+  expect(result.notifications[0]).toMatchObject({ params: { event: {
+    type: 'agent/inbox/spliced', data: { target: 'next-step' },
+  } } })
 })

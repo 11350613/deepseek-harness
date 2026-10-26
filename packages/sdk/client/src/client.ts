@@ -347,7 +347,7 @@ export class HarnessClient {
   }
 
   /**
-   * Queue one prompt and return its durable inbox identity.
+   * Queue one prompt without native command routing and return its durable inbox identity.
    * @param sessionId - target session; an unknown id creates it.
    * @param contentBlocks - the user message, sent verbatim.
    * @returns the queued message id.
@@ -375,18 +375,20 @@ export class HarnessClient {
   }
 
   /**
-   * Send text for runtime prompt-or-command routing and await its receipt.
+   * Send text or content blocks for runtime prompt-or-command routing and await its receipt.
    * @param sessionId - target Session; an unknown id creates it.
-   * @param text - complete input text, without client-side command interpretation.
+   * @param input - text or content blocks, without client-side command interpretation.
    * @param delivery - ordinary prompt delivery; commands retain their own admission rules.
    * @returns the prompt receipt or native command execution.
    */
   async query(
     sessionId: string,
-    text: string,
+    input: string | SdkPromptContentBlock[],
     delivery: SessionQueryParams['delivery'],
   ): Promise<SessionQueryResult> {
-    const params: SessionQueryParams = { sessionId: SessionId(sessionId), text, delivery }
+    const params: SessionQueryParams = {
+      sessionId: SessionId(sessionId), contentBlocks: normalizeInput(input), delivery,
+    }
     const value = await this.request('session/query', params)
     if (isRecord(value)) {
       if (value.kind === 'prompt' && typeof value.messageId === 'string' && value.messageId.length > 0) {
@@ -617,6 +619,15 @@ export function createProcessHarnessClient(options: RuntimeProcessOptions): Harn
     runtime: RuntimeProcessOptions,
   ) => HarnessClient
   return new Constructor({}, options)
+}
+
+/**
+ * Normalize routed input: a string becomes one text block; blocks pass verbatim.
+ * @param input - prompt or command text, or content blocks.
+ * @returns the content blocks to send.
+ */
+export function normalizeInput(input: string | SdkPromptContentBlock[]): SdkPromptContentBlock[] {
+  return typeof input === 'string' ? [{ type: 'text', text: input }] : input
 }
 
 /**

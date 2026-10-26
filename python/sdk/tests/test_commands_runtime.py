@@ -13,13 +13,15 @@ import shutil
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
+from http.client import HTTPConnection, RemoteDisconnected
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Iterator, TypeVar
 
 import pytest
+from pydantic import BaseModel
 
 from deepseek_harness import CommandExecution, DeepSeekHarness, Notification, RunResult, Session
 from deepseek_harness.client import UserQuestionHandler
@@ -88,8 +90,13 @@ class _ModelServer:
                 super().setup()
 
             def do_POST(self) -> None:
+                payload = self.rfile.read(int(self.headers["Content-Length"]))
+                if self.path == "/v1/files":
+                    # The model fixture accepts inline images through the provider's Files fallback.
+                    self.send_error(404, "Images are accepted inline")
+                    return
                 assert self.path == "/v1/messages", f"unexpected model endpoint: {self.path}"
-                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                body = json.loads(payload)
                 assert isinstance(body, dict) and isinstance(body.get("model"), str)
                 with owner.lock:
                     ordinal = len(owner.requests)
@@ -108,7 +115,7 @@ class _ModelServer:
                     self.end_headers()
                     self.wfile.write(payload)
                     self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError):
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     if not completion.allow_disconnect:
                         raise
 
@@ -158,6 +165,39 @@ class _ModelServer:
             assert not self.failures, [repr(error) for error in self.failures]
 
 
+@pytest.mark.parametrize("error,allow_disconnect,accepted", [
+    (ConnectionAbortedError(10053, "response connection aborted"), True, True),
+    (ConnectionAbortedError(10053, "response connection aborted"), False, False),
+    (OSError(5, "unrelated response write failure"), True, False),
+])
+def test_model_server_only_allows_expected_connection_aborts(
+    monkeypatch: pytest.MonkeyPatch, error: OSError, allow_disconnect: bool, accepted: bool,
+) -> None:
+    model = _ModelServer([_Completion("response", allow_disconnect=allow_disconnect)])
+    body = {"model": _MODEL}
+
+    def fail_response(_handler: BaseHTTPRequestHandler) -> None:
+        raise error
+
+    # Keep the real HTTP handler and teardown; only the response write fails deterministically.
+    monkeypatch.setattr(model.server.RequestHandlerClass, "end_headers", fail_response)
+
+    def exchange() -> None:
+        with model, closing(HTTPConnection(*model.server.server_address, timeout=_WAIT_SECONDS)) as connection:
+            connection.request("POST", "/v1/messages", body=json.dumps(body))
+            with pytest.raises(RemoteDisconnected):
+                connection.getresponse()
+
+    if accepted:
+        exchange()
+    else:
+        with pytest.raises(AssertionError, match=type(error).__name__):
+            exchange()
+    assert model.captured() == [body]
+    assert model.failures == ([] if accepted else [error])
+    assert not model.thread.is_alive()
+
+
 def _dsh_bin() -> str | None:
     mode = os.environ.get("DSH_COMMANDS_TEST_RUNTIME", "built")
     if mode == "installed":
@@ -183,12 +223,22 @@ class _Runtime:
         return self.workers.submit(operation, *args, **kwargs).result(timeout=_WAIT_SECONDS)
 
 
+class _WaitResult(BaseModel):
+    pass
+
+
+def _wait_activity(runtime: _Runtime, session: Session) -> None:
+    # Command completion does not own the model activity that its native handler starts.
+    runtime.call(runtime.harness.client.request, "session/wait", {"sessionId": session.id}, response_model=_WaitResult)
+
+
 @contextmanager
 def _runtime(
     tmp_path: Path, completions: list[_Completion], *, capture_patch: Path | None = None,
     initial_permission: str = "danger-full-access",
     on_user_question: UserQuestionHandler | None = None,
     max_goal_rounds: int | None = None,
+    model: str = _MODEL,
 ) -> Iterator[_Runtime]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(exist_ok=True)
@@ -206,11 +256,11 @@ def _runtime(
             extra.write(f"- id: goal\n  config:\n    defaultMaxGoalRounds: {max_goal_rounds}\n")
     patches = (patch,) if capture_patch is None else (patch, capture_patch.resolve())
     dsh_bin = _dsh_bin()
-    with _ModelServer(completions) as model, ThreadPoolExecutor(max_workers=2) as workers:
+    with _ModelServer(completions) as model_server, ThreadPoolExecutor(max_workers=2) as workers:
         harness = DeepSeekHarness(
             cwd=str(workspace), runtime_cwd=str(workspace), dsh_home=str(home),
-            dsh_bin=dsh_bin, profile="sdk", patches=tuple(str(item) for item in patches), model=_MODEL,
-            base_url=model.url, api_key="keyless-commands-runtime",
+            dsh_bin=dsh_bin, profile="sdk", patches=tuple(str(item) for item in patches), model=model,
+            base_url=model_server.url, api_key="keyless-commands-runtime",
             initialize_timeout_seconds=60, request_timeout_seconds=20, shutdown_timeout_seconds=20,
             on_user_question=on_user_question,
             env={"DSH_PERMISSION_MODE": initial_permission,
@@ -218,10 +268,10 @@ def _runtime(
         )
         try:
             harness.start()
-            yield _Runtime(harness, model, workers, logs)
+            yield _Runtime(harness, model_server, workers, logs)
         finally:
             # Also covers failed initialization: release HTTP, close the client, then join callers.
-            model.release_all()
+            model_server.release_all()
             harness.close()
 
 
@@ -509,8 +559,8 @@ def test_permission_changes_only_the_selected_session_and_retains_prompt_semanti
 
         for session in [other, runtime.harness.start_session("permission-new")]:
             assert isinstance(runtime.call(session.run, "Report your own policy; do not use tools."), RunResult)
-        ordinary = runtime.call(main.run, [{"type": "text", "text": "/permission danger-full-access"}])
-        assert isinstance(ordinary, RunResult)
+        runtime.call(runtime.harness.client.session_prompt, main.id, [{"type": "text", "text": "/permission danger-full-access"}])
+        _wait_activity(runtime, main)
         assert isinstance(runtime.call(main.run, "/permission"), RunResult)
         assert runtime.harness.config.env == initial_config
 

@@ -13,6 +13,7 @@ import pytest
 
 TEST_FILES = (
     "test_commands_runtime.py",
+    "test_command_attachments_runtime.py",
     "test_goal_runtime.py",
     "test_plan_runtime.py",
     "test_plan_example.py",

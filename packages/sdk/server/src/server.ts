@@ -9,6 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { resolve } from 'node:path'
 import { SdkUserQuestionBridge } from './user-questions.ts'
 import { queryCommand } from './query-input.ts'
+import { queryCommandImages, queryContent } from './query-content.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
@@ -63,6 +64,7 @@ async function durablePromptContent(ctx: Context, blocks: SessionPromptParams['c
   const refs = await admitEncodedImages(attachments, images.map((image): EncodedImageAttachment => ({
     data: image.data,
     mediaType: image.mimeType,
+    ...image.name === undefined ? {} : { name: image.name },
   })))
   let next = 0
   return blocks.map(block => encodedImage(block)
@@ -285,28 +287,30 @@ export class HarnessSdkJsonRpcServer {
 
   /**
    * Dispatch text as a Desktop-style input; native commands own Session state changes.
-   * @param params - text, receiving Session and ordinary-prompt delivery.
+   * @param params - ordered content blocks, receiving Session and ordinary-prompt delivery.
    * @returns an enqueue receipt for text or the supported native command's result.
    * @throws on runtime failure; a recognized command failure never falls back to a prompt.
    */
   async query(params: SessionQueryParams): Promise<SessionQueryResult> {
     if (!this.initialized) throw new Error('SDK server is not initialized')
     if (this.shuttingDown) throw new Error('SDK server is shutting down')
-    if (params.text.trim().startsWith('/')) {
+    const text = params.contentBlocks.find(block => block.type === 'text')
+    if (text?.text.trim().startsWith('/')) {
       const commands = this.ctx.get('commands')
       if (commands !== undefined) {
         const rec = await this.getOrCreateSession(params.sessionId)
         this.lifetime.signal.throwIfAborted()
         this.assertLiveAgent(rec, params.sessionId)
-        const line = queryCommand(params.text, commands.list(rec.handle.agent))
+        const line = queryCommand(text.text, commands.list(rec.handle.agent))
         if (line !== undefined) {
-          return { kind: 'command', execution: await this.executeCommand({ sessionId: params.sessionId, line }) }
+          const images = queryCommandImages(params.contentBlocks, text)
+          return { kind: 'command', execution: await this.runCommand({ sessionId: params.sessionId, line }, images) }
         }
       }
     }
     const receipt = await this.submitPrompt({
       sessionId: params.sessionId,
-      contentBlocks: [{ type: 'text', text: params.text }],
+      contentBlocks: params.contentBlocks,
     }, params.delivery)
     return { kind: 'prompt', ...receipt }
   }
@@ -318,6 +322,10 @@ export class HarnessSdkJsonRpcServer {
    * @throws for unsupported input, unavailable commands, or runtime/transport failure.
    */
   async executeCommand(params: SessionCommandParams): Promise<CommandExecution> {
+    return this.runCommand(params, [])
+  }
+
+  private async runCommand(params: SessionCommandParams, images: SdkEncodedImageBlock[]): Promise<CommandExecution> {
     if (!this.initialized) throw new Error('SDK server is not initialized')
     if (this.shuttingDown) throw new Error('SDK server is shutting down')
     const parsed = parseCommand(params.line)
@@ -332,7 +340,10 @@ export class HarnessSdkJsonRpcServer {
     const rec = await this.getOrCreateSession(params.sessionId)
     this.lifetime.signal.throwIfAborted()
     this.assertLiveAgent(rec, params.sessionId)
-    const task = commands.execute(rec.handle.agent, params.line, [], this.lifetime.signal)
+    const task = commands.execute(rec.handle.agent, params.line, images.map(image => ({
+      type: 'image', data: image.data, mediaType: image.mimeType,
+      ...image.name === undefined ? {} : { name: image.name },
+    })), this.lifetime.signal)
     this.commandTasks.add(task)
     try {
       const result = await task
@@ -507,12 +518,13 @@ export class HarnessSdkJsonRpcServer {
         return this.prompt(params as unknown as SessionPromptParams)
       case 'session/query': {
         if (typeof params?.sessionId !== 'string' || params.sessionId.length === 0
-          || typeof params.text !== 'string' || params.text.trim().length === 0
           || (params.delivery !== 'queue' && params.delivery !== 'steer')
-          || Object.keys(params).some(key => key !== 'sessionId' && key !== 'text' && key !== 'delivery')) {
-          throw new TypeError('session/query requires only a non-empty sessionId, non-blank text and queue/steer delivery')
+          || Object.keys(params).some(key => key !== 'sessionId' && key !== 'contentBlocks' && key !== 'delivery')) {
+          throw new TypeError('session/query requires only a non-empty sessionId, contentBlocks and queue/steer delivery')
         }
-        return this.query({ sessionId: brandString<SessionId>(params.sessionId), text: params.text, delivery: params.delivery })
+        return this.query({
+          sessionId: brandString<SessionId>(params.sessionId), contentBlocks: queryContent(params.contentBlocks), delivery: params.delivery,
+        })
       }
       case 'session/command': {
         if (typeof params?.sessionId !== 'string' || params.sessionId.length === 0

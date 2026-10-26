@@ -35,15 +35,21 @@ kind: "package-reference"
 
 <a id="command-input"></a>
 
-`session/query` 是高层 SDK `run()` 发送文本时使用的协议入口。普通文本保留原文，使用选定的 queue/steer 操作。完整 SDK 识别裸 `/compact`、带非空 preset 的 `/permission <preset>`、`/plan [off|message]` 和 `/goal [objective|clear|edit objective|pause|resume]`，包括绑定到当前定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/compact extra` 以及 `/model` 等其余输入仍是普通提示词。命令缺失时也保留提示词路径；选中的 handler 失败后绝不回退。未知 preset 是原生命令错误。此入口仅接受文本，`session/prompt` 保留内容块 API。
+下列支持范围是桌面已有、无需图形界面即可执行的原生命令。`/permission <preset>` 使用这条原生调用路径；Desktop 的 `/model` 选择器使用独立的模型选择 API。
+
+`session/query` 是高层 SDK `run()` 发送字符串和内容块数组时使用的协议入口。普通输入保留内容块，使用选定的 queue/steer 操作。完整 SDK 识别裸 `/compact`、带非空 preset 的 `/permission <preset>`、`/plan [off|message]` 和 `/goal [objective|clear|edit objective|pause|resume]`，包括绑定到当前定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/compact extra` 以及 `/model` 等其余输入仍是普通提示词。命令缺失时也保留提示词路径；选中的 handler 失败后绝不回退。未知 preset 是原生命令错误。随已识别命令提交的编码图片块经过原生附件接纳。`session/prompt` 保留为低层排队输入入口，不经过原生 slash command 路由。
+
+第一个文本块提供完整命令行；编码图片可位于它之前或之后。该行匹配到受支持命令时，它必须是唯一的文本块，其余块必须为编码图片。额外文本块、持久图片引用及其他内容类型会在执行或入队前返回 JSON-RPC 错误，不回退为普通提示词。普通提示词保留全部内容块及其顺序。空数组和只包含空白文本的数组会被拒绝；允许仅图片输入。
 
 `session/command` 接受上述命令名的 `{ sessionId, line }`，要求 permission preset 非空，其余参数由原生 handler 校验。完整 sdk profile 组成这些原生 handler；缺少所请求命令的 profile 会拒绝调用。服务端解析自己拥有的存活 Agent，并调用 `commands.execute()`，不排入普通 prompt，也不等待 idle。压缩负责其辅助模型请求、历史替换和 checkpoint，并拒绝忙碌 Agent。权限变更保留原生状态和通知行为。Shutdown 取消待决命令，在释放 Agent 前排空 SDK 命令等待者。超时不等于回滚，客户端不能自动重试。结果和错误见[协议](../protocol/README.zh.md)。
 
 权限命令只修改接收命令的 Session。后续输入和恢复的 Session 保留其持久化权限事实；其他 Session 保留各自状态，新 Session 使用配置的默认值。调用方的启动配置和已保存的用户默认值均不会被重写。模型选择不是 SDK slash 命令；恢复时的模型覆盖仍按上文描述的独立行为执行。
 
-`/plan` 和 `/plan off` 只改变原生计划状态。带正文时由 handler 通过 steer 提交；命令完成不等待后续模型活动或审查，`session/wait` 可观察后续 Session 工作。问答响应保留批准和反馈语义；`{ cancelled: true }` 转为原生 `ASK_CANCELLED`，使关闭计划审查结束轮次而不退出计划模式。
+不带附件时，`/plan` 和 `/plan off` 只改变原生计划状态。`/plan` 带图片或正文时，通过原生 steer 提交，图片位于去除首尾空白的正文前；`/plan off` 带图片时返回命令错误，不修改计划状态。附件接受规则复用 Desktop 的原生注册器与处理器校验；命令完成不等待后续模型活动或审查，`session/wait` 可观察后续 Session 工作。问答响应保留批准和反馈语义；`{ cancelled: true }` 转为原生 `ASK_CANCELLED`，使关闭计划审查结束轮次而不退出计划模式。
 
 `/goal` 将完整语法委托给[原生目标命令](../../goal/command-goal/README.zh.md)。创建和恢复会启用自动目标轮次；暂停中止运行中的轮次，清除则停止续跑而不中止当前请求。命令完成与目标完成相互独立。`session/wait` 可能在目标轮次之间返回：应先观察终态 `goal/change` 操作，再等待可能的模型收尾回复。恢复会话保留目标状态，但 activation 保持 disarmed，直到执行 `/goal resume`。目标命令不改变权限或 SDK 初始化设置。
+
+创建和编辑接受图片，作为下一轮前的参考材料；查看、暂停、恢复和清除拒绝附件，不修改目标状态。压缩和权限命令也拒绝附件。处理器拒绝后绝不回退为普通提示词；与 Desktop 相同，图片可能在处理器拒绝前已被存储。这些 SDK 输入接受栅格图片，不接受一般文件上传或客户端提供的附件引用。
 
 `session/working-directory/get` 接收 `{ sessionId }`；`session/working-directory/set` 接收 `{ sessionId, path }`。两者均返回 `{ cwd }`，并可创建未知 Session，而不启动模型轮次。读取通过工作目录服务恢复缺失目录；修改保留起始目录元数据与权限，并通过已记录的用户上下文告知模型。
 
@@ -132,7 +138,7 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 
 #### 模型看到什么
 
-普通 `session/query` 文本和已接受的 `session/prompt` 内容原样进入用户消息。普通输入的递送选择排队的新 turn 或下个可用 step，不会重新应用权限默认值。内联 `SdkEncodedImageBlock` 会先通过组合中的附件存储完成校验与提交，因此会话日志保留内容寻址的图片引用而不是 base64 字节。此包不会添加系统提示词文本或工具 schema；这些内容来自组合中的其他插件。
+普通 `session/query` 输入和已接受的 `session/prompt` 内容按原始内容块顺序进入用户消息。普通输入的递送选择排队的新 turn 或下个可用 step，不会重新应用权限默认值。内联 `SdkEncodedImageBlock` 会先通过组合中的附件存储完成校验与提交，因此会话日志保留内容寻址的图片引用而不是 base64 字节。此包不会添加系统提示词文本或工具 schema；这些内容来自组合中的其他插件。
 
 #### Token 影响
 

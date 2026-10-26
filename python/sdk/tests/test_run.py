@@ -1,6 +1,7 @@
 """Unified blocking input, native command results and independent run observation."""
 from __future__ import annotations
 
+import json
 import sys
 import threading
 from pathlib import Path
@@ -21,6 +22,7 @@ class Ack(BaseModel):
 def peer(tmp_path: Path) -> Path:
     script = tmp_path / "queries.py"
     script.write_text('''import json
+import os
 import sys
 
 serial = 0
@@ -33,13 +35,16 @@ def send(frame):
 def event(session, type, data):
     send({"method": "session.event", "params": {"sessionId": session, "event": {"type": type, "data": data}}})
 
+def input_text(frame):
+    return "".join(block["text"] for block in frame["params"]["contentBlocks"] if block["type"] == "text")
+
 def command(frame, number):
     session = frame["params"]["sessionId"]
     identity = "command-" + str(number)
     event(session, "command/run", {"commandId": identity})
     event(session, "command/done", {"commandId": identity, "kind": "success"})
     send({"id": frame["id"], "result": {"kind": "command", "execution": {
-        "commandId": identity, "result": {"kind": "success", "text": "compacted"}}}})
+        "commandId": identity, "result": {"kind": "success", "text": "command completed"}}}})
 
 def receipt(frame, number):
     session = frame["params"]["sessionId"]
@@ -49,24 +54,26 @@ def receipt(frame, number):
 def finish(frame):
     session = frame["params"]["sessionId"]
     event(session, "assistant/message", {"message": {"content": [
-        {"type": "text", "text": "answer for " + frame["params"]["text"]}]}})
+        {"type": "text", "text": "answer for " + input_text(frame)}]}})
     event(session, "turn/end", {"turn": 1, "reason": {"kind": "completed"}})
     send({"method": "session.status", "params": {"sessionId": session, "status": "idle"}})
 
 for line in sys.stdin:
     frame = json.loads(line)
+    with open(os.environ["REQUEST_LOG"], "a", encoding="utf-8") as log:
+        log.write(line)
     method = frame["method"]
     if method == "initialize":
         send({"id": frame["id"], "result": {"serverInfo": {"name": "query-peer"}}})
     elif method == "session/query":
         serial += 1
         params = frame["params"]
-        assert set(params) == {"sessionId", "text", "delivery"}
+        assert set(params) == {"sessionId", "contentBlocks", "delivery"}
         assert params["delivery"] in ("queue", "steer")
-        text = params["text"]
+        text = input_text(frame)
         if text == "hold-command":
             pending_commands.append((frame, serial))
-        elif text == "/compact":
+        elif text in ("/compact", "/plan Describe this image."):
             command(frame, serial)
         elif text == "silent-command":
             send({"id": frame["id"], "result": {"kind": "command", "execution": {
@@ -117,6 +124,7 @@ def sdk(peer: Path, tmp_path: Path):
     with DeepSeekHarness(
         cwd=str(tmp_path), dsh_home=str(tmp_path / "home"), request_timeout_seconds=5,
         _launch_args=(sys.executable, str(peer)),
+        env={"REQUEST_LOG": str(tmp_path / "requests.jsonl")},
     ) as harness:
         yield harness
 
@@ -157,6 +165,51 @@ def test_run_accepts_steer_for_text(sdk: DeepSeekHarness) -> None:
     result = sdk.start_session("main").run("next step", delivery="steer")
     assert isinstance(result, RunResult)
     assert result.final_response == "answer for next step"
+
+
+@pytest.mark.parametrize("entry,text,delivery", [
+    ("harness", "/plan Describe this image.", "queue"),
+    ("session", "/plan Describe this image.", "steer"),
+    ("harness", "Explain this image.", "queue"),
+    ("session", "/unknown-slash", "steer"),
+    ("session", "", "queue"),
+])
+def test_run_forwards_content_blocks_with_the_routed_result_and_notifications(
+    sdk: DeepSeekHarness, tmp_path: Path, entry: str, text: str, delivery: str,
+) -> None:
+    blocks = [
+        {"type": "text", "text": text},
+        {"type": "image", "data": "AQ==", "mimeType": "image/png", "name": "diagram.png"},
+    ]
+    notifications = []
+    result = (
+        sdk.run(blocks, session_id="main", delivery=delivery, on_notification=notifications.append)
+        if entry == "harness" else sdk.start_session("main").run(
+            blocks, delivery=delivery, on_notification=notifications.append,
+        )
+    )
+    if text == "/plan Describe this image.":
+        assert isinstance(result, CommandExecution)
+        assert [notice.payload["event"]["type"] for notice in notifications] == ["command/run", "command/done"]
+    else:
+        assert isinstance(result, RunResult)
+        assert result.final_response == "answer for " + text
+        assert result.notifications == notifications
+    sent = [json.loads(line) for line in (tmp_path / "requests.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert sent[-1]["method"] == "session/query"
+    assert sent[-1]["params"] == {
+        "sessionId": "main", "contentBlocks": blocks, "delivery": delivery,
+    }
+    assert_released(sdk)
+
+
+def test_run_normalizes_strings_without_changing_their_text(sdk: DeepSeekHarness, tmp_path: Path) -> None:
+    result = sdk.run("  preserve whitespace  ", session_id="main")
+    assert isinstance(result, RunResult)
+    sent = [json.loads(line) for line in (tmp_path / "requests.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert sent[-1]["params"] == {
+        "sessionId": "main", "contentBlocks": [{"type": "text", "text": "  preserve whitespace  "}], "delivery": "queue",
+    }
 
 
 def test_concurrent_runs_keep_their_own_results(sdk: DeepSeekHarness) -> None:
@@ -217,5 +270,5 @@ def test_run_requires_supported_delivery(sdk: DeepSeekHarness) -> None:
     session = sdk.start_session("main")
     with pytest.raises(ValueError, match="delivery"):
         session.run("ordinary", delivery="unknown")
-    with pytest.raises(ValueError, match="content-block"):
-        session.run([{"type": "text", "text": "ordinary"}], delivery="steer")
+    with pytest.raises(ValueError, match="delivery"):
+        session.run([{"type": "text", "text": "ordinary"}], delivery="unknown")

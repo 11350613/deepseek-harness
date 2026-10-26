@@ -22,10 +22,11 @@ class WaitResult(BaseModel):
 
 
 class _PlanReviews:
-    """Own cancellable stdin readers and join review callbacks before interpreter exit."""
+    """Own cancellable readers with the parent's stdin encoding and join review callbacks before exit."""
 
     # A buffered reader can consume later answers from a pipe before it exits.
     _READ_LINE = """import os, sys
+sys.stdin.reconfigure(encoding=sys.argv[1])
 if sys.stdin.isatty():
     try:
         text = input() + '\\n'
@@ -81,7 +82,7 @@ sys.stdout.buffer.write(text.encode('utf-8'))
             if self._closed.is_set() or cancelled.is_set():
                 return None
             reader = subprocess.Popen(
-                [sys.executable, "-c", self._READ_LINE], stdin=sys.stdin,
+                [sys.executable, "-c", self._READ_LINE, sys.stdin.encoding or "utf-8"], stdin=sys.stdin,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
             self._readers.append(reader)

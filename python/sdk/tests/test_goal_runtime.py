@@ -9,14 +9,13 @@ import threading
 import pytest
 from pathlib import Path
 
-from deepseek_harness import CommandExecution, RunResult, Session
+from deepseek_harness import CommandExecution, Session
 from deepseek_harness.client import NotificationSubscription
 from test_commands_runtime import (
-    _Completion, _Runtime, _SESSION_ID, _WAIT_SECONDS, _assert_request_permission,
+    _Completion, _Runtime, _SESSION_ID, _WAIT_SECONDS, _WaitResult, _assert_request_permission,
     _command_pair, _of_type, _permission_facts, _read_events,
-    _request_texts, _runtime, _text_blocks,
+    _request_texts, _runtime, _text_blocks, _wait_activity,
 )
-from test_plan_runtime import _WaitResult, _wait_activity
 
 
 def _command(runtime: _Runtime, session: Session, text: str, *, kind: str = "success") -> CommandExecution:
@@ -145,8 +144,8 @@ def test_pause_aborts_then_edit_and_resume_use_revised_goal_without_changing_oth
             assert 'Objective: "Revised objective"' in "\n".join(_request_texts(runtime.model.captured()[1]))
             _command(runtime, session, "/goal clear")
             _command(runtime, session, "/goal clear")
-            result = runtime.call(session.run, [{"type": "text", "text": "/goal Plain text objective"}])
-            assert isinstance(result, RunResult) and result.final_response == "RAW_GOAL_TEXT"
+            runtime.call(runtime.harness.client.session_prompt, session.id, [{"type": "text", "text": "/goal Plain text objective"}])
+            _wait_activity(runtime, session)
             assert "/goal Plain text objective" in _request_texts(runtime.model.captured()[-1])
     changes = _of_type(_read_events(runtime.logs), "goal/change")
     assert [e["data"]["operation"] for e in changes] == ["create", "pause", "edit", "resume", "complete", "clear"]

@@ -6,13 +6,12 @@ import threading
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel
 
 from deepseek_harness import CommandExecution, RunResult, Session, UserQuestionRequest
 from test_commands_runtime import (
     _Completion, _Runtime, _SESSION_ID, _WAIT_SECONDS, _assert_request_permission,
     _command_pair, _of_type, _permission_facts, _read_events,
-    _request_texts, _runtime, _text_blocks,
+    _request_texts, _runtime, _text_blocks, _wait_activity,
 )
 
 _PLAN = "# Implement the change\n\n- Inspect existing code.\n- Make the smallest change.\n- Run focused tests."
@@ -20,20 +19,11 @@ _PLAN_REVISED = "# Revised plan\n\n- Include a rollback procedure."
 _GUIDANCE = "You are in plan mode."
 
 
-class _WaitResult(BaseModel):
-    pass
-
-
 def _command(runtime: _Runtime, session: Session, text: str) -> CommandExecution:
     result = runtime.call(session.run, text)
     assert isinstance(result, CommandExecution)
     assert result.result.kind == "success", result.result.text
     return result
-
-
-def _wait_activity(runtime: _Runtime, session: Session) -> None:
-    # Command completion does not own the model activity that its native handler starts.
-    runtime.call(runtime.harness.client.request, "session/wait", {"sessionId": session.id}, response_model=_WaitResult)
 
 
 def _effective_system(request: dict) -> str:
@@ -224,7 +214,7 @@ def test_plan_state_survives_resume_without_changing_permissions(tmp_path: Path)
     assert [e["data"] for e in _of_type(events, "plan/mode")] == [{"active": True}]
 
 
-def test_plan_state_is_local_and_run_keeps_ordinary_text_semantics(tmp_path: Path) -> None:
+def test_plan_state_is_local_and_literal_prompts_do_not_toggle_it(tmp_path: Path) -> None:
     with _runtime(tmp_path, [_Completion("OTHER"), _Completion("PLANNING"), _Completion("RAW_INPUT")],
                   initial_permission="workspace-write") as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
@@ -232,8 +222,8 @@ def test_plan_state_is_local_and_run_keeps_ordinary_text_semantics(tmp_path: Pat
         other = runtime.harness.start_session("plan-other")
         assert isinstance(runtime.call(other.run, "Inspect your own task without tools."), RunResult)
         assert isinstance(runtime.call(session.run, "Inspect the plan without tools."), RunResult)
-        result = runtime.call(session.run, [{"type": "text", "text": "/plan off"}])
-        assert isinstance(result, RunResult)
+        runtime.call(runtime.harness.client.session_prompt, session.id, [{"type": "text", "text": "/plan off"}])
+        _wait_activity(runtime, session)
         first, second, third = runtime.model.captured()
         assert _GUIDANCE not in _effective_system(first)
         assert _GUIDANCE in _effective_system(second)

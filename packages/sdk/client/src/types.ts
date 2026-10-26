@@ -86,4 +86,5 @@ export interface RunResult {
 export type { ContentBlock }
 export type { CommandExecution }
 export type { SdkPromptContentBlock }
+export type { SdkEncodedImageBlock } from '@deepseek-ai/dsh-sdk-protocol'
 export type { SdkUserQuestionAnswer, SdkUserQuestionResult, SdkUserQuestionRequest } from '@deepseek-ai/dsh-sdk-protocol'

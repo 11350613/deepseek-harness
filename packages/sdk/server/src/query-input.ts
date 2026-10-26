@@ -6,7 +6,7 @@ import type { CommandDescriptor } from '@deepseek-ai/dsh-commands/types'
  * Recognize compact, explicit permission changes, plan, and goal input; other text remains a prompt.
  * @param text - original input; the caller preserves it on the ordinary-prompt path.
  * @param commands - exact receiving Agent's current command descriptors.
- * @returns the supported command line using its effective name, otherwise undefined.
+ * @returns the supported command line using its effective name and a native-compatible separator, otherwise undefined.
  */
 export function queryCommand(text: string, commands: readonly CommandDescriptor[]): string | undefined {
   const trimmed = text.trim()
@@ -19,9 +19,10 @@ export function queryCommand(text: string, commands: readonly CommandDescriptor[
         : name === '目标' ? '@deepseek-ai/dsh-command-goal' : undefined
   const descriptor = commands.find(command => command.name === name)
     ?? (alias === undefined ? undefined : commands.find(command => command.definitionId === alias))
+  const rawInput = separator === -1 ? '' : trimmed.slice(separator).replace(/^[^\S \t\r\n]/u, ' ')
   if (descriptor?.name === 'compact' && separator === -1) return '/compact'
-  if (descriptor?.name === 'permission' && separator !== -1) return `/permission${trimmed.slice(separator)}`
-  if (descriptor?.name === 'plan') return `/plan${separator === -1 ? '' : trimmed.slice(separator)}`
-  if (descriptor?.name === 'goal') return `/goal${separator === -1 ? '' : trimmed.slice(separator)}`
+  if (descriptor?.name === 'permission' && separator !== -1) return `/permission${rawInput}`
+  if (descriptor?.name === 'plan') return `/plan${rawInput}`
+  if (descriptor?.name === 'goal') return `/goal${rawInput}`
   return undefined
 }

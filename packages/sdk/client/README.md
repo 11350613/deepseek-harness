@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-sdk-client` lets TypeScript programs drive a complete DeepSeek Harness runtime over stdio JSON-RPC. Use `run()` for ordinary text, supported slash commands, or literal content blocks, and `onNotification` to observe its notifications. `HarnessClient` provides direct protocol access. Callers may provide `dshBin`; otherwise the client resolves the same-version `@deepseek-ai/dsh` executable. The client owns the subprocess, reports typed failures, and reaps it on `close()` or `await using`.
+`dsh-sdk-client` lets TypeScript programs drive a complete DeepSeek Harness runtime over stdio JSON-RPC. Use `run()` for ordinary text, supported slash commands, and image content blocks, and `onNotification` to observe its notifications. `HarnessClient` provides direct protocol access. Callers may provide `dshBin`; otherwise the client resolves the same-version `@deepseek-ai/dsh` executable. The client owns the subprocess, reports typed failures, and reaps it on `close()` or `await using`.
 
 ## Table of Contents
 
@@ -56,7 +56,9 @@ The subprocess starts lazily on first use and stays owned by the instance across
 
 ### Run text and native commands
 
-`await session.run(text, { delivery: 'queue', onNotification })` routes non-blank text through the runtime's [supported command forms and Desktop aliases](../server/README.md#command-input). Unrecognized input remains ordinary text. Delivery defaults to `queue`; `steer` targets the next available step for ordinary text. Content-block arrays remain literal queued prompts; requesting steer for them throws before sending.
+`await session.run(input, { delivery: 'queue', onNotification })` accepts a string or `SdkPromptContentBlock[]` and routes both through the runtime's [supported command forms and Desktop aliases](../server/README.md#command-input). Unrecognized input remains an ordinary prompt with its original block order. Delivery defaults to `queue`; `steer` targets the next available step for ordinary input, including images. Commands retain their native admission and timing.
+
+Select a model that supports image input. Submit a command and image in the existing content-block array, for example `session.run([{ type: 'text', text: '/plan Analyze this image.' }, { type: 'image', data: imageBase64, mimeType: 'image/png' }])`; `harness.run()` accepts the same input. Plan input and goal creation or editing accept images; `/plan off`, goal controls, compact, and permission commands reject them through the [native attachment rules](../server/README.md#command-input). Native command input supports encoded raster images, not general file uploads or client-supplied attachment references.
 
 ```ts
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
@@ -68,7 +70,7 @@ if ('commandId' in result) console.log(result.result)
 else console.log(result.finalResponse)
 ```
 
-Strings return `CommandExecution` for a command or `RunResult` for ordinary prompt activity. Commands settle without requiring a turn or idle notification. Business refusals remain `result.kind === "error"`; routing, protocol, transport and observer failures reject. A command retains `commandId` and optional summary `sourceEventSeq` instead of selecting an assistant reply. To send slash text literally, use `session.run([{ type: 'text', text: '/compact' }])`.
+Both string and content-block input return `CommandExecution` for a command or `RunResult` for ordinary prompt activity. Commands settle without requiring a turn or idle notification. Business refusals remain `result.kind === "error"`; routing, protocol, transport and observer failures reject. A command retains `commandId` and optional summary `sourceEventSeq` instead of selecting an assistant reply. To bypass native command routing, use the low-level `client.prompt(sessionId, blocks)` and manage the subsequent subscription and wait yourself; runtime skill recognition still applies.
 
 Every call owns a subscription installed before sending and released before settlement. `onNotification` observes ordinary receipt-to-idle activity in wire order. Command callbacks replay Session-tree notifications from subscription through their own `command/done` after the command response; overlapping work can appear in that interval. Concurrent calls keep their own results, so a running model turn can coexist with a command's native busy result. Timeout or observer failure does not roll back runtime work or authorize automatic retry; command completion does not end independent model activity.
 
@@ -78,7 +80,7 @@ Launch options supply initial values. A permission command changes only its targ
 
 ### Lower-level control with HarnessClient
 
-`client.query(sessionId, text, delivery)` waits for a validated prompt receipt or command result. `client.executeCommand(sessionId, line)` executes supported command names without prompt fallback; it requires a non-blank permission preset. A non-blank unknown preset reaches the native handler and returns `result.kind === "error"`. Subscribe before these calls when notifications are needed. A request timeout abandons only the local wait; runtime work can continue afterward.
+`client.query(sessionId, input, delivery)` accepts a string or content-block array and waits for a validated prompt receipt or command result. `client.executeCommand(sessionId, line)` executes supported command names without prompt fallback or attachments; it requires a non-blank permission preset. A non-blank unknown preset reaches the native handler and returns `result.kind === "error"`. Subscribe before these calls when notifications are needed. A request timeout abandons only the local wait; runtime work can continue afterward.
 
 `/goal` uses the native goal handler and can start automatic rounds after its `CommandExecution`. Subscribe before sending; observe a terminal `goal/change` operation before using `session/wait` for the closing reply. Idle between rounds is not goal completion. See the [server semantics](../server/README.md) for pause, clear, restoration, and permission behavior.
 

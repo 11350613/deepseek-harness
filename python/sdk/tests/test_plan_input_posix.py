@@ -1,5 +1,6 @@
 """POSIX terminal input and SIGINT cleanup for the plan example."""
 
+import os
 from pathlib import Path
 import sys
 
@@ -14,6 +15,22 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX PTYs and 
 
 def test_plan_input_preserves_terminal_feedback(tmp_path: Path) -> None:
     assert _run(tmp_path, "k\n继续检查\nd\n".encode(), terminal=True) == [
+        {"answers": [{"id": "plan-review", "selected": ["Keep planning"], "custom": "继续检查"}]},
+        {"cancelled": True},
+    ]
+
+
+def test_plan_input_preserves_reconfigured_terminal_feedback(tmp_path: Path) -> None:
+    assert _run(tmp_path, "k\nréviser\nd\n".encode("latin-1"), terminal=True, stdin_encoding="latin-1") == [
+        {"answers": [{"id": "plan-review", "selected": ["Keep planning"], "custom": "réviser"}]},
+        {"cancelled": True},
+    ]
+
+
+def test_plan_input_preserves_explicit_utf8_mode_with_ascii_child(tmp_path: Path) -> None:
+    env = {**os.environ, "LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+    env.pop("PYTHONIOENCODING", None)
+    assert _run(tmp_path, "k\n继续检查\nd\n".encode("utf-8"), python_args=("-X", "utf8"), env=env) == [
         {"answers": [{"id": "plan-review", "selected": ["Keep planning"], "custom": "继续检查"}]},
         {"cancelled": True},
     ]

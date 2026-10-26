@@ -96,7 +96,9 @@ if sys.platform != "win32":
     import resource
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
-example_path, peer, root_argument = sys.argv[1:]
+example_path, peer, root_argument, stdin_encoding = sys.argv[1:]
+if stdin_encoding:
+    sys.stdin.reconfigure(encoding=stdin_encoding)
 root = Path(root_argument)
 example = runpy.run_path(example_path)
 readers = []
@@ -147,6 +149,7 @@ def _wait_prompt(process: subprocess.Popen[bytes], output: Path, marker: str) ->
 
 def _run(
     tmp_path: Path, data: bytes, *, stage: str | None = None, action: str | None = None, terminal: bool = False,
+    stdin_encoding: str | None = None, python_args: tuple[str, ...] = (), env: dict[str, str] | None = None,
 ) -> list[dict]:
     peer = tmp_path / "peer.py"
     peer.write_text(_PEER, encoding="utf-8")
@@ -154,7 +157,8 @@ def _run(
     wrapper.write_text(_WRAPPER, encoding="utf-8")
     output = tmp_path / "stdout.txt"
     errors = tmp_path / "stderr.txt"
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    if env is None:
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     with ExitStack() as stack, output.open("wb") as stdout, errors.open("wb") as stderr:
         if terminal:
             master, slave = os.openpty()
@@ -164,7 +168,7 @@ def _run(
         else:
             child_input = subprocess.PIPE
         process = subprocess.Popen(
-            [sys.executable, str(wrapper), str(_EXAMPLE), str(peer), str(tmp_path)],
+            [sys.executable, *python_args, str(wrapper), str(_EXAMPLE), str(peer), str(tmp_path), stdin_encoding or ""],
             stdin=child_input, stdout=stdout, stderr=stderr, env=env, start_new_session=os.name != "nt",
         )
         if not terminal:
@@ -202,6 +206,10 @@ def _run(
     cleanup = json.loads((tmp_path / "cleanup.json").read_text())
     assert cleanup["readers"] and all(reader["returncode"] is not None for reader in cleanup["readers"])
     assert cleanup["callbacks"] == []
+    answers = tmp_path / "answers.jsonl"
+    if answers.is_file():
+        responses = [json.loads(line) for line in answers.read_text().splitlines()]
+        assert not [response for response in responses if "error" in response], responses
     return [json.loads(line) for line in (tmp_path / "callbacks.jsonl").read_text().splitlines()]
 
 
@@ -216,6 +224,13 @@ def _run(
 ])
 def test_plan_input_preserves_piped_lines_and_eof(tmp_path: Path, data: bytes, expected: list[dict]) -> None:
     assert _run(tmp_path, data) == expected
+
+
+def test_plan_input_preserves_reconfigured_stdin_feedback(tmp_path: Path) -> None:
+    assert _run(tmp_path, "k\nréviser\nd\n".encode("latin-1"), stdin_encoding="latin-1") == [
+        {"answers": [{"id": "plan-review", "selected": ["Keep planning"], "custom": "réviser"}]},
+        {"cancelled": True},
+    ]
 
 
 def test_plan_input_print_failure_reaps_reader_before_owner_exit(monkeypatch: pytest.MonkeyPatch) -> None:

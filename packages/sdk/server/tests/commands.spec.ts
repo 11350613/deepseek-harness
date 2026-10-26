@@ -1,7 +1,8 @@
 import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import CommandRuntime, { type CommandDefinition, type CommandInvocation } from '@deepseek-ai/dsh-commands'
+import CommandRuntime, { CommandDefinitionId, type CommandDefinition, type CommandInvocation } from '@deepseek-ai/dsh-commands'
+import { AttachmentId, type AttachmentStore, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { JsonRpcTransportPeer } from '@deepseek-ai/dsh-sdk-protocol'
@@ -77,10 +78,123 @@ describe('SDK command dispatch', () => {
   })
 
   it.each([undefined, {}, { sessionId: '' }, { sessionId: 's', line: 1 },
-    { sessionId: 's', line: '/compact', attachments: [] }])('rejects malformed wire parameters %j before creating a Session', async (params) => {
+    { sessionId: 's', line: '/compact', extra: true }, { sessionId: 's', line: '/compact', attachments: [] }])('rejects malformed wire parameters %j before creating a Session', async (params) => {
     const h = await setup()
     await h.initialize()
     await expect(h.server.handleRequest('session/command', params)).rejects.toThrow('requires only')
+    expect(h.ctx.agents.list()).toEqual([])
+  })
+
+  it('rejects malformed content before creating a Session', async () => {
+    const h = await setup()
+    await h.initialize()
+    const image = { type: 'image', data: 'AQ==', mimeType: 'image/png' }
+    const invalid = [undefined, null, {}, 'image', [], [null], [1], [[]], [{}], [{ type: 1 }],
+      [{ type: 'text' }], [{ type: 'text', text: 1 }], [{ type: 'text', text: 'go', extra: true }],
+      [{ type: 'text', text: '' }], [{ type: 'text', text: '  ' }, { type: 'text', text: '\n' }],
+      [{ type: 'image', mimeType: 'image/png' }], [{ type: 'image', attachment: null }],
+      [{ type: 'image', attachment: [] }], [{ type: 'image', attachment: 'missing' }],
+      [{ ...image, data: 1 }], [{ type: 'image', data: 'AQ==' }],
+      [{ ...image, mimeType: 'image/svg+xml' }], [{ ...image, name: null }],
+      [{ ...image, attachment: { attachmentId: 'other-session' } }]]
+    for (const contentBlocks of invalid) {
+      await expect(h.server.handleRequest('session/query', {
+        sessionId: 'invalid-content', delivery: 'queue', contentBlocks,
+      })).rejects.toThrow(TypeError)
+      expect(h.ctx.agents.list()).toEqual([])
+    }
+  })
+
+  it.each(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])('leaves command attachment support to the native registry for %s', async (mimeType) => {
+    const h = await setup()
+    await h.initialize()
+    const handler = vi.fn(() => ({ kind: 'success' as const }))
+    h.register(handler)
+    const response = await h.server.handleRequest('session/query', {
+      sessionId: 'refused-image', delivery: 'queue',
+      contentBlocks: [{ type: 'text', text: '/compact' },
+        { type: 'image', data: 'AQ==', mimeType, ...mimeType === 'image/png' ? {} : { name: 'example' } }],
+    })
+    expect(response).toMatchObject({ kind: 'command', execution: {
+      result: { kind: 'error', text: '/compact does not accept attachments' },
+    } })
+    expect(handler).not.toHaveBeenCalled()
+    expect(h.ctx.agents.get(SessionId('refused-image'))!.session.snapshotEvents().map(event => event.type))
+      .toEqual(['command/run', 'command/done'])
+  })
+
+  it.each(['image-first', 'text-first'])('admits named images through the native command executor in %s order', async (order) => {
+    const h = await setup()
+    await h.initialize()
+    const ref: ImageAttachmentRef = {
+      attachmentId: AttachmentId('image'), mediaType: 'image/png', bytes: 1, width: 1, height: 1, name: 'diagram.png',
+    }
+    const saveImages = vi.fn<AttachmentStore['saveImages']>(async () => [ref])
+    const store: Pick<AttachmentStore, 'saveImages'> = { saveImages }
+    h.ctx.provide('attachments', store as AttachmentStore)
+    const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const }))
+    h.ctx.effect(() => h.ctx.commands.register({
+      name: 'plan', description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
+    }))
+    const attachments = [{ type: 'image', data: 'AQ==', mimeType: 'image/png', name: 'diagram.png' }]
+    const text = { type: 'text', text: '/plan inspect' }
+    const response = await h.server.handleRequest('session/query', {
+      sessionId: 'images', delivery: 'steer',
+      contentBlocks: order === 'image-first' ? [...attachments, text] : [text, ...attachments],
+    })
+    expect(response).toMatchObject({ kind: 'command', execution: { result: { kind: 'success' } } })
+    expect(saveImages).toHaveBeenCalledWith([{ data: Uint8Array.of(1), mediaType: 'image/png', name: 'diagram.png' }])
+    expect(handler.mock.calls[0]![0]).toMatchObject({ rawInput: ' inspect', attachments: [{ type: 'image', attachment: ref }] })
+  })
+
+  it.each([
+    { type: 'text', text: 'another command paragraph' },
+    { type: 'text', text: '' },
+    { type: 'image', attachment: { attachmentId: 'stored-image', mediaType: 'image/png', bytes: 1, width: 1, height: 1 } },
+    { type: 'file', attachment: { attachmentId: 'stored-file', name: 'notes.txt', bytes: 1 } },
+    { type: 'reasoning', text: 'earlier reasoning' },
+  ])('rejects a recognized command with unsupported content %j without executing or falling back', async (extra) => {
+    const h = await setup()
+    await h.initialize()
+    const saveImages = vi.fn<AttachmentStore['saveImages']>(async () => [])
+    const store: Pick<AttachmentStore, 'saveImages'> = { saveImages }
+    h.ctx.provide('attachments', store as AttachmentStore)
+    const handler = vi.fn(() => ({ kind: 'success' as const }))
+    h.ctx.effect(() => h.ctx.commands.register({
+      name: 'plan', description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
+    }))
+    await expect(h.server.handleRequest('session/query', {
+      sessionId: 'refused-content', delivery: 'queue', contentBlocks: [
+        { type: 'image', data: 'AQ==', mimeType: 'image/png' },
+        { type: 'text', text: '/plan off' }, extra,
+      ],
+    })).rejects.toThrow('Native SDK commands require one text block and optional encoded image blocks')
+    expect(handler).not.toHaveBeenCalled()
+    expect(saveImages).not.toHaveBeenCalled()
+    expect(h.ctx.agents.get(SessionId('refused-content'))!.session.snapshotEvents()).toEqual([])
+  })
+
+  it('cancels a command whose image admission overlaps shutdown before invoking its handler', async () => {
+    const h = await setup()
+    await h.initialize()
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<readonly ImageAttachmentRef[]>()
+    onTestFinished(() => { release.resolve([]) })
+    const saveImages: AttachmentStore['saveImages'] = () => { entered.resolve(undefined); return release.promise }
+    h.ctx.provide('attachments', { saveImages } as AttachmentStore)
+    const handler = vi.fn(() => ({ kind: 'success' as const }))
+    h.ctx.effect(() => h.ctx.commands.register({
+      name: 'plan', description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
+    }))
+    const request = h.server.query({ sessionId: SessionId('image-shutdown'), delivery: 'queue',
+      contentBlocks: [{ type: 'text', text: '/plan inspect' }, { type: 'image', data: 'AQ==', mimeType: 'image/png' }],
+    })
+    const rejected = expect(request).rejects.toThrow('shutting down')
+    await entered.promise
+    const shutdown = h.server.shutdown()
+    release.resolve([{ attachmentId: AttachmentId('image'), mediaType: 'image/png', bytes: 1, width: 1, height: 1 }])
+    await Promise.all([rejected, shutdown])
+    expect(handler).not.toHaveBeenCalled()
     expect(h.ctx.agents.list()).toEqual([])
   })
 
@@ -115,7 +229,7 @@ describe('SDK command dispatch', () => {
     const line = '/permission  deployment-preset'
     const result = entry === 'strict'
       ? await h.server.executeCommand({ sessionId, line })
-      : await h.server.query({ sessionId, text: line, delivery: 'steer' })
+      : await h.server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }], delivery: 'steer' })
     expect(handler).toHaveBeenCalledOnce()
     expect(handler.mock.calls[0]![0].rawInput).toBe('  deployment-preset')
     const expected = { result: { kind: 'error', text: 'native preset refusal' } }
@@ -129,11 +243,36 @@ describe('SDK command dispatch', () => {
     await h.initialize()
     const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const, text: 'native plan result' }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'plan', description: 'Plan', input: { hint: '[off|message]' }, handler }))
-    const result = await h.server.query({ sessionId: SessionId('plan'), text: line, delivery: 'queue' })
+    const result = await h.server.query({ sessionId: SessionId('plan'), contentBlocks: [{ type: 'text', text: line }], delivery: 'queue' })
     expect(result).toMatchObject({ kind: 'command', execution: { result: { kind: 'success', text: 'native plan result' } } })
     expect(handler.mock.calls[0]![0].rawInput).toBe(line.slice('/plan'.length))
     expect(h.ctx.agents.get(SessionId('plan'))!.session.snapshotEvents().map(event => event.type))
       .toEqual(['command/run', 'command/done'])
+  })
+
+  it.each([
+    ['/plan\u3000Inspect\u3000the\nchange', 'plan', '@deepseek-ai/dsh-plan-mode', ' Inspect\u3000the\nchange'],
+    ['/计划\u00a0\t设计\u00a0方案', 'plan', '@deepseek-ai/dsh-plan-mode', ' \t设计\u00a0方案'],
+    ['/goal\u2003Finish\u3000the task', 'goal', '@deepseek-ai/dsh-command-goal', ' Finish\u3000the task'],
+    ['/目标\u3000\u00a0完成任务', 'goal', '@deepseek-ai/dsh-command-goal', ' \u00a0完成任务'],
+    ['/permission\u00a0read-only', 'permission', '@deepseek-ai/dsh-permission-presets', ' read-only'],
+    ['/权限\u202f\tread-only', 'permission', '@deepseek-ai/dsh-permission-presets', ' \tread-only'],
+  ])('executes Unicode-separated input %j through its native handler', async (line, name, definitionId, rawInput) => {
+    const h = await setup()
+    await h.initialize()
+    const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const, text: 'native outcome' }))
+    h.ctx.effect(() => h.ctx.commands.register({
+      name, definitionId: CommandDefinitionId(definitionId), description: 'Fixture command', input: { hint: 'Input' }, handler,
+    }))
+    const sessionId = SessionId('unicode-command')
+    const result = await h.server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }], delivery: 'queue' })
+    expect(result).toMatchObject({ kind: 'command', execution: { result: { kind: 'success', text: 'native outcome' } } })
+    expect(handler).toHaveBeenCalledOnce()
+    expect(handler.mock.calls[0]![0].rawInput).toBe(rawInput)
+    const events = h.ctx.agents.get(sessionId)!.session.snapshotEvents()
+    expect(events.map(event => event.type)).toEqual(['command/run', 'command/done'])
+    expect(events[0]?.data).toMatchObject({ name, args: rawInput })
+    expect(events[1]?.data).toMatchObject({ kind: 'success', text: 'native outcome' })
   })
 
   it('passes arguments unchanged and propagates handler failures', async () => {
@@ -152,7 +291,7 @@ describe('SDK command dispatch', () => {
     await h.command()
     await h.loop.dispose()
     await expect(h.command()).rejects.toThrow('disposed outside the server')
-    await expect(h.server.query({ sessionId: SessionId('commands'), text: '/compact', delivery: 'queue' }))
+    await expect(h.server.query({ sessionId: SessionId('commands'), contentBlocks: [{ type: 'text', text: '/compact' }], delivery: 'queue' }))
       .rejects.toThrow('disposed outside the server')
   })
 
@@ -192,7 +331,7 @@ describe('SDK command dispatch', () => {
       return handle
     })
     const execution = entry === 'command' ? h.command()
-      : h.server.query({ sessionId: SessionId('commands'), text: entry === 'query-command' ? '/compact' : 'ordinary input', delivery: 'queue' })
+      : h.server.query({ sessionId: SessionId('commands'), contentBlocks: [{ type: 'text', text: entry === 'query-command' ? '/compact' : 'ordinary input' }], delivery: 'queue' })
     const rejected = expect(execution).rejects.toThrow('shutting down')
     await created.promise
     const shutdown = h.server.shutdown()
@@ -204,10 +343,12 @@ describe('SDK command dispatch', () => {
 })
 
 describe('SDK query dispatch', () => {
-  it.each([undefined, {}, { sessionId: '', text: 'go', delivery: 'queue' },
-    { sessionId: 'q', text: '', delivery: 'queue' }, { sessionId: 'q', text: '  ', delivery: 'queue' },
-    { sessionId: 'q', text: 'go', delivery: 'later' },
-    { sessionId: 'q', text: 'go', delivery: 'queue', permission: 'full' }])('rejects invalid query fields %j', async (params) => {
+  it.each([undefined, {}, { sessionId: '', contentBlocks: [{ type: 'text', text: 'go' }], delivery: 'queue' },
+    { sessionId: 'q', text: 'go', delivery: 'queue' },
+    { sessionId: 'q', contentBlocks: [{ type: 'text', text: 'go' }], delivery: 'later' },
+    { sessionId: 'q', contentBlocks: [{ type: 'text', text: 'go' }], delivery: 'queue', permission: 'full' },
+    { sessionId: 'q', contentBlocks: [{ type: 'text', text: 'go' }], delivery: 'queue', attachments: [] },
+  ])('rejects invalid query fields %j', async (params) => {
     const h = await setup()
     await h.initialize()
     await expect(h.server.handleRequest('session/query', params)).rejects.toThrow('session/query requires only')
@@ -216,7 +357,7 @@ describe('SDK query dispatch', () => {
 
   it.each(['/compact', '/permission read-only'])('preserves %s without a command registry and requires a live initialized server', async (text) => {
     const h = await setup(false)
-    const params = { sessionId: SessionId('q'), text, delivery: 'queue' as const }
+    const params = { sessionId: SessionId('q'), contentBlocks: [{ type: 'text' as const, text }], delivery: 'queue' as const }
     await expect(h.server.query(params)).rejects.toThrow('not initialized')
     const model = new TextModel()
     h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
@@ -233,7 +374,7 @@ describe('SDK query dispatch', () => {
     await h.initialize()
     h.register(() => ({ kind: 'error', text: 'native refusal' }))
     const response = await h.server.handleRequest('session/query', {
-      sessionId: 'q', text: ' \n/compact\t ', delivery: 'queue',
+      sessionId: 'q', contentBlocks: [{ type: 'text', text: ' \n/compact\t ' }], delivery: 'queue',
     })
     expect(response).toMatchObject({ kind: 'command', execution: { result: { kind: 'error', text: 'native refusal' } } })
     expect(h.ctx.agents.get(SessionId('q'))!.session.snapshotEvents().map(event => event.type))
@@ -246,12 +387,51 @@ describe('SDK query dispatch', () => {
     const model = new TextModel()
     h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
     await h.server.initialize({ cwd: process.cwd(), provider: 'query-model', model: 'model' })
-    expect(await h.server.query({ sessionId: SessionId('q'), text, delivery: 'queue' })).toMatchObject({ kind: 'prompt' })
+    expect(await h.server.query({ sessionId: SessionId('q'), contentBlocks: [{ type: 'text', text }], delivery: 'queue' })).toMatchObject({ kind: 'prompt' })
     await h.server.wait({ sessionId: 'q' })
     expect(model.requests).toHaveLength(1)
     expect(model.requests[0]!.messages.some(message => message.role === 'user'
       && message.content.some(block => block.type === 'text' && block.text === text))).toBe(true)
     expect(h.ctx.agents.get(SessionId('q'))!.session.snapshotEvents().some(event => event.type === 'command/run')).toBe(false)
+  })
+
+  it.each(['queue', 'steer'] as const)('preserves ordinary mixed blocks in order with %s delivery', async (delivery) => {
+    const h = await setup()
+    await h.initialize()
+    h.register(() => ({ kind: 'success' }))
+    await h.command()
+    const agent = h.ctx.agents.get(SessionId('commands'))!
+    const steer = vi.spyOn(agent, 'steer').mockImplementation(() => {})
+    const queued = vi.spyOn(agent, 'followup').mockImplementation(() => {})
+    const refs: ImageAttachmentRef[] = [
+      { attachmentId: AttachmentId('first'), mediaType: 'image/png', bytes: 1, width: 1, height: 1 },
+      { attachmentId: AttachmentId('second'), mediaType: 'image/png', bytes: 1, width: 1, height: 1 },
+    ]
+    const saveImages = vi.fn<AttachmentStore['saveImages']>(async () => refs)
+    const store: Pick<AttachmentStore, 'saveImages'> = { saveImages }
+    h.ctx.provide('attachments', store as AttachmentStore)
+    const contentBlocks = [
+      { type: 'text', text: 'Keep the original ordering.' },
+      { type: 'image', data: 'AQ==', mimeType: 'image/png' },
+      { type: 'text', text: '/compact' },
+      { type: 'image', attachment: refs[0] },
+      { type: 'image', data: 'Ag==', mimeType: 'image/png' },
+      { type: 'file', attachment: { attachmentId: 'saved-file', name: 'notes.txt', bytes: 1 } },
+      { type: 'reasoning', text: 'existing content' },
+    ]
+    expect(await h.server.handleRequest('session/query', {
+      sessionId: 'commands', contentBlocks, delivery,
+    })).toMatchObject({ kind: 'prompt' })
+    expect(saveImages).toHaveBeenCalledWith([
+      { data: Uint8Array.of(1), mediaType: 'image/png' }, { data: Uint8Array.of(2), mediaType: 'image/png' },
+    ])
+    const admitted = [contentBlocks[0], { type: 'image', attachment: refs[0] }, contentBlocks[2], contentBlocks[3],
+      { type: 'image', attachment: refs[1] }, contentBlocks[5], contentBlocks[6]]
+    const selected = delivery === 'queue' ? queued : steer
+    const other = delivery === 'queue' ? steer : queued
+    expect(selected).toHaveBeenCalledWith(expect.objectContaining({ content: admitted }))
+    expect(other).not.toHaveBeenCalled()
+    expect(agent.session.snapshotEvents().map(event => event.type)).toEqual(['command/run', 'command/done'])
   })
 
   it('delivers a steer query through the existing Agent operation', async () => {
@@ -262,7 +442,7 @@ describe('SDK query dispatch', () => {
     const agent = h.ctx.agents.get(SessionId('commands'))!
     const steer = vi.spyOn(agent, 'steer').mockImplementation(() => {})
     const queued = vi.spyOn(agent, 'followup').mockImplementation(() => {})
-    const result = await h.server.query({ sessionId: SessionId('commands'), text: 'next step', delivery: 'steer' })
+    const result = await h.server.query({ sessionId: SessionId('commands'), contentBlocks: [{ type: 'text', text: 'next step' }], delivery: 'steer' })
     expect(result).toMatchObject({ kind: 'prompt' })
     expect(steer).toHaveBeenCalledWith(expect.objectContaining({ content: [{ type: 'text', text: 'next step' }] }))
     expect(queued).not.toHaveBeenCalled()
@@ -276,7 +456,7 @@ describe('SDK query dispatch', () => {
     const handler = vi.fn(() => ({ kind: 'success' as const }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'feedback', description: 'Feedback', input: { hint: 'Task' }, handler }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', description: 'Permission', input: { hint: 'Preset' }, handler }))
-    await expect(h.server.query({ sessionId: SessionId('q'), text, delivery: 'queue' })).resolves.toMatchObject({ kind: 'prompt' })
+    await expect(h.server.query({ sessionId: SessionId('q'), contentBlocks: [{ type: 'text', text }], delivery: 'queue' })).resolves.toMatchObject({ kind: 'prompt' })
     await h.server.wait({ sessionId: 'q' })
     expect(handler).not.toHaveBeenCalled()
     expect(model.requests[0]!.messages.some(message => message.content.some(block => block.type === 'text' && block.text === text))).toBe(true)

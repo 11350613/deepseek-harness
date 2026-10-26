@@ -17,6 +17,7 @@ describe('SDK query text recognition', () => {
     ['/permission workspace-write', '/permission workspace-write'],
     [' \n/权限\tread-only \t', '/permission\tread-only'],
     ['/permission\ncustom-deployment-preset', '/permission\ncustom-deployment-preset'],
+    ['/permission\rread-only', '/permission\rread-only'],
     ['/permission  missing extra', '/permission  missing extra'],
     ['/plan', '/plan'], ['/计划', '/plan'], [' \n/plan off\t ', '/plan off'],
     ['/计划\nDesign the change', '/plan\nDesign the change'],
@@ -25,6 +26,17 @@ describe('SDK query text recognition', () => {
     ['/goal edit new objective', '/goal edit new objective'], ['/goal pause', '/goal pause'],
     ['/goal resume', '/goal resume'], ['/goal clear', '/goal clear'],
   ])('recognizes the Desktop form %j', (text, expected) => {
+    expect(queryCommand(text, commands)).toBe(expected)
+  })
+
+  it.each([
+    ['/plan\u3000Inspect\u3000the\nchange', '/plan Inspect\u3000the\nchange'],
+    ['/计划\u00a0\t设计\u00a0方案', '/plan \t设计\u00a0方案'],
+    ['/goal\u2003Finish\u3000the task', '/goal Finish\u3000the task'],
+    ['/目标\u3000\u00a0完成任务', '/goal \u00a0完成任务'],
+    ['/permission\u00a0read-only', '/permission read-only'],
+    ['/权限\u202f\tread-only', '/permission \tread-only'],
+  ])('normalizes only the first Unicode separator in %j', (text, expected) => {
     expect(queryCommand(text, commands)).toBe(expected)
   })
 

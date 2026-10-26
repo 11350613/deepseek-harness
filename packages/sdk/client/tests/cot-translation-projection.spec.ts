@@ -56,6 +56,7 @@ it('preserves common translation requests and results in SDK events without repl
   })
   try {
     const result = await harness.run([{ type: 'text', text: 'Keep the original response.' }])
+    if ('commandId' in result) throw new Error('expected ordinary prompt activity')
     const projection = {
       finalResponse: result.finalResponse,
       auditEvents: result.events.filter(isTranslationAudit),

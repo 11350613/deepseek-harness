@@ -332,7 +332,9 @@ reader.on('line', (line) => {
     }
     case 'session/query':
     case 'session/prompt': {
-      if (frame.method === 'session/query' && frame.params?.text === '/compact') {
+      const blocks = frame.params?.contentBlocks as { type: string; text?: string }[]
+      const text = blocks.filter(block => block.type === 'text').map(block => block.text).join('\n')
+      if (frame.method === 'session/query' && text === '/compact') {
         const execution: unknown = env.FAKE_COMMAND_RESULT === undefined
           ? { commandId: 'command-1', result: { kind: 'success', text: '/compact' } }
           : JSON.parse(env.FAKE_COMMAND_RESULT)
