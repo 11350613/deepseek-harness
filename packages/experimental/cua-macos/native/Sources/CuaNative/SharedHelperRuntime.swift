@@ -328,7 +328,7 @@ final class SharedSocket: @unchecked Sendable {
         } catch {
             // A failed launch owns this new instance; existing shared services never enter this path.
             if kill(pid, 0) == 0 {
-                guard application.forceTerminate() else {
+                guard application.forceTerminate() || (kill(pid, 0) != 0 && errno == ESRCH) else {
                     throw NativeFailure(code: "NATIVE_CLEANUP", message: "Computer Use startup failed (\(error)); macOS refused to stop helper PID \(pid)")
                 }
                 let cleanupDeadline = options.startupDeadline()

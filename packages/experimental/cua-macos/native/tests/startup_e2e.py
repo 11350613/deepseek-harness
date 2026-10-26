@@ -15,6 +15,7 @@ import time
 import uuid
 
 from native_test_support import copy_helper, default_binary, ROOT, unregister_helper
+from shared_helper_e2e import Connection, wait_released
 
 
 def wait_exited(pid):
@@ -39,15 +40,22 @@ def cleanup_fixture(root):
         wait_exited(pid)
 
 
-def launch(helper, runtime, timeout_ms):
+def launch(helper, runtime, timeout_ms, expected_status=1):
     key = hashlib.sha256(helper.read_bytes()).hexdigest()
     start = time.monotonic()
     result = subprocess.run([str(helper), "--ensure-shared", "--runtime-key", key,
                              "--runtime-directory", str(runtime), "--startup-timeout-ms", str(timeout_ms)],
                             capture_output=True, text=True, timeout=timeout_ms / 1000 + 10)
     elapsed = time.monotonic() - start
-    assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
-    return json.loads(result.stdout), elapsed
+    try:
+        response = json.loads(result.stdout)
+    except ValueError as error:
+        raise AssertionError((elapsed, result.returncode, result.stdout, result.stderr)) from error
+    if result.returncode != expected_status and response.get("type") == "ready":
+        os.kill(response["pid"], signal.SIGKILL)
+        wait_exited(response["pid"])
+    assert result.returncode == expected_status, (result.returncode, response, result.stderr)
+    return response, elapsed
 
 
 def main():
@@ -63,8 +71,23 @@ def main():
         cleanup.callback(unregister_helper, helper)
         runtime = root / "r"
         runtime.mkdir(mode=0o700)
-        executable_key = hashlib.sha256(str(helper.resolve()).encode()).hexdigest()
-        with (runtime / f"path-{executable_key}.lock").open("w") as held:
+        ready, elapsed = launch(helper, runtime, 5000, expected_status=0)
+        try:
+            client = Connection(runtime / (ready["runtimeKey"] + ".sock"), ready["runtimeKey"])
+            client.close()
+            wait_released(runtime / (ready["runtimeKey"] + ".lock"), ready["pid"])
+        except BaseException:
+            try:
+                os.kill(ready["pid"], signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            wait_exited(ready["pid"])
+            raise
+        print(f"PASS: cold application launch within the default 5s budget, {elapsed:.3f}s", flush=True)
+        # Foundation canonicalizes /private/tmp to /tmp; use the lock created by the real server.
+        path_locks = list(runtime.glob("path-*.lock"))
+        assert len(path_locks) == 1, path_locks
+        with path_locks[0].open("r+") as held:
             os.chmod(held.name, 0o600)
             fcntl.flock(held, fcntl.LOCK_EX)
             failure, elapsed = launch(helper, runtime, 10000)
