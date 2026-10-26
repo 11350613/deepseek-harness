@@ -623,8 +623,21 @@ type RequestMessage = Message | RequestUserInput
 ```
 
 ```ts type-equiv
-/** A single model request, fully assembled. */
-interface GenerateOptions {
+/** Auxiliary request purposes declared by their producer packages. */
+interface LlmRequestPurposeMap {}
+```
+
+```ts type-equiv
+/** Declared auxiliary request purpose; ordinary conversation requests leave it absent. */
+type LlmRequestPurpose = Extract<keyof LlmRequestPurposeMap, string>
+```
+
+```ts type-equiv
+/**
+ * A single model request, fully assembled.
+ * @typeParam Purpose - declared purpose keys for callers; forwarding adapters may accept `string`.
+ */
+interface GenerateOptions<Purpose extends string = LlmRequestPurpose> {
   /** Registered provider route selecting the adapter instance. */
   provider: string
   model: string
@@ -665,7 +678,7 @@ interface GenerateOptions {
    * map the purpose to model-hidden transport metadata. Ordinary conversation
    * requests leave it unset.
    */
-  purpose?: 'compaction' | 'session-title' | 'auto-review'
+  purpose?: Purpose
 }
 ```
 

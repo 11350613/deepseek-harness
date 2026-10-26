@@ -148,6 +148,8 @@ kind: "package-reference"
 | [`src/config.ts`](src/config.ts) | 加载时验证与路由模型策略解析 |
 | [`src/types.ts`](src/types.ts) | `BasicCompactionConfig` 与已解析策略词汇 |
 
+公开类型入口在 `LlmRequestPurposeMap` 中声明 `compaction`。直接构造压缩请求的调用方应导入本包或其公开类型，使 `GenerateOptions.purpose` 包含该键。
+
 </details>
 
 -----

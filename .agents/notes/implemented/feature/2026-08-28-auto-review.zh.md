@@ -41,7 +41,7 @@ Integration 只使用最新 `request/header.config` 的 provider／model 与 shi
 
 每个条目各占一条消息，并在后续评审中保持相同文本：待审调用会变成历史调用，integration 为每个存活 Session 记住每次已审调用展示的 schema，使其在同一位置再次出现。因此一次评审的消息以上一次评审的全部消息开头。只在消息结尾缓存的 provider（如 GPT-5.6 及以后的 OpenAI 隐式断点），或在末尾标记处向前回溯的 provider（如 Anthropic `cache_control`），都能复用上一次评审；单条不断增长的 user 消息只能让它们复用策略。Schema 记忆只在进程内，因此重启后的第一次评审会缺少先前的 schema，并有一次缓存未命中。
 
-请求还携带被评审 Session 的 `sessionId` 与 `purpose: 'auto-review'`。需要按对话标识路由或以其为 prompt 缓存键的路由（例如 OpenCode 要求的 `x-opencode-session` header 与 OpenAI 的 `prompt_cache_key`）由该 id 派生；缺少它时 OpenCode 会拒绝每次评审，Auto 会让每个调用失败。[DeepSeek session-log 上传](../../../../packages/session/session-log-deepseek/README.zh.md#request-field)会跳过该用途，因此评审既不上传日志，也不向 Session 追加接受记录。
+请求还携带被评审 Session 的 `sessionId` 与 `purpose: 'auto-review'`。需要按对话标识路由或以其为 prompt 缓存键的路由（例如 OpenCode 要求的 `x-opencode-session` header 与 OpenAI 的 `prompt_cache_key`）由该 id 派生；缺少它时 OpenCode 会拒绝每次评审，Auto 会让每个调用失败。[DeepSeek session-log 上传](../../../../packages/session/session-log-deepseek/README.zh.md#request-field)对评审和其他请求应用相同的上传资格与注册排除条件。上传的是权威 Session 日志；评审提示词和决策仍不进入该日志。
 
 reviewer 从 Session 的完整动作历史构建历史与待审调用：授权是符合 `REVIEW_POLICY` 来源规则的那个更早调用，而重复或冲突的身份必须在整份日志的任何位置都可见，而不是只在近期窗口内可见，因此 Session 投影与有界读取都无法支撑该判定。这次读取使用已废弃的同步 `snapshotEvents()`，并带有行级 `typescript/no-deprecated` 豁免。
 
