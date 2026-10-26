@@ -23,7 +23,7 @@ def default_binary():
 def copy_helper(binary, destination):
     """Retain the app signature; bare reference binaries remain usable for old-version comparisons."""
     binary = binary.resolve(strict=True)
-    application = binary.parents[2]
+    application = binary.parent.parent.parent
     if application.suffix == ".app":
         copied = destination / application.name
         shutil.copytree(application, copied)
@@ -35,7 +35,7 @@ def copy_helper(binary, destination):
 
 def unregister_helper(binary):
     """Remove LaunchServices registrations before deleting an owned test application."""
-    application = binary.parents[2]
+    application = binary.parent.parent.parent
     if application.suffix == ".app":
         subprocess.run(["/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
                         "-u", str(application)], check=True, capture_output=True, timeout=10)

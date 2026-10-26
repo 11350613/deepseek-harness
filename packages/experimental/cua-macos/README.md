@@ -29,7 +29,7 @@ The helper runs through LaunchServices as the independent background application
 <a id="use-this-package"></a>
 ## Use this package
 
-This package is an optional macOS dependency. Before packing, run `pnpm --dir packages/experimental/cua-macos run build:native` to publish the architecture-specific application and `current.json` under `native/bin`. Installed packages use these artifacts without compiling or re-signing. Source preparation requires Swift and Python 3 from Apple Command Line Tools.
+This package is an optional macOS dependency. For local development, run `pnpm --dir packages/experimental/cua-macos run build:native` to generate an ad-hoc-signed application and `current.json` under `native/bin`. Release packaging requires `--identity "Developer ID Application: <name> (<team>)"` and notarization; see [native build and service](native/README.md#build-and-service). Installed packages preserve the distributed signature. Source preparation requires Swift and Python 3 from Apple Command Line Tools.
 
 For repository Web use, enable [Computer Use](../cua-bundle/README.md) in Plugins. This prepares the local executable on macOS 14 or later; Windows support is in development. Subsequent builds check it while the existing Web profile keeps the bundle selected. Disabled profiles do not prepare native components. Explicit source composition is also available:
 
@@ -43,7 +43,7 @@ The dump command checks profile composition without a model request. For a real 
 | --- | --- | --- |
 | `agentPreset` | `ptc` | Register tools and guidance only for Agents bound to this preset; `false` registers globally. |
 | `allowedApps` | `[]` | Legacy path/signature grants, imported once for removal; they do not authorize new bundle-ID identities. |
-| `helperPath` | package-owned executable | Optional absolute native executable override. |
+| `helperPath` | package-owned executable | Absolute executable inside the signed helper `.app`; a bare binary fails with `NATIVE_APPLICATION_REQUIRED`. |
 | `buildTimeoutMs` | `300000` | Maximum native preparation time. |
 | `timeoutMs` | `30000` | Per-operation deadline; cancellation can leave partial input. |
 | `connectTimeoutMs` | `5000` | Deadline for connecting to or starting the shared helper. |

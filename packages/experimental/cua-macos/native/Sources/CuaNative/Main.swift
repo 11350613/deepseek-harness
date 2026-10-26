@@ -1,4 +1,4 @@
-// Only server mode owns AppKit; launcher and stdio clients connect to its socket.
+// Server mode owns the AppKit event loop; launchers use NSWorkspace and clients use the service socket.
 import AppKit
 import Foundation
 import Darwin
@@ -10,12 +10,18 @@ import Dispatch
         if arguments.first == "--serve" {
             do {
                 let options = try SharedHelperOptions(arguments: arguments)
-                let app = NSApplication.shared
-                app.setActivationPolicy(.prohibited)
-                guard let server = try SharedHelperServer(options: options) else { return }
-                try server.start()
-                withExtendedLifetime(server) { app.run() }
-            } catch { fail(error, serving: true) }
+                do {
+                    let app = NSApplication.shared
+                    app.setActivationPolicy(.prohibited)
+                    guard let server = try SharedHelperServer(options: options) else { return }
+                    try server.start()
+                    withExtendedLifetime(server) { app.run() }
+                } catch {
+                    do { try options.recordStartupFailure(error) }
+                    catch { fputs("dsh-cua-native: could not record startup failure: \(error)\n", stderr) }
+                    fail(error)
+                }
+            } catch { fail(error) }
             return
         }
         Task { @MainActor in
@@ -26,14 +32,14 @@ import Dispatch
                     try await SharedHelperProxy.run(configuration: HelperConfiguration(arguments: arguments))
                 }
                 exit(0)
-            } catch { fail(error, serving: false) }
+            } catch { fail(error) }
         }
         dispatchMain()
     }
 
-    private static func fail(_ error: Error, serving: Bool) -> Never {
+    private static func fail(_ error: Error) -> Never {
         let diagnostic = (error as? NativeFailure)?.message ?? error.localizedDescription
-        if serving {
+        do {
             let failure = JSONValue.object(["type": .string("error"), "code": .string((error as? NativeFailure)?.code ?? "NATIVE_STARTUP"),
                                             "message": .string(diagnostic)])
             if let data = try? JSONEncoder().encode(failure) { try? FileHandle.standardOutput.write(contentsOf: data + Data([10])) }

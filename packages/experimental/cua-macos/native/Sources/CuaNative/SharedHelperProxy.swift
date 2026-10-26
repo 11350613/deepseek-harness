@@ -68,9 +68,9 @@ import Darwin
     }
 
     private static func connect(_ options: SharedHelperOptions) async throws -> SharedSocket {
-        let started = DispatchTime.now().uptimeNanoseconds
+        let deadline = options.startupDeadline()
         repeat {
-            try await SharedHelperLauncher.ensure(options, publishReady: false)
+            try await SharedHelperLauncher.ensure(options, publishReady: false, deadline: deadline)
             let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
             guard descriptor >= 0 else { throw SharedSocket.failure("Creating stdio client socket") }
             let channel = SharedSocket(descriptor: descriptor)
@@ -85,7 +85,7 @@ import Darwin
             let error = errno
             guard error == ENOENT || error == ECONNREFUSED else { throw SharedSocket.failure("Connecting stdio client") }
             usleep(10_000)
-        } while Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000_000 < options.startupTimeout
+        } while DispatchTime.now().uptimeNanoseconds < deadline
         throw NativeFailure(code: "NATIVE_STARTUP_TIMEOUT", message: "Shared helper did not accept the stdio client")
     }
 

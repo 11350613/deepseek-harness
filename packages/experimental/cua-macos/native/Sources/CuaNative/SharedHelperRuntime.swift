@@ -8,6 +8,8 @@ struct SharedHelperOptions: Sendable {
     let runtimeKey: String
     let directory: String
     let startupTimeout: Double
+    let startupID: UUID?
+    var failurePath: String? { startupID.map { "\(directory)/\(runtimeKey).\($0.uuidString).failed" } }
     var socketPath: String { "\(directory)/\(runtimeKey).sock" }
     var readyPath: String { "\(directory)/\(runtimeKey).ready" }
     var versionLockPath: String { "\(directory)/\(runtimeKey).lock" }
@@ -21,7 +23,7 @@ struct SharedHelperOptions: Sendable {
         var index = 1
         while index < arguments.count {
             let key = arguments[index]
-            guard index + 1 < arguments.count, ["--runtime-key", "--runtime-directory", "--startup-timeout-ms"].contains(key), fields[key] == nil else {
+            guard index + 1 < arguments.count, ["--runtime-key", "--runtime-directory", "--startup-timeout-ms", "--startup-id"].contains(key), fields[key] == nil else {
                 throw RequestParameters.invalid("Invalid shared helper option \(key)")
             }
             fields[key] = arguments[index + 1]
@@ -34,6 +36,12 @@ struct SharedHelperOptions: Sendable {
               timeout > 0, timeout <= Double(Int32.max) else {
             throw RequestParameters.invalid("Shared helper requires SHA-256 runtime key, absolute runtime directory and positive startup timeout")
         }
+        if let identifier = fields["--startup-id"] {
+            guard mode == "--serve", let parsed = UUID(uuidString: identifier) else {
+                throw RequestParameters.invalid("Startup identity requires a UUID in server mode")
+            }
+            startupID = parsed
+        } else { startupID = nil }
         runtimeKey = key
         self.directory = directory
         startupTimeout = timeout / 1000
@@ -65,25 +73,55 @@ struct SharedHelperOptions: Sendable {
                  "pid": .number(Double(pid)), "instanceId": .string(instanceID)])
     }
 
-    func existingReady(application: NSRunningApplication? = nil) throws -> Data {
-        let until = DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout * 1_000_000_000)
-        repeat {
+    func startupDeadline() -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds + UInt64(startupTimeout * 1_000_000_000)
+    }
+
+    func recordStartupFailure(_ error: Error) throws {
+        guard let failurePath else { return }
+        let failure = error as? NativeFailure ?? NativeFailure(code: "NATIVE_STARTUP", message: error.localizedDescription)
+        let data = try JSONEncoder().encode(JSONValue.object([
+            "type": .string("error"), "code": .string(failure.code), "message": .string(failure.message),
+        ]))
+        try data.write(to: URL(fileURLWithPath: failurePath), options: .atomic)
+        guard chmod(failurePath, 0o600) == 0 else { throw SharedSocket.failure("Protecting helper startup failure") }
+    }
+
+    static func startupFailure(at path: String?) throws -> NativeFailure? {
+        guard let path else { return nil }
+        let data: Data
+        do { data = try Data(contentsOf: URL(fileURLWithPath: path)) }
+        catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError { return nil }
+        let value = try JSONDecoder().decode(JSONValue.self, from: data)
+        guard value["type"] == .string("error"), let code = value["code"].string, let message = value["message"].string else {
+            throw NativeFailure(code: "NATIVE_PROTOCOL", message: "Invalid helper startup failure record at \(path)")
+        }
+        return NativeFailure(code: code, message: message)
+    }
+
+    func existingReady(deadline: UInt64, launchedPID: Int32? = nil, failurePath: String? = nil) throws -> Data {
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            if let failure = try Self.startupFailure(at: failurePath) { throw failure }
             if let data = try? Data(contentsOf: URL(fileURLWithPath: readyPath)),
                let ready = try? JSONDecoder().decode(JSONValue.self, from: data),
                ready["type"] == .string("ready"), ready["runtimeKey"] == .string(runtimeKey),
                let number = ready["pid"].number, let pid = Int32(exactly: number), pid > 0,
+               launchedPID == nil || launchedPID == pid,
                kill(pid, 0) == 0, SharedSocket.isOwnedSocket(socketPath) {
                 var line = data
                 if line.last != 10 { line.append(10) }
                 return line
             }
-            if application?.isTerminated == true {
-                throw NativeFailure(code: "NATIVE_STARTUP", message: "Computer Use exited before becoming ready; restart DSH and check the helper application signature")
+            if let launchedPID, kill(launchedPID, 0) != 0 && errno == ESRCH {
+                // The server publishes its failure before exit; it may have exited after the first read.
+                if let failure = try Self.startupFailure(at: failurePath) { throw failure }
+                throw NativeFailure(code: "NATIVE_STARTUP", message: "Computer Use exited before becoming ready; retry and inspect the helper startup diagnostics")
             }
             usleep(10_000)
-        } while DispatchTime.now().uptimeNanoseconds < until
-        throw NativeFailure(code: "NATIVE_STARTUP_TIMEOUT", message: "Existing shared helper did not become ready")
+        }
+        throw NativeFailure(code: "NATIVE_STARTUP_TIMEOUT", message: "Computer Use did not become ready within the startup deadline")
     }
+
 }
 
 final class SharedHelperLock {
@@ -233,9 +271,9 @@ final class SharedSocket: @unchecked Sendable {
 }
 
 @MainActor enum SharedHelperLauncher {
-    static func ensure(_ options: SharedHelperOptions, publishReady: Bool = true) async throws {
+    static func ensure(_ options: SharedHelperOptions, publishReady: Bool = true, deadline suppliedDeadline: UInt64? = nil) async throws {
         try options.prepareDirectory()
-        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(options.startupTimeout * 1_000_000_000)
+        let deadline = suppliedDeadline ?? options.startupDeadline()
         var launchLock: SharedHelperLock?
         repeat {
             launchLock = try SharedHelperLock(path: options.launchLockPath)
@@ -247,7 +285,7 @@ final class SharedSocket: @unchecked Sendable {
         if let lock = try SharedHelperLock(path: options.versionLockPath) {
             withExtendedLifetime(lock) {}
         } else {
-            let ready = try options.existingReady()
+            let ready = try options.existingReady(deadline: deadline)
             if publishReady { try FileHandle.standardOutput.write(contentsOf: ready) }
             return
         }
@@ -263,16 +301,44 @@ final class SharedSocket: @unchecked Sendable {
         configuration.addsToRecentItems = false
         configuration.createsNewApplicationInstance = true
         configuration.allowsRunningApplicationSubstitution = false
-        configuration.arguments = ["--serve", "--runtime-key", options.runtimeKey,
+        let startupID = UUID()
+        let failurePath = "\(options.directory)/\(options.runtimeKey).\(startupID.uuidString).failed"
+        defer { unlink(failurePath) }
+        configuration.arguments = ["--serve", "--startup-id", startupID.uuidString, "--runtime-key", options.runtimeKey,
                                    "--runtime-directory", options.directory,
                                    "--startup-timeout-ms", String(options.startupTimeout * 1000)]
+        guard DispatchTime.now().uptimeNanoseconds < deadline else {
+            throw NativeFailure(code: "NATIVE_STARTUP_TIMEOUT", message: "Computer Use launch lock exhausted the startup deadline")
+        }
         // LaunchServices gives the application its own TCC identity; direct spawning inherits the terminal's.
         let application: NSRunningApplication
         do { application = try await NSWorkspace.shared.openApplication(at: bundle.bundleURL, configuration: configuration) }
         catch {
+            if let failure = try SharedHelperOptions.startupFailure(at: failurePath) { throw failure }
             throw NativeFailure(code: "NATIVE_STARTUP", message: "macOS could not launch Computer Use at \(bundle.bundleURL.path): \(error.localizedDescription)")
         }
-        let ready = try options.existingReady(application: application)
+        let pid = application.processIdentifier
+        guard pid > 0 else {
+            if let failure = try SharedHelperOptions.startupFailure(at: failurePath) { throw failure }
+            throw NativeFailure(code: "NATIVE_STARTUP", message: "macOS did not return a live Computer Use process")
+        }
+        let ready: Data
+        do {
+            ready = try options.existingReady(deadline: deadline, launchedPID: pid, failurePath: failurePath)
+        } catch {
+            // A failed launch owns this new instance; existing shared services never enter this path.
+            if kill(pid, 0) == 0 {
+                guard application.forceTerminate() else {
+                    throw NativeFailure(code: "NATIVE_CLEANUP", message: "Computer Use startup failed (\(error)); macOS refused to stop helper PID \(pid)")
+                }
+                let cleanupDeadline = options.startupDeadline()
+                while kill(pid, 0) == 0 && DispatchTime.now().uptimeNanoseconds < cleanupDeadline { usleep(10_000) }
+                guard kill(pid, 0) != 0 && errno == ESRCH else {
+                    throw NativeFailure(code: "NATIVE_CLEANUP", message: "Computer Use startup failed (\(error)); helper PID \(pid) has not exited")
+                }
+            }
+            throw error
+        }
         if publishReady { try FileHandle.standardOutput.write(contentsOf: ready) }
     }
 }
