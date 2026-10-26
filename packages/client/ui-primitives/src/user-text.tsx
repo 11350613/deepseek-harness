@@ -1,7 +1,7 @@
 /** Inline text and reference presentation; business rules supply resolved JSON data and actions. */
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
-import { contextMenuTrigger } from './menu-point.ts'
+import { contextMenuTrigger } from './context-menu-trigger.ts'
 import { ReferenceIconRegular, type ReferenceIconKind } from './ReferenceIcon.tsx'
 import css from './user-text.module.css'
 import markdownCss from './markdown/MarkdownText.module.css'
@@ -23,10 +23,6 @@ export function UserTextRun({ text }: UserTextRunProps): ReactNode {
 /** Presentation selected by a reference renderer, independent of its matching grammar. */
 export interface ReferenceChipProps {
   readonly appearance: ReferenceIconKind | 'skill' | 'command'
-  /** Decoded file destination supplied by its owner. */
-  readonly filePath?: string
-  /** Base used to interpret a relative file destination. */
-  readonly fileBase?: 'workspace' | 'workingDirectory'
   /** Explicit object-menu callback; absent for display-only references. */
   readonly openContextMenu?: (point: { x: number; y: number }) => void
   readonly label: string
@@ -42,7 +38,7 @@ export interface ReferenceChipProps {
  * @returns an inline label, or a keyboard-accessible button when activation is supplied.
  */
 export function ReferenceChip({
-  appearance, label, title, onActivate, filePath, fileBase, openContextMenu,
+  appearance, label, title, onActivate, openContextMenu,
 }: ReferenceChipProps): ReactNode {
   const slash = appearance === 'skill' || appearance === 'command'
   const contents = <>
@@ -57,8 +53,6 @@ export function ReferenceChip({
       tabIndex={openContextMenu === undefined ? undefined : 0}
       className={className}
       data-ref-chip={appearance}
-      data-file-path={filePath}
-      data-file-base={fileBase}
       title={title}
     >{contents}</span>
     : <button
@@ -66,8 +60,6 @@ export function ReferenceChip({
       {...menu}
       className={clsx(className, markdownCss.fileMention)}
       data-ref-chip={appearance}
-      data-file-path={filePath}
-      data-file-base={fileBase}
       title={title}
       onClick={(event) => {
         if (event.detail > 1 || (event.detail !== 0 && event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false)) return

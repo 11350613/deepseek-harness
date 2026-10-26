@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { DesktopFileActions, FileActions } from '../types.ts'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { registerFileMenus } from './context-menus.ts'
+import { registerFileMenus } from './context-menus.tsx'
 import { zh, en, ja, es, fr, de, ru, pt, type FileActionKey } from './locales.ts'
 import { BrowserFileActions } from './files.ts'
 

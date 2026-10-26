@@ -10,7 +10,6 @@ import { localizeAutoReviewDenial, normalizeAutoReviewReason } from '../src/clie
 import {
   classifyTool, formatToolBody, resultText, toolRowModel,
 } from '../src/client/tool/models/tool-call-model.ts'
-import { MarkdownDelegateProvider } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ToolRow } from '../src/client/tool/components/ToolRow.tsx'
 import { GenericToolCard, type GenericToolCardProps } from '../src/client/tool/toolviews/GenericToolCard.tsx'
 import { zh } from '@deepseek-ai/dsh-client-ui-conversation/src/client/locales.ts'
@@ -332,10 +331,8 @@ describe('ToolRow', () => {
   }
 
   it('declares file and URL menus without losing line numbers or toggling the row', () => {
-    const open = vi.fn()
-    const view = render(<MarkdownDelegateProvider openContextMenu={open}>
-      <ToolRow {...rowProps} variant="read" summary="file.ts:42" filePath="/workspace/file.ts" filePathLine={42} onOpenFile={() => {}} />
-    </MarkdownDelegateProvider>)
+    const open = vi.fn(), openFile = vi.fn()
+    const view = render(<ToolRow onOpenContextMenu={open} {...rowProps} variant="read" summary="file.ts:42" filePath="/workspace/file.ts" filePathLine={42} onOpenFile={openFile} />)
     const file = view.getByRole('button', { name: 'file.ts:42' })
     file.getBoundingClientRect = () => new DOMRect(10, 20, 100, 20)
     fireEvent.contextMenu(file, { clientX: 30, clientY: 40 })
@@ -345,11 +342,14 @@ describe('ToolRow', () => {
       [{ kind: 'file', path: '/workspace/file.ts', line: 42 }, { x: 10, y: 40 }],
     ])
     expect(view.container.querySelector('[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false')
-    view.rerender(<MarkdownDelegateProvider openContextMenu={open}>
-      <ToolRow {...rowProps} summary="Website" href="https://example.com?q=1#part" />
-    </MarkdownDelegateProvider>)
-    fireEvent.keyDown(view.getByRole('link'), { key: 'ContextMenu' })
+    expect(openFile).not.toHaveBeenCalled()
+    view.rerender(<ToolRow onOpenContextMenu={open} {...rowProps} summary="Website" href="https://example.com?q=1#part" />)
+    const link = view.getByRole('link')
+    fireEvent.contextMenu(link, { clientX: 40, clientY: 50 })
+    expect(open).toHaveBeenLastCalledWith({ kind: 'url', url: 'https://example.com?q=1#part' }, { x: 40, y: 50 })
+    fireEvent.keyDown(link, { key: 'F10', shiftKey: true })
     expect(open).toHaveBeenLastCalledWith({ kind: 'url', url: 'https://example.com?q=1#part' }, { x: 0, y: 0 })
+    expect(view.container.querySelector('[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('renders leading icon, title and summary while collapsed', () => {

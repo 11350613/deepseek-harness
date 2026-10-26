@@ -61,6 +61,26 @@ function props(
 }
 
 describe('ToolCallTree', () => {
+  it('forwards the captured Session menu callback to root and nested tool Slots without a Markdown provider', () => {
+    const owners: ToolCallOwnerProps[] = []
+    const block = { ...root('parent', { name: 'custom_parent', argsRaw: '{}' }),
+      subCalls: [root('child', { name: 'custom_child', argsRaw: '{}' })] }
+    const opened = vi.fn()
+    const sessionId = 'captured-session'
+    const openContextMenu: NonNullable<ToolTreeProps['openContextMenu']> = (target, point) => {
+      opened(sessionId, target, point)
+    }
+    render(<ToolCallTree {...props(block, undefined, owners)} openContextMenu={openContextMenu} />)
+    expect(owners).toHaveLength(2)
+    for (const owner of owners) {
+      expect(owner.openContextMenu).toBe(openContextMenu)
+      owner.openContextMenu?.({ kind: 'file', path: '/workspace/captured.ts', line: 42, base: 'workspace' }, { x: 10, y: 20 })
+    }
+    expect(opened).toHaveBeenCalledTimes(2)
+    expect(opened).toHaveBeenLastCalledWith(sessionId,
+      { kind: 'file', path: '/workspace/captured.ts', line: 42, base: 'workspace' }, { x: 10, y: 20 })
+  })
+
   it('dispatches only the parent and changed child among 100 sibling calls', () => {
     const children = Array.from({ length: 100 }, (_, index) => root(`child-${index}`, { name: 'custom_child', argsRaw: '{}' }))
     const block = { ...root('parent', { name: 'custom_parent', argsRaw: '{}' }), subCalls: children }

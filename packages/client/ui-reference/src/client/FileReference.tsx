@@ -40,8 +40,6 @@ export function FileReference({ node, raw, interactive, openFile, t }: FileRefer
   return <>
     <ReferenceChip
       appearance="file"
-      filePath={path}
-      fileBase="workspace"
       label={label}
       title={raw}
       {...!interactive || openContextMenu === undefined ? {} : {
@@ -69,5 +67,5 @@ export function FileReference({ node, raw, interactive, openFile, t }: FileRefer
  * @returns an inline non-interactive chip.
  */
 export function FolderReference({ node, raw }: UserTextNodeProps<'folder'>) {
-  return <ReferenceChip appearance="folder" filePath={node.data.path} fileBase="workspace" label={node.data.label} title={raw} />
+  return <ReferenceChip appearance="folder" label={node.data.label} title={raw} />
 }

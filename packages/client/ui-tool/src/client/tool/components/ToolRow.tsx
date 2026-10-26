@@ -3,8 +3,9 @@ import clsx from 'clsx'
 import {
   CodeBlock, DiffBlock, DisclosureRow, IconInspectOutlineRegular, ReadBlock, SearchBlock,
   TerminalBlock, TextShimmer, WebBlock,
-  diffTotals, contextMenuTrigger, useMarkdownDelegate,
+  diffTotals, contextMenuTrigger,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ToolCallCommonProps } from '../../contract/slots.ts'
 import type { PropsRenderSlots, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { OpenFileOptions, UseDisclosure } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { MessageImageLoader } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -90,6 +91,8 @@ export interface ToolRowProps {
   filePathLine?: number | undefined
   /** Open the path (already cwd-resolved), landing on `filePathLine` when given. */
   onOpenFile?: ((path: string, options?: OpenFileOptions) => void) | undefined
+  /** Session-bound object menu supplied by the owning tool view. */
+  onOpenContextMenu?: ToolCallCommonProps['openContextMenu']
   /** Safe http(s) URL from tool args; when set, the summary renders as a link that opens it in a new tab. */
   href?: string | undefined
   /**
@@ -146,12 +149,12 @@ export const ToolRow = memo(function ToolRow({
   filePath,
   filePathLine,
   onOpenFile,
+  onOpenContextMenu: openContextMenu,
   href,
   inspect,
   useDisclosure,
 }: ToolRowProps) {
   const { expanded, toggle: toggleExpand } = useDisclosure()
-  const { openContextMenu } = useMarkdownDelegate()
   const terminalLabels = useMemo(() => terminalBlockLabels(t), [t])
   const diffLabels = useMemo(() => diffBlockLabels(t), [t])
   const readLabels = useMemo(() => readBlockLabels(t), [t])
@@ -224,7 +227,6 @@ export const ToolRow = memo(function ToolRow({
         <button
           type="button"
           className={css.fileLink}
-          data-file-path={filePath}
           {...fileMenu}
           onClick={openFile}
           onKeyDown={(event) => {

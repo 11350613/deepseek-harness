@@ -1,4 +1,5 @@
 /** Original-file menu contributions owned by the file-action capability. */
+import { IconCopyOutlineRegular, IconDownloadOutlineRegular, IconSaveOutlineRegular, IconFolderOpenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
@@ -51,12 +52,12 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
       }
       return [
         ...mediaType.startsWith('image/') ? [
-          { id: 'copyImage', symbol: 'copy' as const, separatorBefore: true, failureLabel: t('menu.copyFailed'),
+          { id: 'copyImage', icon: <IconCopyOutlineRegular />, separatorBefore: true, failureLabel: t('menu.copyFailed'),
             label: t('menu.copyImage'), disabled: !available, run: () => copy(source) },
-          { id: 'download', symbol: 'download' as const, failureLabel: t('menu.saveFailed'),
+          { id: 'download', icon: <IconDownloadOutlineRegular />, failureLabel: t('menu.saveFailed'),
             label: t('menu.download'), disabled: !available, run: () => save(source, 'download') },
         ] : [],
-        { id: 'saveAs', symbol: 'save', failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
+        { id: 'saveAs', icon: <IconSaveOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
           disabled: !available || !actions.canSaveAs, run: () => save(source, 'saveAs') },
       ]
     },
@@ -77,12 +78,12 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
       }
       const saved = actions.savedFile(source.url)
       return [
-        { id: 'copy', symbol: 'copy', failureLabel: t('menu.copyFailed'), label: t('menu.copyImage'), run: () => copy(source) },
-        { id: 'download', symbol: 'download', failureLabel: t('menu.saveFailed'), label: t('menu.download'), run: () => save(source, 'download') },
-        { id: 'saveAs', symbol: 'save', failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
+        { id: 'copy', icon: <IconCopyOutlineRegular />, failureLabel: t('menu.copyFailed'), label: t('menu.copyImage'), run: () => copy(source) },
+        { id: 'download', icon: <IconDownloadOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.download'), run: () => save(source, 'download') },
+        { id: 'saveAs', icon: <IconSaveOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
           disabled: !actions.canSaveAs, run: () => save(source, 'saveAs') },
         ...saved === undefined ? [] : [{
-          id: 'reveal', symbol: 'folder' as const,
+          id: 'reveal', icon: <IconFolderOpenOutlineRegular />,
           label: t(document.documentElement.dataset.platform === 'darwin' ? 'menu.finder' : 'menu.reveal'),
           failureLabel: t('path.revealError'), run: () => actions.reveal(saved),
         }],

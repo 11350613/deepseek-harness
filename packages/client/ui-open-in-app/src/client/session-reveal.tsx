@@ -1,4 +1,5 @@
 /** Native directory reveal contributed to the captured Session's structured menu. */
+import { IconFolderOpenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { OpenInAppController } from './controller.ts'
@@ -18,7 +19,7 @@ export function registerSessionReveal(ctx: Context, controller: OpenInAppControl
       const applications = controller.apps.getSnapshot()
       const manager = applications?.find(id => ['finder', 'explorer', 'filemanager'].includes(id))
       return [{
-        id: 'reveal', label: t(applications?.includes('finder') ? 'menu.finder' : 'menu.reveal'), symbol: 'folder',
+        id: 'reveal', label: t(applications?.includes('finder') ? 'menu.finder' : 'menu.reveal'), icon: <IconFolderOpenOutlineRegular />,
         disabled: !directory || manager === undefined, failureLabel: t('path.revealError'),
         ...(directory && manager !== undefined ? { run: () => controller.launch(manager, directory) } : {}),
       }]

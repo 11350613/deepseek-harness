@@ -47,13 +47,14 @@ it('renders disabled, grouped and nested data actions and keeps feedback after m
   const store = createMenuStore().create(), select = vi.fn()
   store.actions.open({ kind: 'session', value: { sessionId: SessionId('clicked'), displayTitle: 'Clicked' } }, { x: 20, y: 30 })
   store.actions.items([
-    { id: 'plain', label: 'Open', symbol: 'external' },
-    { id: 'blocked', label: 'Unavailable', disabled: true, danger: true, icon: 'data:image/png;base64,AA==', separatorBefore: true },
+    { id: 'plain', label: 'Open', icon: <svg data-testid="plugin-icon"><path d="M0 0" /></svg> },
+    { id: 'blocked', label: 'Unavailable', disabled: true, danger: true, icon: <img src="data:image/png;base64,AA==" width={14} height={14} alt="" />, separatorBefore: true },
     { id: 'parent', label: 'Export', children: [{ id: 'child', label: 'Original' }, { id: 'other', label: 'Other', separatorBefore: true }] },
     { id: 'footer', label: 'Folder', afterContent: true },
   ])
   const view = render(<MenuOverlay useCatalog={select => select([])} useStore={bindSnapshotSelector(store)} actions={store.actions}
     close={() => { store.actions.close() }} select={select} renderSlot={() => null} />)
+  expect(view.getByTestId('plugin-icon').parentElement?.closest('[role="menuitem"]')?.textContent).toContain('Open')
   expect(view.getByRole('menuitem', { name: 'Unavailable' }).hasAttribute('disabled')).toBe(true)
   fireEvent.click(view.getByRole('menuitem', { name: 'Open' }))
   expect(select).toHaveBeenCalledWith('plain')

@@ -30,7 +30,7 @@ function fakeImage(width: number, height: number) {
 
 function native(): DesktopFileActions {
   return { save: vi.fn(async () => ({ status: 'saved' as const, fileId: 'saved' as SavedFileId })),
-    readImage: vi.fn(async () => ({ bytes: new Uint8Array([1, 2, 3]), mediaType: 'image/webp' })),
+    readClipboardImage: vi.fn(async () => ({ bytes: new Uint8Array([1, 2, 3]), mediaType: 'image/webp' })),
     reveal: vi.fn(async () => {}) }
 }
 
@@ -60,7 +60,8 @@ describe('file actions', () => {
     const source = { url: 'https://images.example/chart', name: 'chart.png', mediaType: 'image/png' }
     expect(actions.savedFile(source.url)).toBeUndefined()
     await actions.save(source, 'download')
-    expect(bridge.save).toHaveBeenCalledWith({ bytes: new Uint8Array([1, 2, 3]), name: 'chart.webp', mode: 'download' })
+    expect(bridge.save).toHaveBeenCalledWith({ ...source, mode: 'download' })
+    expect(bridge.readClipboardImage).not.toHaveBeenCalled()
     expect(actions.savedFile(source.url)).toBe('saved')
     await actions.reveal('saved' as SavedFileId)
     expect(bridge.reveal).toHaveBeenCalledWith('saved')
@@ -72,10 +73,12 @@ describe('file actions', () => {
   it('uses an authorized resource reader without converting bytes', async () => {
     vi.stubGlobal('Blob', NodeBlob)
     const bridge = native(), actions = new BrowserFileActions(bridge)
+    fakeImage(1, 1)
     const bytes = new Uint8Array([0, 255, 128, 10])
     await actions.save({ url: 'file-identity', name: 'report.bin', read: async () => new Blob([bytes]) }, 'saveAs')
-    expect(bridge.readImage).not.toHaveBeenCalled()
-    expect(bridge.save).toHaveBeenCalledWith({ bytes, name: 'report.bin', mode: 'saveAs' })
+    expect(bridge.readClipboardImage).not.toHaveBeenCalled()
+    expect(bridge.save).toHaveBeenCalledWith({ url: 'blob:conversion', name: 'report.bin', mode: 'saveAs' })
+    expect(vi.mocked(URL).revokeObjectURL).toHaveBeenCalledWith('blob:conversion')
     actions.dispose()
   })
   it('requests the browser picker during activation and treats picker cancellation as normal', async () => {
@@ -101,11 +104,11 @@ describe('file actions', () => {
   })
   it('does not save a remote read that finishes after the plugin unloads', async () => {
     const bridge = native()
-    let settle!: (value: { bytes: Uint8Array; mediaType: string }) => void
-    vi.mocked(bridge.readImage).mockImplementation(() => new Promise((resolve) => { settle = resolve }))
+    let settle!: (value: Blob) => void
+    const read = vi.fn(() => new Promise<Blob>((resolve) => { settle = resolve }))
     const actions = new BrowserFileActions(bridge)
-    const pending = actions.save({ url: 'https://example.org/image' }, 'download')
-    actions.dispose(); settle({ bytes: new Uint8Array(), mediaType: 'image/png' })
+    const pending = actions.save({ url: 'https://example.org/image', read }, 'download')
+    actions.dispose(); settle(new Blob())
     await expect(pending).rejects.toThrow()
     expect(bridge.save).not.toHaveBeenCalled()
   })
@@ -122,7 +125,6 @@ describe('file actions', () => {
     expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0)
     expect(vi.mocked(URL).revokeObjectURL).toHaveBeenCalledWith('blob:conversion')
     expect(write).toHaveBeenCalledOnce()
-    await expect(actions.save({ url: 'file:///private/path' }, 'download')).rejects.toThrow('Unsupported')
     actions.dispose()
   })
 
@@ -211,13 +213,38 @@ it('releases an object URL when the source image cannot decode', async () => {
   } finally { actions.dispose() }
 })
 
-it.each([['image/png', 'image.png'], [undefined, 'image']])('uses suggested MIME only when the original carrier omitted it', async (mediaType, name) => {
-  vi.stubGlobal('Blob', NodeBlob)
-  const bridge = native()
-  vi.mocked(bridge.readImage).mockResolvedValue({ bytes: new Uint8Array([1]), mediaType: '' })
-  const actions = new BrowserFileActions(bridge)
+it('passes captured URLs and suggested MIME to the native download without reading bytes', async () => {
+  const bridge = native(), actions = new BrowserFileActions(bridge)
   try {
-    await actions.save({ url: 'https://example.com/image', ...mediaType === undefined ? {} : { mediaType } }, 'download')
-    expect(bridge.save).toHaveBeenCalledWith({ bytes: new Uint8Array([1]), name, mode: 'download' })
+    await actions.save({ url: 'https://example.com/image', name: 'image', mediaType: 'image/gif' }, 'download')
+    expect(bridge.save).toHaveBeenCalledWith({ url: 'https://example.com/image', name: 'image', mediaType: 'image/gif', mode: 'download' })
+    expect(bridge.readClipboardImage).not.toHaveBeenCalled()
+  } finally { actions.dispose() }
+})
+
+it('lets Chromium name URL-only downloads and keeps authorized MIME when no name is supplied', async () => {
+  const bridge = native(), actions = new BrowserFileActions(bridge)
+  fakeImage(1, 1)
+  try {
+    await actions.save({ url: 'https://example.com/image' }, 'download')
+    expect(bridge.save).toHaveBeenLastCalledWith({ url: 'https://example.com/image', mode: 'download' })
+    await actions.save({ url: 'authorized-image', read: async () => new Blob(['GIF'], { type: 'image/gif' }) }, 'saveAs')
+    expect(bridge.save).toHaveBeenLastCalledWith({ url: 'blob:conversion', mediaType: 'image/gif', mode: 'saveAs' })
+  } finally { actions.dispose() }
+})
+
+it('rejects unsupported clipboard sources and uses suggested MIME when a remote response has none', async () => {
+  const bridge = native(), actions = new BrowserFileActions(bridge)
+  const write = vi.spyOn(navigator.clipboard, 'write')
+  vi.mocked(bridge.readClipboardImage).mockResolvedValue({ bytes: new Uint8Array([1, 2]), mediaType: '' })
+  fakeImage(1, 1)
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as never)
+  vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => { callback(new Blob(['PNG'], { type: 'image/png' })) })
+  try {
+    await expect(actions.copyImage({ url: 'file:///private/image.png' })).rejects.toThrow('Unsupported')
+    write.mockClear()
+    await actions.copyImage({ url: 'https://example.com/image', mediaType: 'image/png' })
+    await actions.copyImage({ url: 'https://example.com/untyped-image' })
+    expect(write).toHaveBeenCalledTimes(2)
   } finally { actions.dispose() }
 })

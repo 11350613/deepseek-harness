@@ -7,8 +7,8 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import { OpenInAppPathController } from '../src/client/open-path.ts'
 import { OpenInAppController } from '../src/client/controller.ts'
-import { registerFileMenus } from '@deepseek-ai/dsh-client-ui-file-actions/src/client/context-menus.ts'
-import { registerContextMenus } from '../src/client/context-menus.ts'
+import { registerFileMenus } from '@deepseek-ai/dsh-client-ui-file-actions/src/client/context-menus.tsx'
+import { registerContextMenus } from '../src/client/context-menus.tsx'
 
 afterEach(() => { vi.unstubAllGlobals() })
 

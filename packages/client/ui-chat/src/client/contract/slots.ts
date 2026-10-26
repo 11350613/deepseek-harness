@@ -216,6 +216,8 @@ export interface ChatNodeOwnerProps {
   groupPart?: string
   cwd?: string | undefined
   openFile: (path: string, options?: OpenFileOptions) => void
+  /** Object-menu callback bound to the originating Session and path base. */
+  openContextMenu?: MarkdownDelegate['openContextMenu']
   inspectCall: ((callId: ToolCallId) => void) | undefined
   forkAt: (seq: number) => void
   /** Session-authorized image loader supplied by the Chat view. */
@@ -346,7 +348,7 @@ export type ChatFlowDataInjected = Pick<ChatViewInjected, 'keyedHooks'> & {
 
 /** Ordered rows and reconciled local echoes rendered inside one Chat viewport. */
 export interface ChatFlowOwnerProps extends Pick<ChatNodeOwnerProps,
-  'cwd' | 'openFile' | 'inspectCall' | 'forkAt' | 'loadImage' | 'fileMentions'> {
+  'cwd' | 'openFile' | 'openContextMenu' | 'inspectCall' | 'forkAt' | 'loadImage' | 'fileMentions'> {
   readonly entries: readonly RenderEntry[]
   readonly pendingInputs: readonly (PendingSubmission | InboxState['next-step'][number])[]
   readonly lastInputTurn: number | undefined

@@ -20,3 +20,4 @@ GUI 插件现在注入 `menus` 以打开共享对象菜单。open-in-app 插件�
 5. 自定义 Slot 宿主应移除对 `sidebar.workspaces.session.menu.item` 和 `sidebar.right.tab.menu.item` 的声明；现在由工作区和右侧栏适配器在 `contextMenu.content` 下拥有它们。会话行继续接收 `[open, setOpen]` hook context，标签行在所点击会话的 provider 内接收 `{ tab, dismiss }`。替换这些适配器的自定义宿主须自行声明相同的子 Slot 并提供这些 owner。使用 `openTabMenu` 的 Dockkit 嵌入方负责弹窗和关闭，`renderTabMenuItems` 仅供组件自身的弹窗使用。通过响应式 `tabMenuOpen` 在自定义菜单准备或显示时禁用关闭按钮的 Tooltip。
 
 6. 内置 Session 菜单项改为数据贡献。旧 React Slot 将外部条目集中显示在归档之前，Slot priority 不再覆盖内置动作。新增动作用 `ctx.menus.register`，可通过 `commandId` 展示已有命令的当前绑定。针对捕获目标的执行仍放在 `run`，不增加命令调度。
+7. 菜单贡献使用 `icon?: ReactNode`：将 `symbol` 改为图标元素，并用 `<img>` 包装图标 URL。自定义 Chat 消息流和节点适配器需在 `openFile` 之外转发 `openContextMenu`，工具视图将其作为 `ToolRow.onOpenContextMenu` 传入。引用 chip 不再接受 `filePath` 或 `fileBase`：在 `openContextMenu` 回调中捕获这些数据。

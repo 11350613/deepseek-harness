@@ -1,4 +1,5 @@
 /** Native path and URL menu contributions, independent of their trigger components. */
+import { IconFolderOpenOutlineRegular, IconCopyOutlineRegular, IconPanelLeftOutlineRegular, IconRightUpOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
@@ -47,7 +48,7 @@ export function registerContextMenus(
       await directories.load()
       signal.throwIfAborted()
       const manager = directories.apps.getSnapshot()?.find(id => ['finder', 'explorer', 'filemanager'].includes(id))
-      return [{ id: 'reveal', symbol: 'folder', label: fileManager(), disabled: manager === undefined,
+      return [{ id: 'reveal', icon: <IconFolderOpenOutlineRegular />, label: fileManager(), disabled: manager === undefined,
         failureLabel: t('path.revealError'),
         ...manager === undefined ? {} : { run: () => directories.launch(manager, path) } }]
     },
@@ -60,9 +61,9 @@ export function registerContextMenus(
       const absolutePath = resolveWorkspacePath(cwd, path)
       signal.throwIfAborted()
       return [
-        { id: 'reveal', symbol: 'folder', label: fileManager(), disabled: paths.desktop.getSnapshot() !== true,
+        { id: 'reveal', icon: <IconFolderOpenOutlineRegular />, label: fileManager(), disabled: paths.desktop.getSnapshot() !== true,
           run: () => open(absolutePath, 'reveal') },
-        { id: 'copyPath', symbol: 'copy', label: t('menu.copyDirectoryPath'), failureLabel: t('menu.copyFailed'), run: async () => {
+        { id: 'copyPath', icon: <IconCopyOutlineRegular />, label: t('menu.copyDirectoryPath'), failureLabel: t('menu.copyFailed'), run: async () => {
           await navigator.clipboard.writeText(absolutePath)
           ctx.menus.notify(t('menu.copied'), true)
         } },
@@ -81,19 +82,19 @@ export function registerContextMenus(
       signal.throwIfAborted()
       const application = apps?.find(app => app.default)
       return [
-        { id: 'sidebar', symbol: 'sidebar', label: t('menu.sidebar'), disabled: !available,
+        { id: 'sidebar', icon: <IconPanelLeftOutlineRegular />, label: t('menu.sidebar'), disabled: !available,
           run: () => {
             const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
             ctx.sidebarRight.openResourceIn(sessionId, fileAddressFor(sessionId, cwd, path), {
               ...(paneId === undefined ? {} : { paneId }), ...(line === undefined ? {} : { params: { line } }),
             })
           } },
-        { id: 'reveal', symbol: 'folder', label: fileManager(), disabled: !desktop,
+        { id: 'reveal', icon: <IconFolderOpenOutlineRegular />, label: fileManager(), disabled: !desktop,
           ...absolutePath === undefined ? {} : { run: () => open(absolutePath, 'reveal') } },
-        { id: 'open', symbol: 'external', label: application ? t('open.title', { app: application.name }) : t('menu.defaultApp'),
-          ...(application?.icon ? { icon: application.icon } : {}), disabled: application === undefined,
+        { id: 'open', label: application ? t('open.title', { app: application.name }) : t('menu.defaultApp'),
+          icon: application?.icon ? <img src={application.icon} width={14} height={14} alt="" /> : <IconRightUpOutlineRegular />, disabled: application === undefined,
           ...absolutePath === undefined || application === undefined ? {} : { run: () => open(absolutePath, 'open', application.id) } },
-        { id: 'copyPath', symbol: 'copy', failureLabel: t('menu.copyFailed'), label: t('menu.copyPath'),
+        { id: 'copyPath', icon: <IconCopyOutlineRegular />, failureLabel: t('menu.copyFailed'), label: t('menu.copyPath'),
           run: async () => {
             const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
             await navigator.clipboard.writeText(absolutePath ?? resolveWorkspacePath(cwd, path))
@@ -105,11 +106,11 @@ export function registerContextMenus(
   ctx.effect(() => ctx.menus.register({
     id: 'open-in-app.url', target: 'url', order: 100,
     resolve: ({ sessionId, url }) => [
-      { id: 'sidebar', symbol: 'sidebar', label: t('menu.sidebar'), disabled: ctx.sidebarRightTabs.get('browser') === undefined,
+      { id: 'sidebar', icon: <IconPanelLeftOutlineRegular />, label: t('menu.sidebar'), disabled: ctx.sidebarRightTabs.get('browser') === undefined,
         run: () => { ctx.sidebarRight.openTabIn(sessionId, 'browser', { params: { url } }) } },
-      { id: 'external', symbol: 'external', label: t('menu.external'),
+      { id: 'external', label: t('menu.external'),
         run: () => { window.open(url, '_blank', 'noopener,noreferrer') } },
-      { id: 'copy', symbol: 'copy', failureLabel: t('menu.copyFailed'), label: t('menu.copyLink'), run: async () => {
+      { id: 'copy', icon: <IconCopyOutlineRegular />, failureLabel: t('menu.copyFailed'), label: t('menu.copyLink'), run: async () => {
         await navigator.clipboard.writeText(url); ctx.menus.notify(t('menu.copied'), true)
       } },
     ],
@@ -124,7 +125,7 @@ export function registerContextMenus(
         ? await resolvePath(sessionId, path, signal) : undefined
       signal.throwIfAborted()
       return [
-        { id: 'reveal', symbol: 'folder', label: fileManager(), disabled: local === undefined,
+        { id: 'reveal', icon: <IconFolderOpenOutlineRegular />, label: fileManager(), disabled: local === undefined,
           ...local !== undefined ? { run: () => open(local, 'reveal') } : {} },
       ]
     },

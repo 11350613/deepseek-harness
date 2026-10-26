@@ -1,3 +1,5 @@
+import { createElement } from 'react'
+import { IconEditOutlineRegular, IconTrashOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { SessionMenu } from './session-actions/SessionMenu.tsx'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
@@ -50,7 +52,7 @@ import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
 import { derive } from './session-actions/derived.ts'
-import { registerSessionMenus } from './session-actions/context-menus.ts'
+import { registerSessionMenus } from './session-actions/context-menus.tsx'
 import { PinSessionRowButton } from './session-actions/PinSession.tsx'
 import { SessionRenameDialog } from './session-actions/RenameSession.tsx'
 import { RowActionToast } from './session-actions/RowActionToast.tsx'
@@ -270,12 +272,12 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.menus.register({
     id: 'workspace.rename', target: 'workspace', order: 100,
     resolve: ({ workspaceId, displayTitle }) => ctx.remoteAccess.source('workspace', workspaceId, 'workspace/rename').getSnapshot()
-      ? [{ id: 'rename', label: ctx.locale.bind(NS)('rename'), symbol: 'rename', run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'rename') } }] : [],
+      ? [{ id: 'rename', label: ctx.locale.bind(NS)('rename'), icon: createElement(IconEditOutlineRegular), run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'rename') } }] : [],
   }), 'workspace: rename menu action')
   ctx.effect(() => ctx.menus.register({
     id: 'workspace.delete', target: 'workspace', order: 300,
     resolve: ({ workspaceId, displayTitle }) => ctx.remoteAccess.source('workspace', workspaceId, 'workspace/delete').getSnapshot()
-      ? [{ id: 'delete', label: ctx.locale.bind(NS)('delete.workspace'), symbol: 'delete', danger: true, separatorBefore: true,
+      ? [{ id: 'delete', label: ctx.locale.bind(NS)('delete.workspace'), icon: createElement(IconTrashOutlineRegular), danger: true, separatorBefore: true,
         run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'delete') } }] : [],
   }), 'workspace: delete menu action')
   const browserInjected = (): WorkspaceBrowserInjected => ({

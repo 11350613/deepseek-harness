@@ -368,8 +368,8 @@ it('closes captured pane tabs and rechecks tabs moved or closed while their menu
   const paneId = instance.getSnapshot().bySession[SESSION]!.layout.activePaneId
   const target = (tab: typeof first) => ({ kind: 'tab', value: { sessionId: SESSION, paneId, tab } }) as const
   const right = h.menus.resolve(target(first))
-  expect(right.source.getSnapshot().map(action => [action.id, action.symbol])).toEqual([
-    ['sidebar.close/close', 'close'], ['sidebar.close/others', undefined], ['sidebar.close/right', undefined],
+  expect(right.source.getSnapshot().map(action => [action.id, action.icon !== undefined])).toEqual([
+    ['sidebar.close/close', true], ['sidebar.close/others', false], ['sidebar.close/right', false],
   ])
   h.ctx.sidebarRight.closeIn(SESSION, second.id)
   right.select('sidebar.close/right')

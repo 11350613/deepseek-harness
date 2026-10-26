@@ -1,53 +1,27 @@
-/** Trusted-window original-file saves and image reads. Saved paths stay in the main process. */
-import { app, dialog, ipcMain, shell } from 'electron'
+/** Trusted-window Chromium downloads and clipboard fallback reads. Saved paths stay in the main process. */
+import { app, ipcMain, shell, session } from 'electron'
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
-import { open, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, extname, join } from 'node:path'
+import { stat } from 'node:fs/promises'
+import { closeSync, openSync, rmSync } from 'node:fs'
+import { extname, join } from 'node:path'
+import { resolveDragFileName } from '@deepseek-ai/dsh-util-file-drag'
 import { randomUUID } from 'node:crypto'
 import type { FileSaveResult, SavedFileId } from '@deepseek-ai/dsh-client-ui-file-actions/types'
 import { DESKTOP_IPC } from './ipc.ts'
 import { resolveDurationMs } from './duration-env.ts'
 
-/** @param request - untrusted IPC input. @returns checked original bytes and destination policy. */
-function saveRequest(request: unknown): { bytes: Uint8Array; name: string; mode: 'download' | 'saveAs' } {
-  if (typeof request !== 'object' || request === null || !('bytes' in request) || !(request.bytes instanceof Uint8Array)
-    || !('name' in request) || typeof request.name !== 'string' || request.name.length === 0
-    || basename(request.name) !== request.name || /[<>:"/\\|?*\x00-\x1f]/u.test(request.name)
-    || request.name === '.' || request.name === '..'
-    || Buffer.byteLength(request.name) > 255 || /[. ]$/u.test(request.name)
-    || /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu.test(request.name)
-    || !('mode' in request) || (request.mode !== 'download' && request.mode !== 'saveAs')) throw new Error('Invalid file save request')
-  return { bytes: request.bytes, name: request.name, mode: request.mode }
-}
-
-/**
- * Save without overwriting a download; explicit save-as replaces only after the complete write.
- * @param bytes - unmodified original content.
- * @param destination - main-process destination from Downloads or the native picker.
- * @param replace - picker-confirmed replacement.
- * @returns committed destination.
- */
-export async function saveOriginal(bytes: Uint8Array, destination: string, replace: boolean): Promise<string> {
-  if (replace) {
-    const temporary = join(dirname(destination), `.dsh-save-${randomUUID()}`)
-    try { await writeFile(temporary, bytes, { flag: 'wx' }); await rename(temporary, destination) }
-    finally { await rm(temporary, { force: true }) }
-    return destination
-  }
-  const extension = extname(destination)
-  const stem = destination.slice(0, destination.length - extension.length)
-  for (let index = 0; ; index++) {
-    const path = index === 0 ? destination : `${stem} (${index})${extension}`
-    let file
-    try { file = await open(path, 'wx') }
-    catch (error) {
-      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST') continue
-      throw error
-    }
-    try { await file.writeFile(bytes) }
-    catch (error) { await file.close(); await rm(path, { force: true }); throw error }
-    await file.close()
-    return path
+/** @param value - untrusted IPC input. @returns captured URL and destination policy. */
+function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: string; mode: 'download' | 'saveAs' } {
+  if (typeof value !== 'object' || value === null
+    || !('url' in value) || typeof value.url !== 'string'
+    || ('name' in value && typeof value.name !== 'string')
+    || ('mediaType' in value && typeof value.mediaType !== 'string')
+    || !('mode' in value) || (value.mode !== 'download' && value.mode !== 'saveAs')) throw new Error('Invalid file save request')
+  const url = new URL(value.url)
+  if (!['https:', 'http:', 'blob:', 'data:'].includes(url.protocol) || url.username || url.password) throw new Error('Unsupported file source')
+  return { url, mode: value.mode,
+    ...'name' in value ? { name: value.name as string } : {},
+    ...'mediaType' in value ? { mediaType: value.mediaType as string } : {},
   }
 }
 
@@ -77,23 +51,106 @@ export function installFileActions(
     contents.on('did-start-navigation', navigate)
     owner.once('closed', () => { clear(); contents.removeListener('did-start-navigation', navigate) })
   }
-  ipcMain.handle(DESKTOP_IPC.fileSave, async (event, value: unknown): Promise<FileSaveResult> => {
+  const pending = new Map<string, {
+    event: IpcMainInvokeEvent
+    owner: BrowserWindow
+    request: ReturnType<typeof saveRequest>
+    finish: (result: FileSaveResult | Error) => void
+    started: () => void
+    item?: Electron.DownloadItem
+  }>()
+  session.defaultSession.on('will-download', (_event, item, contents) => {
+    const url = item.getURLChain()[0]
+    if (url === undefined || !new URL(url).hash.startsWith('#dsh-download=')) return
+    const entry = pending.get(url)
+    if (entry === undefined || entry.owner.webContents !== contents) { item.cancel(); return }
+    entry.started()
+    entry.item = item
+    let reserved: string | undefined
+    try {
+      assertOwner(entry.event)
+      const name = resolveDragFileName({
+        name: entry.request.name ?? item.getFilename(),
+        mediaType: item.getMimeType() || entry.request.mediaType || '',
+      })
+      let destination = join(app.getPath('downloads'), name)
+      if (entry.request.mode === 'saveAs') {
+        item.setSaveDialogOptions({ defaultPath: destination, properties: ['showOverwriteConfirmation', 'createDirectory'] })
+      } else {
+        const extension = extname(destination)
+        const stem = destination.slice(0, destination.length - extension.length)
+        for (let index = 0; ; index++) {
+          destination = index === 0 ? `${stem}${extension}` : `${stem} (${index})${extension}`
+          try { closeSync(openSync(destination, 'wx')); break }
+          catch (error) {
+            if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST') continue
+            throw error
+          }
+        }
+        reserved = destination
+        item.setSavePath(destination)
+      }
+      item.once('done', (_event, state) => {
+        try {
+          if (state !== 'completed') {
+            if (reserved !== undefined) rmSync(reserved, { force: true })
+            entry.finish(state === 'cancelled' ? { status: 'cancelled' } : new Error('File download interrupted'))
+            return
+          }
+          if (!pending.has(url)) return
+          assertOwner(entry.event)
+          retainOwner(entry.owner)
+          const fileId = randomUUID() as SavedFileId
+          saved.set(fileId, { owner: entry.owner, path: item.getSavePath() })
+          entry.finish({ status: 'saved', fileId })
+        } catch (error) { entry.finish(error instanceof Error ? error : new Error('File download unavailable')) }
+      })
+    } catch (error) {
+      item.cancel()
+      try { if (reserved !== undefined) rmSync(reserved, { force: true }) }
+      catch (cleanupError) {
+        entry.finish(new AggregateError([error, cleanupError], 'File download failed and its partial file could not be removed'))
+        return
+      }
+      entry.finish(error instanceof Error ? error : new Error('File download unavailable'))
+    }
+  })
+  const downloadTimeoutMs = resolveDurationMs(process.env, 'DSH_DESKTOP_FILE_DOWNLOAD_TIMEOUT_MS', 300_000)
+  ipcMain.handle(DESKTOP_IPC.fileSave, (event, value: unknown): Promise<FileSaveResult> => {
     const owner = assertOwner(event)
     const request = saveRequest(value)
-    let destination = join(app.getPath('downloads'), request.name)
-    if (request.mode === 'saveAs') {
-      const result = await dialog.showSaveDialog(owner, { defaultPath: destination, properties: ['showOverwriteConfirmation', 'createDirectory'] })
-      if (result.canceled || !result.filePath || owner.isDestroyed()) return { status: 'cancelled' }
-      destination = result.filePath
-    }
-    assertOwner(event)
-    const path = await saveOriginal(request.bytes, destination, request.mode === 'saveAs')
-    if (owner.isDestroyed()) return { status: 'saved' }
-    assertOwner(event)
-    retainOwner(owner)
-    const fileId = randomUUID() as SavedFileId
-    saved.set(fileId, { owner, path })
-    return { status: 'saved', fileId }
+    // Fragments do not change the fetched resource; each native request has its own completion identity.
+    request.url.hash = `dsh-download=${randomUUID()}`
+    const url = request.url.href
+    return new Promise((resolve, reject) => {
+      const contents = owner.webContents
+      const finish = (result: FileSaveResult | Error): void => {
+        if (!pending.delete(url)) return
+        clearTimeout(timer)
+        owner.removeListener('closed', cancel)
+        contents.removeListener('did-start-navigation', navigate)
+        if (result instanceof Error) reject(result)
+        else resolve(result)
+      }
+      const cancel = (): void => {
+        const item = pending.get(url)?.item
+        finish({ status: 'cancelled' })
+        item?.cancel()
+      }
+      const navigate = (_event: Electron.Event, _url: string, inPlace: boolean, mainFrame: boolean): void => {
+        if (mainFrame && !inPlace) cancel()
+      }
+      const timer = setTimeout(() => {
+        const item = pending.get(url)?.item
+        finish(new Error('File download timed out'))
+        item?.cancel()
+      }, downloadTimeoutMs)
+      pending.set(url, { event, owner, request, finish, started: () => { clearTimeout(timer) } })
+      owner.once('closed', cancel)
+      contents.on('did-start-navigation', navigate)
+      try { contents.downloadURL(url) }
+      catch (error) { finish(error instanceof Error ? error : new Error('File download unavailable')) }
+    })
   })
   ipcMain.handle(DESKTOP_IPC.fileReveal, async (event, id: unknown) => {
     const owner = assertOwner(event)
@@ -103,7 +160,7 @@ export function installFileActions(
     assertOwner(event)
     shell.showItemInFolder(entry.path)
   })
-  ipcMain.handle(DESKTOP_IPC.imageRead, async (event, value: unknown) => {
+  ipcMain.handle(DESKTOP_IPC.clipboardImageRead, async (event, value: unknown) => {
     const owner = assertOwner(event)
     if (typeof value !== 'string') throw new Error('Invalid image URL')
     const checkedUrl = (value: string): URL => {

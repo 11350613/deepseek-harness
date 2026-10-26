@@ -37,7 +37,7 @@ export class BrowserFileActions implements FileActions {
     const url = new URL(source.url)
     if (!['http:', 'https:', 'blob:', 'data:', 'dsh-app:'].includes(url.protocol)) throw new Error('Unsupported file source')
     if (this.desktop !== undefined && ['http:', 'https:'].includes(url.protocol) && url.origin !== location.origin) {
-      const content = await this.desktop.readImage(url.href)
+      const content = await this.desktop.readClipboardImage(url.href)
       this.lifetime.signal.throwIfAborted()
       return new Blob([new Uint8Array(content.bytes)], { type: content.mediaType || source.mediaType || '' })
     }
@@ -46,11 +46,26 @@ export class BrowserFileActions implements FileActions {
     return response.blob()
   }
   async save(source: FileActionSource, mode: 'download' | 'saveAs'): Promise<FileSaveResult> {
+    this.lifetime.signal.throwIfAborted()
+    if (this.desktop !== undefined) {
+      const blob = source.read === undefined ? undefined : await source.read(this.lifetime.signal)
+      this.lifetime.signal.throwIfAborted()
+      const url = blob === undefined ? source.url : URL.createObjectURL(blob)
+      try {
+        const result = await this.desktop.save({ url, mode,
+          ...(source.name === undefined ? {} : { name: source.name }),
+          ...(blob?.type || source.mediaType ? { mediaType: blob?.type || source.mediaType } : {}),
+        })
+        this.lifetime.signal.throwIfAborted()
+        if (result.status === 'saved' && result.fileId !== undefined) this.saved.set(source.url, result.fileId)
+        return result
+      } finally { if (blob !== undefined) URL.revokeObjectURL(url) }
+    }
     // The Web picker must be requested in the gesture, before reading the source loses activation.
     const suggested = source.name ?? (URL.canParse(source.url) ? new URL(source.url).pathname.split('/').pop() : undefined)
-    const picked = this.desktop === undefined && mode === 'saveAs'
+    const picked = mode === 'saveAs'
       ? this.picker?.({ suggestedName: exportName(suggested, source.mediaType ?? '') }) : undefined
-    if (this.desktop === undefined && mode === 'saveAs' && picked === undefined) throw new Error('Save picker unavailable')
+    if (mode === 'saveAs' && picked === undefined) throw new Error('Save picker unavailable')
     const handle = picked === undefined ? undefined : await picked.catch((error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') return null
       throw error
@@ -59,11 +74,6 @@ export class BrowserFileActions implements FileActions {
     const blob = await this.read(source)
     this.lifetime.signal.throwIfAborted()
     const name = exportName(suggested, blob.type || source.mediaType || '')
-    if (this.desktop !== undefined) {
-      const result = await this.desktop.save({ bytes: new Uint8Array(await blob.arrayBuffer()), name, mode })
-      if (result.status === 'saved' && result.fileId !== undefined) this.saved.set(source.url, result.fileId)
-      return result
-    }
     if (handle !== undefined) {
       const writable = await handle.createWritable()
       try { await writable.write(blob); await writable.close() }
@@ -80,6 +90,7 @@ export class BrowserFileActions implements FileActions {
     return { status: 'saved' }
   }
   async copyImage(source: FileActionSource): Promise<void> {
+    this.lifetime.signal.throwIfAborted()
     const png = this.read(source).then(async (blob) => {
       this.lifetime.signal.throwIfAborted()
       if (blob.type === 'image/png') return blob

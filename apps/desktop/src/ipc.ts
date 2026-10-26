@@ -10,7 +10,7 @@ import type { DesktopFileDrag } from '@deepseek-ai/dsh-util-file-drag'
 export const DESKTOP_IPC = {
   fileSave: 'dsh-desktop:file-save',
   fileReveal: 'dsh-desktop:file-reveal',
-  imageRead: 'dsh-desktop:image-read',
+  clipboardImageRead: 'dsh-desktop:clipboard-image-read',
   shortcutsInput: 'dsh-desktop:shortcuts-input',
   shortcutsCloseWindow: 'dsh-desktop:shortcuts-close-window',
   shortcutsGet: 'dsh-desktop:shortcuts-get',

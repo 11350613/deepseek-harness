@@ -10,8 +10,8 @@ import type { MenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type { FileActionSource, FileSaveResult, SavedFileId } from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import { OpenInAppPathController } from '../src/client/open-path.ts'
 import { OpenInAppController } from '../src/client/controller.ts'
-import { registerFileMenus } from '@deepseek-ai/dsh-client-ui-file-actions/src/client/context-menus.ts'
-import { registerContextMenus } from '../src/client/context-menus.ts'
+import { registerFileMenus } from '@deepseek-ai/dsh-client-ui-file-actions/src/client/context-menus.tsx'
+import { registerContextMenus } from '../src/client/context-menus.tsx'
 
 const sessionId = SessionId('menu-actions')
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })

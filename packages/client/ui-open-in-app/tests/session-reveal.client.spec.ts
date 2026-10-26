@@ -6,7 +6,7 @@ import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/c
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { OpenInAppController } from '../src/client/controller.ts'
-import { registerSessionReveal } from '../src/client/session-reveal.ts'
+import { registerSessionReveal } from '../src/client/session-reveal.tsx'
 import { en, zh, NS } from '../src/client/locales.ts'
 
 it.each([
@@ -35,7 +35,7 @@ it.each([
   const launch = vi.spyOn(controller, 'launch').mockResolvedValue()
   registerSessionReveal(ctx, controller, locale.bind(NS))
   const menu = registry.resolve({ kind: 'session', value: { sessionId, displayTitle: 'Captured' } })
-  expect(menu.source.getSnapshot()[0]).toMatchObject({ label, disabled, symbol: 'folder' })
+  expect(menu.source.getSnapshot()[0]).toMatchObject({ label, disabled })
   menu.select('open-in-app.reveal/reveal')
   if (disabled) expect(launch).not.toHaveBeenCalled()
   else expect(launch).toHaveBeenCalledWith(apps?.[0], cwd)

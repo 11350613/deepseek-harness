@@ -1,4 +1,5 @@
-/** Presentation-independent menu contributions and explicit gesture targets. */
+/** Client menu contributions and explicit gesture targets. */
+import type { MenuItem } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -24,16 +25,14 @@ export interface MenuTargetMap {
 export type MenuTarget = { [K in keyof MenuTargetMap]: { readonly kind: K; readonly value: MenuTargetMap[K] } }[keyof MenuTargetMap]
 /** Pointer position in CSS pixels; keyboard gestures use the trigger's bottom edge. */
 export interface MenuPoint { readonly x: number; readonly y: number }
-/** JSON-compatible presentation fields; callbacks stay in the Client registry. */
+/** Client presentation fields; callbacks stay in the registry. */
 export interface MenuActionView {
   readonly id: string
   readonly label: string
   /** Command identity for live shortcut display only; selection still invokes this action’s run callback. */
   readonly commandId?: ShortcutCommandId
   readonly disabled?: boolean
-  readonly icon?: string
-  /** Semantic glyph from the shared icon library; image icons take precedence. */
-  readonly symbol?: 'copy' | 'download' | 'save' | 'folder' | 'sidebar' | 'external' | 'close' | 'closeOthers' | 'closeRight' | 'rename' | 'delete' | 'pin' | 'unpin' | 'fork' | 'archive' | 'unarchive'
+  readonly icon?: MenuItem['icon']
   readonly danger?: boolean
   readonly separatorBefore?: boolean
   /** Render after legacy component contributions in the shared Web popup. */

@@ -1,4 +1,5 @@
 /** Structured Session actions over the workspace owner's existing callbacks. */
+import { IconPinFillRegular, IconPinOutlineRegular, IconUnarchiveOutlineRegular, IconArchiveOutlineRegular, IconEditOutlineRegular, IconBranchOutlineRegular, IconCopyOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
 import type { RemoteEndpoint } from '@deepseek-ai/dsh-api-remote-access/client'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
@@ -40,20 +41,20 @@ export function registerSessionMenus(ctx: Context, actions: Actions): void {
     const pinned = ctx.workspaces.list.getSnapshot().pinnedSessionIds.includes(target.sessionId)
     if (archived(target) || !allowed(target, pinned ? 'workspace/unpinSession' : 'workspace/pinSession')) return []
     return [{
-      id: 'pin', label: t(pinned ? 'menu.unpinSession' : 'menu.pinSession'), symbol: pinned ? 'unpin' : 'pin',
+      id: 'pin', label: t(pinned ? 'menu.unpinSession' : 'menu.pinSession'), icon: pinned ? <IconPinFillRegular /> : <IconPinOutlineRegular />,
       run: () => { (pinned ? actions.unpinSession : actions.pinSession)(target.sessionId) },
     }]
   })
   register('rename', 200, ['session/rename'], target => allowed(target, 'session/rename') ? [{
-    id: 'rename', label: t('rename'), symbol: 'rename', commandId: 'session.rename' as ShortcutCommandId,
+    id: 'rename', label: t('rename'), icon: <IconEditOutlineRegular />, commandId: 'session.rename' as ShortcutCommandId,
     run: () => { actions.requestSessionRename(target.sessionId, target.displayTitle) },
   }] : [])
   register('fork', 300, ['session/fork'], target => allowed(target, 'session/fork') ? [{
-    id: 'fork', label: t('menu.fork'), symbol: 'fork', commandId: 'session.fork' as ShortcutCommandId,
+    id: 'fork', label: t('menu.fork'), icon: <IconBranchOutlineRegular />, commandId: 'session.fork' as ShortcutCommandId,
     run: () => { actions.forkSession(target.sessionId) },
   }] : [])
   register('id', 450, [], target => [{
-    id: 'copy', label: t('menu.sessionId'), symbol: 'copy', separatorBefore: true,
+    id: 'copy', label: t('menu.sessionId'), icon: <IconCopyOutlineRegular />, separatorBefore: true,
     run: () => actions.copySessionId(target.sessionId),
   }])
   register('archive', 600, ['workspace/archiveSession', 'workspace/unarchiveSession'], (target) => {
@@ -61,7 +62,7 @@ export function registerSessionMenus(ctx: Context, actions: Actions): void {
     if (!allowed(target, restoring ? 'workspace/unarchiveSession' : 'workspace/archiveSession')) return []
     return [{
       id: 'archive', label: t(restoring ? 'menu.unarchiveSession' : 'menu.archiveSession'),
-      symbol: restoring ? 'unarchive' : 'archive', separatorBefore: true, afterContent: true,
+      icon: restoring ? <IconUnarchiveOutlineRegular /> : <IconArchiveOutlineRegular />, separatorBefore: true, afterContent: true,
       ...restoring ? {} : { commandId: 'session.archive' as ShortcutCommandId },
       run: () => { (restoring ? actions.unarchiveSession : actions.archiveSession)(target.sessionId) },
     }]

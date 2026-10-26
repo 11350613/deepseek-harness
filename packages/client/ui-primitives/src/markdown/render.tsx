@@ -1,4 +1,4 @@
-import { menuPoint, contextMenuTrigger } from '../menu-point.ts'
+import { menuPoint, contextMenuTrigger } from '../context-menu-trigger.ts'
 /**
  * Direct mdast→React markdown renderer. Replaces the react-markdown /
  * remark-rehype pipeline with one switch over parsed nodes so streaming can

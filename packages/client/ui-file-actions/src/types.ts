@@ -18,15 +18,16 @@ export type FileSaveResult = { readonly status: 'cancelled' }
 /** Desktop-owned operations exposed only to the trusted application frame. */
 export interface DesktopFileActions {
   /**
-   * @param request - original bytes and safe suggested filename.
+   * @param request - captured original URL, suggested filename and destination policy.
    * @returns saved reference, or cancellation.
    */
-  save(this: void, request: { bytes: Uint8Array; name: string; mode: 'download' | 'saveAs' }): Promise<FileSaveResult>
+  save(this: void, request: { url: string; name?: string; mediaType?: string; mode: 'download' | 'saveAs' }): Promise<FileSaveResult>
   /**
+   * Read cross-origin originals only for the source-captured clipboard operation.
    * @param url - HTTP(S) original fetched without credentials.
    * @returns original bytes and response MIME.
    */
-  readImage(this: void, url: string): Promise<{ bytes: Uint8Array; mediaType: string }>
+  readClipboardImage(this: void, url: string): Promise<{ bytes: Uint8Array; mediaType: string }>
   /**
    * @param id - reference returned by save.
    * @returns after the file manager accepts the request.

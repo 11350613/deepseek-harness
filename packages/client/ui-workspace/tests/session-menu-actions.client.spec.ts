@@ -5,7 +5,7 @@ import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
-import { registerSessionMenus } from '../src/client/session-actions/context-menus.ts'
+import { registerSessionMenus } from '../src/client/session-actions/context-menus.tsx'
 import { en, zh } from '../src/client/locales.ts'
 
 function bench() {
@@ -41,15 +41,14 @@ it('preserves built-in order, groups, icons, command identities, and captured ac
   await b.fiber.await()
   const menu = b.open()
   const views = menu.source.getSnapshot()
-  expect(views.map(({ id, label, symbol, commandId, separatorBefore, afterContent }) =>
-    [id, label, symbol, commandId, separatorBefore, afterContent])).toEqual([
-    ['session.pin/pin', 'Pin session', 'pin', undefined, undefined, undefined],
-    ['session.rename/rename', 'Rename', 'rename', 'session.rename', undefined, undefined],
-    ['session.fork/fork', 'Fork session', 'fork', 'session.fork', undefined, undefined],
-    ['session.id/copy', 'Copy Session ID', 'copy', undefined, true, undefined],
-    ['session.archive/archive', 'Archive session', 'archive', 'session.archive', true, true],
+  expect(views.map(({ id, label, icon, commandId, separatorBefore, afterContent }) =>
+    [id, label, icon !== undefined, commandId, separatorBefore, afterContent])).toEqual([
+    ['session.pin/pin', 'Pin session', true, undefined, undefined, undefined],
+    ['session.rename/rename', 'Rename', true, 'session.rename', undefined, undefined],
+    ['session.fork/fork', 'Fork session', true, 'session.fork', undefined, undefined],
+    ['session.id/copy', 'Copy Session ID', true, undefined, true, undefined],
+    ['session.archive/archive', 'Archive session', true, 'session.archive', true, true],
   ])
-  expect(JSON.parse(JSON.stringify(views))).toEqual(views)
   menu.dispose()
   for (const id of views.map(item => item.id)) b.open().select(id)
   expect(b.actions.pinSession).toHaveBeenCalledWith('background')
@@ -59,14 +58,14 @@ it('preserves built-in order, groups, icons, command identities, and captured ac
   expect(b.actions.archiveSession).toHaveBeenCalledWith('background')
   const unpin = b.open()
   b.list.set({ ...b.list.getSnapshot(), pinnedSessionIds: [b.target.value.sessionId] })
-  expect(unpin.source.getSnapshot()[0]).toMatchObject({ label: 'Unpin session', symbol: 'unpin' })
+  expect(unpin.source.getSnapshot()[0]).toMatchObject({ label: 'Unpin session' })
   unpin.select('session.pin/pin')
   expect(b.actions.unpinSession).toHaveBeenCalledWith('background')
   const restore = b.open()
   b.list.set({ ...b.list.getSnapshot(), archivedSessionIds: [b.target.value.sessionId] })
   expect(restore.source.getSnapshot().some(item => item.id === 'session.pin/pin')).toBe(false)
   const archive = restore.source.getSnapshot().at(-1)!
-  expect(archive).toMatchObject({ label: 'Unarchive session', symbol: 'unarchive' })
+  expect(archive).toMatchObject({ label: 'Unarchive session' })
   expect(archive.commandId).toBeUndefined()
   restore.select(archive.id)
   expect(b.actions.unarchiveSession).toHaveBeenCalledWith('background')

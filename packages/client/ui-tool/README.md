@@ -31,6 +31,8 @@ Settled foreground commands with a nonzero exit code, a terminating signal, or a
 
 Before dispatch, a named model call appears as one non-expandable row with its tool-owned icon and title. A generic row shows `Tool call · <tool name>`. Read/write/edit show an openable path once `file_path` closes and decodes without errors; write/edit show `NKB` after that path once content arrives, retaining it during execution and after success, before any diff totals. N rounds the decoded input's UTF-16 length up in units of 1024, summing old and new text for edit; it is not file bytes. Error and stopped rows omit the size and diff totals. Command rows show the streamed description. `tool/call` enables the existing call presentation; completing an argument block alone does not start execution.
 
+The Chat owner supplies `openContextMenu` alongside `openFile` through the flow, node, and tool-view Slots. Tool views pass it to `ToolRow.onOpenContextMenu`; the row requires no Markdown provider. Mouse and keyboard gestures use the same captured path, line, URL, and Session callback without expanding the row or opening the file.
+
 ### Registering a business tool view
 
 An owning business package registers its wire Tool name into `tool.call.toolview`:
