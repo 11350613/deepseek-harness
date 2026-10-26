@@ -35,7 +35,7 @@ kind: "package-bundle"
 
 SDK 使用 base 默认提供的 `read`、`write` 和 `edit`。要添加 `str_replace_editor`，请使用 [base 配置指南](../base/README.zh.md#use-this-package)中的显式插入 patch。独立的 `sdk-minimal` profile 自行决定其工具选择。
 
-模型可以在 native 和 PTC 模式下使用 [`plugin_manager`](../../boot/plugin-manager/README.zh.md)。每个操作都要求完整权限或本次调用的批准。保存的 profile 变更返回 `restart-required` 和 `no-hmr`；当前运行时及其会话保留原有工具，直到调用方关闭并重新启动运行时。通过 profile patch 设置 `tool-plugin-manager.disabled: true` 可隐藏此工具。独立的 `sdk-minimal` profile 不包含它。
+模型可以在 native 和 PTC 模式下使用 [`plugin_manager`](../../boot/plugin-manager/README.zh.md)。每个操作（包括列举）都要求完整权限或本次调用的批准。默认 workspace-write/ask 策略需要客户端审批应答方：启用 `approvalRequests`，并通过 `harness.client.onRequest()` 处理 `approval/request`，或在组合中提供审批器。没有应答方时，操作因 unavailable 被拒绝。安装/移除包还要求 `PATH` 中有 `pnpm`，或显式配置 `plugin-manager.pnpmCommand`；Python wheel 不会自动提供它。保存的 profile 变更返回 `restart-required` 和 `no-hmr`；当前运行时及其会话保留原有工具，直到调用方关闭并重新启动运行时。通过 profile patch 设置 `tool-plugin-manager.disabled: true` 可隐藏此工具。独立的 `sdk-minimal` profile 不包含它。
 
 Python 运行时向本 profile 提供显式下载的创作资源和 Office sidecar。`DSH_PRIMARY_RUNTIME` 覆盖创作载荷；空值禁用其查询。Office skills 可独立使用任一种资源。Profile patch 可独立于 `workspace-dependencies` 禁用 `skill-office` 或替换其 `assetRoot`；同名文件系统 skills 优先。下载与配置见[运行时包](../../../python/sdk-runtime/README.zh.md)。
 
@@ -48,15 +48,15 @@ Python 运行时向本 profile 提供显式下载的创作资源和 Office sidec
 
 #### 模型看到什么
 
-profile 继承 base 系统提示词，包括 `You are an AI agent powered by DeepSeek Harness.` 身份说明，并添加与 Web 和 headless profile 相同、按当前模型插值的 coding persona。每个 Session 通过 [`dsh-working-directory`](../../session/working-directory/README.zh.md) 提供的必需 user-role 上下文接收当前目录。默认文件工具 schema 包含 `read`、`write` 和 `edit`，不包含 `str_replace_editor`。模型还会收到 `present`、`ask_user_question`、定时任务工具、共用文件引用说明和时间上下文。子 agent 不能使用定时任务工具。[`time-context`](../../context/time-context/README.zh.md) 配置项接受回退时区。Skills 使用上述配置的资源。
+profile 继承 base 系统提示词，包括 `You are an AI agent powered by DeepSeek Harness.` 身份说明，并添加与 Web 和 headless profile 相同、按当前模型插值的 coding persona。每个 Session 通过 [`dsh-working-directory`](../../session/working-directory/README.zh.md) 提供的必需 user-role 上下文接收当前目录。默认文件工具 schema 包含 `read`、`write` 和 `edit`，不包含 `str_replace_editor`。模型还会收到 `present`、`ask_user_question`、`plugin_manager`、定时任务工具、共用文件引用说明和时间上下文。子 agent 不能使用定时任务工具。[`time-context`](../../context/time-context/README.zh.md) 配置项接受回退时区。Skills 使用上述配置的资源。
 
 #### Token 影响
 
-此 profile 添加一句 coding persona、所挂载的工具定义与说明，以及记录在日志中的运行时上下文和时间消息。
+此 profile 添加一句 coding persona、所挂载的工具定义与说明，以及记录在日志中的运行时上下文和时间消息。 即使操作无法获批，`plugin_manager` 的描述和参数 schema 仍增加输入 token；不使用插件管理的嵌入方可禁用该条目。
 
 #### KV Cache 影响
 
-对固定 profile、提供方、模型与工具清单，静态前缀保持稳定。运行时值追加到已记录的 user 上下文中。由于随附 SDK profile 使用仅启动时 patch，profile 变化会在下一个进程生效。
+启用 `plugin_manager` 会改变早期 SDK 版本的工具 schema 前缀。对固定 profile、提供方、模型与工具清单，静态前缀保持稳定。运行时值追加到已记录的 user 上下文中。由于随附 SDK profile 使用仅启动时 patch，profile 变化会在下一个进程生效。
 
 ## 已知限制与延期工作
 
@@ -68,6 +68,7 @@ profile 继承 base 系统提示词，包括 `You are an AI agent powered by Dee
 - **定时任务依赖运行时生命周期**：投递需要运行中的进程及其持久化 Session 存储。
 - **profile 可能省略 SDK server**：TypeScript client 选择的自定义 profile 必须保留本组合包或另一个 `dsh-sdk-jsonrpc-server` 配置项；没有 peer 响应时，client 初始化会失败。
 - **用户插件可以破坏 stdout 纯净性**：profile 与逐次启动 patch 属于受信任应用组合。随附组合包不会向 stdout 写入非协议内容，但无法约束任意插入插件。
+- **插件变更共享 profile** — 保存的变更影响 `<DSH_HOME>/profiles/sdk`，以及使用同一 home 的其他嵌入方的下次启动；独立组合应使用不同的 `dshHome` 目录。没有可用 pnpm 可执行文件时，包操作会失败；下载的创作资源不会自动接入插件管理器。
 - **配置变化需要重启**：`sdk-app` 组合包在 YAML 中禁用 HMR，因此一个 stdio 连接不会观察到 server 或 agent 依赖被替换。
 
 

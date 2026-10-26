@@ -58,7 +58,7 @@ Office 操作技能通过 profile 的 shell 命令调用配置的 Node 和 Kit C
 
 Python 与打包的 bootstrap 共享资源布局：`<cache>/<identity>/office/`、`node/bin/node[.exe]` 与 `node_modules/@deepseek-ai/libreoffice-kit/lib/cli.js`。自动发现 Office 缓存要求 `complete` 标记匹配清单 identity；显式 `DSH_OFFICE_SIDECAR` 要求 Node 与 CLI 文件存在。Python bootstrap 从显式下载或选择的 sidecar 解析 Office kit，让原生辅助程序与 URL Worker 使用真实文件系统路径。仓库构建与显式 Python 下载共用资源准备实现。kit 负责文档操作；Office smoke 从已加载技能获取 CLI 路径，并在空 PATH 下执行 capabilities 和 DOCX 转换。
 
-外部 profile 管理使用 `dsh plugin --profile <name> ...`。该命令要求 `PATH` 中存在 `pnpm`；普通 SDK／profile 运行不需要它。
+外部 profile 管理使用 `dsh plugin --profile <name> ...`。该命令和 SDK `plugin_manager` 工具的包安装/移除操作要求 `PATH` 中存在 `pnpm`，或显式配置 `plugin-manager.pnpmCommand`。wheel 不会自动选择下载的创作资源中的 pnpm。普通 SDK／profile 运行及列举/切换现有插件不需要 pnpm。每个面向模型的管理操作仍要求完整权限或客户端审批应答方；保存的变更影响后续启动使用的共享 SDK profile。
 
 ## 构建与分发
 

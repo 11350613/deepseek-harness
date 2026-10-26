@@ -58,7 +58,7 @@ Unsupported platforms and missing executables or sidecars raise `FileNotFoundErr
 
 Python and the packaged bootstrap share the resource layout: `<cache>/<identity>/office/`, `node/bin/node[.exe]`, and `node_modules/@deepseek-ai/libreoffice-kit/lib/cli.js`. Automatic Office cache discovery requires the `complete` marker to match the manifest identity; an explicit `DSH_OFFICE_SIDECAR` requires the Node and CLI files. The Python bootstrap resolves the Office kit from its explicitly downloaded or selected sidecar so native helpers and URL Workers use real filesystem paths. The same resource preparation implementation serves repository builds and explicit Python downloads. The kit owns document operations; the Office smoke retrieves CLI paths from the loaded skill and executes capabilities and DOCX conversion with an empty PATH.
 
-External profile management uses `dsh plugin --profile <name> ...`. That command requires `pnpm` on `PATH`; ordinary SDK/profile execution does not.
+External profile management uses `dsh plugin --profile <name> ...`. That command and the SDK `plugin_manager` tool's package install/remove actions require `pnpm` on `PATH`, or an explicit `plugin-manager.pnpmCommand`. The wheel does not automatically select pnpm from downloaded authoring resources. Ordinary SDK/profile execution and listing/toggling existing plugins do not require pnpm. Every model-facing management action still requires full access or a client approval responder; saved changes affect the shared SDK profile on subsequent launches.
 
 ## Build and distribution
 

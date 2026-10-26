@@ -19,6 +19,7 @@ export function apply(ctx, config) {
   if (config.preset === undefined) return
   const receive = message => {
     if (message === 'stop-tool-parity') {
+      // Run the CLI shutdown handler: Windows OS signals terminate before its cleanup.
       process.emit('SIGTERM')
       return
     }

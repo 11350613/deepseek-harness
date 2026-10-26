@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
 import { expect, it } from 'vitest'
 import { z } from 'zod'
-import { clearAmbientProxyEnv } from '../../../../../scripts/test-proxy-environment.ts'
+import { profileEnvironment } from './fixtures/profile-environment.ts'
 import { messagesResponse } from './fixtures/messages-response.ts'
 
 it.for(['standard', 'ptc'] as const)('keeps %s plugin changes pending until the SDK runtime restarts', async (mode, test) => {
@@ -24,10 +24,10 @@ it.for(['standard', 'ptc'] as const)('keeps %s plugin changes pending until the 
     request.setEncoding('utf8')
     request.on('data', (chunk: string) => { body += chunk })
     request.on('end', () => {
-      const current = JSON.parse(body) as Record<string, unknown>
-      requests.push(current)
       let args: Record<string, unknown> | undefined
       try {
+        const current = JSON.parse(body) as Record<string, unknown>
+        requests.push(current)
         if (requests.length === 1) args = { action: 'list_plugins', limit: 100 }
         else if (phase === 'list') {
           const messages = current.messages as { content: { type: string; content?: { text: string }[] }[] }[]
@@ -66,11 +66,7 @@ it.for(['standard', 'ptc'] as const)('keeps %s plugin changes pending until the 
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('model fixture has no TCP address')
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('DSH_')))
-  Object.assign(env, { DSH_PERMISSION_MODE: 'danger-full-access', DSH_TELEMETRY_DISABLED: '1',
-    DSH_AGENTS_HOME: join(root, 'agents'), DSH_PRIMARY_RUNTIME: '',
-    DEEPSEEK_API_KEY: 'keyless-plugin-manager', DEEPSEEK_BASE_URL: `http://127.0.0.1:${address.port}` })
-  clearAmbientProxyEnv(env)
+  const env = profileEnvironment(root, `http://127.0.0.1:${address.port}`)
   const options = {
     cwd: root, processCwd: root, dshHome: join(root, 'home'), env, model: 'deepseek-v4-pro',
     patches: mode === 'ptc' ? [fileURLToPath(new URL('../../../config/examples/ptc.yml', import.meta.url))] : [],
@@ -107,4 +103,65 @@ it.for(['standard', 'ptc'] as const)('keeps %s plugin changes pending until the 
   await run(true)
   expect(advertises(requests.at(-1)!, 'web_fetch')).toBe(false)
   expect(advertises(requests.at(-1)!, 'plugin_manager')).toBe(true)
+})
+
+it.for(['unavailable', 'approved', 'missing-pnpm'] as const)('reports the %s plugin-management prerequisite', async (scenario, test) => {
+  const root = await mkdtemp(join(tmpdir(), 'sdk-plugin-prerequisite-'))
+  const requests: Record<string, unknown>[] = []
+  let fixtureError: unknown
+  const server = createServer((request, response) => {
+    let body = ''
+    request.setEncoding('utf8')
+    request.on('data', (chunk: string) => { body += chunk })
+    request.on('end', () => {
+      try { requests.push(JSON.parse(body) as Record<string, unknown>) }
+      catch (error) { fixtureError = error }
+      const args = scenario === 'missing-pnpm'
+        ? { action: 'install_bundle', target: '@deepseek-ai/dsh-subagent-codex' }
+        : { action: 'list_plugins', limit: 1 }
+      const call = { type: 'tool_use', id: 'prerequisite', name: 'plugin_manager', input: args }
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end(messagesResponse(requests.length === 1 ? call : { type: 'text', text: 'done' },
+        requests.length === 1 ? 'tool_use' : 'end_turn'))
+    })
+  })
+  test.onTestFinished(async () => {
+    try { await new Promise<void>((resolve, reject) => server.close((error) => { if (error) reject(error); else resolve() })) }
+    finally { await rm(root, { recursive: true, force: true }) }
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('model fixture has no TCP address')
+  const env = profileEnvironment(root, `http://127.0.0.1:${address.port}`)
+  env.DSH_PERMISSION_MODE = scenario === 'missing-pnpm' ? 'danger-full-access' : 'workspace-write'
+  if (scenario === 'missing-pnpm') {
+    for (const key of Object.keys(env)) if (key.toLowerCase() === 'path') Reflect.deleteProperty(env, key)
+    env.PATH = root
+  }
+  const harness = new DeepSeekHarness({ cwd: root, processCwd: root, dshHome: join(root, 'home'),
+    env, model: 'deepseek-v4-pro', approvalRequests: scenario === 'approved' })
+  let approvals = 0
+  const abort = (): void => { void harness.close() }
+  test.signal.addEventListener('abort', abort, { once: true })
+  try {
+    harness.client.start()
+    harness.client.onRequest(async (method) => {
+      expect(method).toBe('approval/request')
+      approvals++
+      return { outcome: 'allowed-once' }
+    })
+    expect((await harness.run('Check plugin prerequisites')).finalResponse).toBe('done')
+    expect(fixtureError).toBeUndefined()
+    const result = JSON.stringify(requests.at(-1)?.messages)
+    if (scenario === 'unavailable') expect(result).toContain('unavailable')
+    else if (scenario === 'missing-pnpm') {
+      expect(result).toContain('ENOENT')
+      expect(result).toContain('operation-error')
+    } else { expect(approvals).toBe(1); expect(result).toContain('entries') }
+    const manifest = JSON.parse(await readFile(join(root, 'home/profiles/sdk/package.json'), 'utf8')) as { dependencies: object }
+    expect(Object.keys(manifest.dependencies ?? {})).toEqual([])
+  } finally {
+    await harness.close()
+    test.signal.removeEventListener('abort', abort)
+  }
 })

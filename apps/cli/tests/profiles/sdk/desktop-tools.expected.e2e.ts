@@ -1,6 +1,5 @@
 /**
  * Keyless comparison of actual SDK and Desktop/Web step-admitted tool sets.
- * Runs in test:expected, hence ci-consumers and PR all checks passed, after the build.
  * Keep intentional differences in tool-parity.ts; unused exceptions fail.
  * Team mode is excluded while its known composition mismatch is tracked in #7172.
  * SDK minimal, Creator-only tools, graphical context and optional runtime payloads
@@ -15,7 +14,7 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
 import { expect, it, type TestContext } from 'vitest'
-import { clearAmbientProxyEnv } from '../../../../../scripts/test-proxy-environment.ts'
+import { profileEnvironment } from './fixtures/profile-environment.ts'
 import { messagesResponse } from './fixtures/messages-response.ts'
 import { assertToolParity, type ToolMode } from './tool-parity.ts'
 
@@ -50,15 +49,7 @@ async function fixture(test: TestContext) {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('model fixture has no TCP address')
-  // No ambient DSH options, runtime payload, MCP profile, or personal skill directory enters this comparison.
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('DSH_')))
-  Object.assign(env, {
-    DSH_PERMISSION_MODE: 'danger-full-access', DSH_TELEMETRY_DISABLED: '1',
-    DSH_AGENTS_HOME: join(root, 'agents'), DSH_PRIMARY_RUNTIME: '',
-    DEEPSEEK_API_KEY: 'keyless-parity', DEEPSEEK_BASE_URL: `http://127.0.0.1:${address.port}`,
-    NODE_OPTIONS: '', NODE_PATH: '',
-  })
-  clearAmbientProxyEnv(env)
+  const env = profileEnvironment(root, `http://127.0.0.1:${address.port}`)
 
   async function collect(side: 'sdk' | 'desktop', mode: ToolMode, mutations: object[] = []): Promise<Inventory> {
     const cwd = await mkdtemp(join(root, `${side}-${mode}-`))
@@ -117,7 +108,10 @@ async function fixture(test: TestContext) {
         const watchdog = setTimeout(() => { child.kill('SIGKILL') }, 10_000)
         try {
           try { await child.sendMessage('stop-tool-parity') }
-          catch (_closedChannel: unknown) { child.kill('SIGTERM') }
+          catch (_closedChannel: unknown) {
+            // A closed IPC channel cannot request graceful shutdown; fall back to the OS signal.
+            child.kill('SIGTERM')
+          }
           const result = await child
           expect(result.exitCode, result.stderr).toBe(0)
           expect(result.signal, result.stderr).toBeUndefined()
@@ -134,7 +128,7 @@ async function fixture(test: TestContext) {
   return collect
 }
 
-it.for(['standard', 'ptc'] as const)('compares the shipped %s tool sets and detects one-sided profile edits', async (mode, test) => {
+it.for(['standard', 'ptc'] as const)('compares the shipped %s tool sets and permits explicit opt-out', async (mode, test) => {
   const collect = await fixture(test)
   const sdk = await collect('sdk', mode)
   const desktop = await collect('desktop', mode)
@@ -142,11 +136,23 @@ it.for(['standard', 'ptc'] as const)('compares the shipped %s tool sets and dete
   expect(sdk.names).toContain('plugin_manager')
   const optOut = await collect('sdk', mode, [{ id: 'tool-plugin-manager', disabled: true }])
   expect(optOut.names).not.toContain('plugin_manager')
-  expect(() => { assertToolParity(mode, optOut.names, desktop.names) }).toThrow('plugin_manager')
+  expect(() => { assertToolParity(mode, optOut.names, desktop.names) }).toThrow(
+    mode === 'ptc' ? 'Stale exceptions: sdk:plugin_manager' : 'Missing from SDK: plugin_manager')
+})
+
+it.for(['standard', 'ptc'] as const)('detects missing shared tools in %s', async (mode, test) => {
+  const collect = await fixture(test)
+  const desktop = await collect('desktop', mode)
   for (const [id, tool] of [['present', 'present'], ['tool-ask-user', 'ask_user_question'], ['tool-schedule', 'schedule_create']]) {
     const missing = await collect('sdk', mode, [{ id, disabled: true }])
     expect(() => { assertToolParity(mode, missing.names, desktop.names) }).toThrow(new RegExp(`Missing from SDK:.*${tool}`))
   }
+})
+
+it.for(['standard', 'ptc'] as const)('detects one-sided additions in %s', async (mode, test) => {
+  const collect = await fixture(test)
+  const sdk = await collect('sdk', mode)
+  const desktop = await collect('desktop', mode)
   const addition = [{ insert: [{ id: 'parity-probe', name: probe }] }]
   const desktopExtra = await collect('desktop', mode, addition)
   expect(() => { assertToolParity(mode, sdk.names, desktopExtra.names) }).toThrow('Missing from SDK: parity_probe')

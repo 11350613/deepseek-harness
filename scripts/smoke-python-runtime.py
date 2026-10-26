@@ -379,6 +379,13 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
         result = tool_results[-1]
         call_id, tool_name = latest_tool_call(messages, result.get("tool_use_id"))
         tool_text = message_text(result.get("content"))
+        if call_id == "python-plugin-install" and tool_name == "plugin_manager":
+            outcome = json.loads(tool_text)
+            if outcome.get("changed") or outcome.get("application") != "failed":
+                raise AssertionError(f"package operation unexpectedly succeeded without pnpm: {outcome}")
+            if outcome.get("packageResult", {}).get("exitCode") != 127 or "ENOENT" not in tool_text:
+                raise AssertionError(f"missing pnpm diagnostic was not preserved: {outcome}")
+            return text_chunks(EXPECTED_TEXT)
         if tool_name == "load_workspace_dependencies":
             if result.get("is_error") or "python" not in json.loads(tool_text):
                 raise AssertionError(f"packaged Python query failed: {tool_text}")
@@ -448,11 +455,17 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
         PROFILE_PLUGIN_PROMPT,
         AUTHORING_PROMPT,
         DYNAMIC_TOOLS_PROMPT,
+        "check missing plugin package manager",
     }
     prompt = next(
         (candidate for candidate in user_prompts if candidate in scenario_prompts),
         message_text(latest.get("content")),
     )
+    if prompt == "check missing plugin package manager":
+        assert_advertised_tool(body, "plugin_manager")
+        return tool_call_chunks("python-plugin-install", "plugin_manager", {
+            "action": "install_bundle", "target": "@deepseek-ai/dsh-subagent-codex",
+        })
     if prompt == SNAPSHOT_DIRECT_CHILD_PROMPT:
         return text_chunks("DIRECT_CHILD_OK")
     if prompt == AUTHORING_PROMPT:
@@ -1283,6 +1296,16 @@ def smoke_sdk_default(base_url: str) -> None:
             f"turn_end={safe_turn_end(next((event.get('data', event) for event in reversed(result.events) if event.get('type') == 'turn/end'), {}))!r}"
         )
         assert_zstd_session_log(sessions)
+        # The installed runtime starts with an empty PATH; no checkout or global pnpm can satisfy the tool.
+        before = (dsh_home / "profiles/sdk/package.json").read_bytes()
+        with DeepSeekHarness(
+            provider="deepseek-official", model="smoke-model", cwd=str(root), dsh_home=str(dsh_home),
+            env={"DSH_PERMISSION_MODE": "danger-full-access", "DSH_TELEMETRY_DISABLED": "1", "PATH": ""},
+            api_key="sk-keyless-smoke", base_url=base_url, request_timeout_seconds=60,
+        ) as harness:
+            package_result = harness.run("check missing plugin package manager", session_id="missing-pnpm")
+        assert package_result.final_response == EXPECTED_TEXT, package_result.final_response
+        assert (dsh_home / "profiles/sdk/package.json").read_bytes() == before
 
 
 def smoke_sdk_custom(base_url: str, executable: Path) -> None:
