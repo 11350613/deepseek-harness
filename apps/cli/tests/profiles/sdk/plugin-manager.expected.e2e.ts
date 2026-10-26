@@ -155,8 +155,17 @@ it.for(['unavailable', 'approved', 'missing-pnpm'] as const)('reports the %s plu
     const result = JSON.stringify(requests.at(-1)?.messages)
     if (scenario === 'unavailable') expect(result).toContain('unavailable')
     else if (scenario === 'missing-pnpm') {
-      expect(result).toContain('ENOENT')
-      expect(result).toContain('operation-error')
+      const messages = requests.at(-1)!.messages as { content: { type: string; content?: { text: string }[] }[] }[]
+      const toolResult = messages.flatMap(message => message.content).findLast(block => block.type === 'tool_result')
+      const failure = z.object({
+        changed: z.literal(false), application: z.literal('failed'),
+        packageResult: z.object({ exitCode: z.number(), output: z.string().min(1) }),
+        error: z.object({ code: z.literal('operation-error'), diagnostic: z.string().min(1) }),
+      }).parse(JSON.parse(toolResult!.content![0]!.text))
+      // cmd.exe reports 1 for a missing command; POSIX spawn reports 127.
+      expect(failure.packageResult.exitCode).toBe(process.platform === 'win32' ? 1 : 127)
+      expect(failure.error.diagnostic).toContain('pnpm')
+      expect(failure.packageResult.output).toContain(failure.error.diagnostic)
     } else { expect(approvals).toBe(1); expect(result).toContain('entries') }
     const manifest = JSON.parse(await readFile(join(root, 'home/profiles/sdk/package.json'), 'utf8')) as { dependencies: object }
     expect(Object.keys(manifest.dependencies ?? {})).toEqual([])

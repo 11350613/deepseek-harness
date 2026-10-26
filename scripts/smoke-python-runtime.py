@@ -383,7 +383,13 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
             outcome = json.loads(tool_text)
             if outcome.get("changed") or outcome.get("application") != "failed":
                 raise AssertionError(f"package operation unexpectedly succeeded without pnpm: {outcome}")
-            if outcome.get("packageResult", {}).get("exitCode") != 127 or "ENOENT" not in tool_text:
+            package = outcome.get("packageResult", {})
+            error = outcome.get("error", {})
+            diagnostic = error.get("diagnostic", "")
+            # cmd.exe reports 1 for a missing command; POSIX spawn reports 127.
+            if (package.get("exitCode") != (1 if IS_WINDOWS else 127)
+                    or error.get("code") != "operation-error" or "pnpm" not in diagnostic
+                    or diagnostic not in package.get("output", "")):
                 raise AssertionError(f"missing pnpm diagnostic was not preserved: {outcome}")
             return text_chunks(EXPECTED_TEXT)
         if tool_name == "load_workspace_dependencies":
