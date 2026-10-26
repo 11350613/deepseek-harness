@@ -51,7 +51,7 @@ export async function setup(options: { policy?: boolean; mode?: SandboxMode; pro
     await ctx.plugin(SandboxedFileSystem, { cwd: providerRoot })
   } else await ctx.plugin(options.provider ?? LocalFileSystem, { cwd: providerRoot })
   if (options.policy !== false) await ctx.plugin(FsPolicy)
-  const toolFiber = await ctx.plugin(ToolFs, options.applyPatch === undefined ? {} : { applyPatch: options.applyPatch })
+  const toolFiber = await ctx.plugin(ToolFs, { applyPatch: options.applyPatch ?? true })
   const fs = ctx.fs as LocalFileSystem
   const controller = new AbortController()
   const exec: ToolExecution = {

@@ -3891,7 +3891,7 @@ export interface Config {
   write?: boolean
   /** Register `edit` and its guidance. Defaults to true. */
   edit?: boolean
-  /** Register `apply_patch` and its guidance. Defaults to `write && edit`, the two capabilities a patch combines. */
+  /** Register `apply_patch` and its guidance beside `edit`. Defaults to false; shipped compositions set it on their `tool-fs` rows. */
   applyPatch?: boolean
   /** Default and maximum number of lines returned by one `read` call. */
   readLimit?: number

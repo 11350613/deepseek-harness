@@ -19,13 +19,13 @@ function call(t: Fixture, text: string) {
   return executeToolFixture(t.ctx, { ...t.exec, arguments: { patch: text } })
 }
 
-it('omits patch registration and guidance when explicitly disabled', async () => {
+it('omits patch registration and guidance when disabled', async () => {
   const t = await setup({ applyPatch: false })
   expect(t.ctx.tools.get('apply_patch')).toBeUndefined()
   expect((await t.ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:apply_patch')).toBeUndefined()
 })
 
-it('registers patch guidance by default and removes tool and section on disposal', async () => {
+it('registers patch guidance when enabled and removes tool and section on disposal', async () => {
   const t = await setup()
   expect(t.ctx.tools.get('apply_patch')?.description).toBe('Create, update, delete, or move UTF-8 text files with one Codex-style patch; '
     + 'prefer it over multiple edit calls when a change spans several files or separated regions.')

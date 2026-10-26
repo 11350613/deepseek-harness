@@ -45,7 +45,6 @@
             "maxTokens": true
           },
           "tools": [
-            "apply_patch",
             "ask_user_question",
             "create_goal",
             "edit",
@@ -107,7 +106,6 @@
             "maxTokens": true
           },
           "tools": [
-            "apply_patch",
             "ask_user_question",
             "create_goal",
             "edit",
@@ -184,7 +182,6 @@
             "maxTokens": true
           },
           "tools": [
-            "apply_patch",
             "ask_user_question",
             "create_goal",
             "edit",

@@ -20,7 +20,7 @@ Commit reports return `isError: false` so completed diff metadata survives a sto
 
 [Review capture](../../../../packages/deliverables/workspace-changes/README.md) uses filesystem intent listeners, not argument parsing. `tools/pre-execute` associates the execution with its turn recorder; prepended write, edit, and delete listeners first await the policy decision, then await capture before provider mutation. Moves capture both endpoints. Each turn retains its first baseline and compares actual final bytes, so repeated edits yield one net diff and reverted changes disappear. Existing size, count, time, location, and Session-lifetime limits remain.
 
-`tool-fs.applyPatch` defaults to `write && edit`, so ordinary coding sessions get the tool alongside read, write, and edit, while the minimal SDK and Web presets, which disable both, lose it without a separate key that a user's `tool-fs` config override could drop; an explicit value overrides the derivation. The tool registers its schema, guidance, native/PTC execution, and tool presentation through plugin effects; the agent loop is unchanged.
+`tool-fs.applyPatch` defaults to `false`, so every shipped composition keeps the model request it had before the tool existed; the `tool-fs` rows that enable `edit` (`dsh-base` and the Web `standard`, `ptc`, and `cordis` presets) state `applyPatch: false`, and a deployment turns the tool on by changing that one line, or by a profile patch on the `tool-fs` id where no preset owns the row. The tool registers its schema, guidance, native/PTC execution, and tool presentation through plugin effects; the agent loop is unchanged.
 
 ## Alternatives considered
 
@@ -32,11 +32,11 @@ Commit reports return `isError: false` so completed diff metadata survives a sto
 
 **Expand Review while adding the tool.** Rename presentation, persistent storage, SSH capture, and capture-failure policy are independent product decisions; existing whole-file capture and rendering cover this integration.
 
-**Gate default availability on a controlled evaluation.** This would keep an activation overlay between ordinary sessions and the tool; the explicit off switch already supports comparison runs and deployments that do not want it.
+**Register the tool by default wherever `write` and `edit` are both enabled.** This would add a schema and a guidance section to every default model request and change every recorded request expectation before the tool's effect on ordinary sessions is measured; the explicit switch keeps the baseline composition unchanged and lets comparison runs opt in.
 
 ## Consequences
 
-One call can express related edits. Default model requests include another tool schema and its guidance, so recorded request expectations change. Preflight cannot prevent a later conflict, cancellation, or storage failure; callers inspect operation statuses before retrying. Permissive upstream matching remains pinned and tested rather than tightened. Provider implementations and external subclasses must support three additional operations, and partial moves require handling both endpoints.
+One call can express related edits. Default model requests are unchanged; a composition that enables the switch includes another tool schema and its guidance, so its recorded request expectations differ from the baseline. Preflight cannot prevent a later conflict, cancellation, or storage failure; callers inspect operation statuses before retrying. Permissive upstream matching remains pinned and tested rather than tightened. Provider implementations and external subclasses must support three additional operations, and partial moves require handling both endpoints.
 
 ## Testing
 
