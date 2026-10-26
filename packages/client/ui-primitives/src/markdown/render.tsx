@@ -360,7 +360,6 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
               className={css.fileMention}
               title={mention.title}
               aria-label={mention.label}
-              data-file-path={mention.title}
               onClick={mention.open}
               {...contextMenuTrigger(mention.openMenu)}
             >
@@ -643,7 +642,6 @@ function MarkdownFileLink({ file, glyph, children }: {
       {...contextMenuTrigger(openContextMenu === undefined ? undefined : (point) => {
         openContextMenu({ kind: 'file', ...file }, point)
       })}
-      data-file-path={file.path} data-file-line={file.line}
       onClick={() => { openFile(file.path, file.line === undefined ? undefined : { line: file.line }) }}
     >
       {glyph && <LinkIconMedium kind={classifyLinkPath(file.path)} className={css.linkIcon} />}

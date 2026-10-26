@@ -200,7 +200,7 @@ These pages place the atoms in the client stack and the design system.
 
 `QuotePreview` shares the compact quote excerpt and clipped-only inline HoverCard between composers and sent messages. The popover sizes to its text up to 300px and stays within the viewport. Both surfaces display the exact text; editable drafts may supply a localized whole-quote removal action. Quotes opt into the nearest `HoverCardGroup` for exclusive preview display. The primitive performs no recognition or navigation.
 
-`MarkdownDelegate.openContextMenu` receives explicit file, URL, or original-image targets and pointer coordinates. File mentions can supply `openMenu`; `ImageLightbox.onContextMenu` delegates the original image gesture. An image menu owns Escape and Tab while it holds focus, returning to the preview before closing it.
+`MarkdownDelegate.openContextMenu` receives explicit file, URL, or original-image targets and pointer coordinates. File paths and line numbers are carried by callbacks. File mentions can supply `openMenu`; `ImageLightbox.onContextMenu` delegates the original image gesture. An image menu owns Escape and Tab while it holds focus, returning to the preview before closing it.
 
 <a id="model-experience"></a>
 ## Model Experience
