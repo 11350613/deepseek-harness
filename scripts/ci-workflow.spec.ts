@@ -14,7 +14,7 @@ const runnerPrivatePnpmDestination = /^\$\{\{ runner\.temp \}\}\/setup-pnpm-\$\{
 const nativeWindowsPnpmDestination = '${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}'
 
 describe('CI workflow', () => {
-  it('keeps at most ten worker jobs active across PR workflows while Python runtime targets follow the SDK suite', () => {
+  it('keeps at most eleven worker jobs active across PR workflows while Python runtime targets follow the SDK suite', () => {
     const ci = loadWorkflow('.github/workflows/ci.yml')
     const ciWindows = loadWorkflow('.github/workflows/ci-windows.yml')
     const ciPython = loadWorkflow('.github/workflows/ci-python.yml')
@@ -86,10 +86,12 @@ describe('CI workflow', () => {
     // Python's runtime targets start only after the SDK suite; Windows starts
     // immediately. Plan and wheel stages precede the two-target matrix.
     const windowsActive = windowsJobs.length
+    // The lint lane owns its own runner, so it raises the ceiling by one; the
+    // self-hosted failover pool is still admitted only up to its own limit.
     const beforeSdk = ordinaryJobs.length + compatibilityLimit + windowsActive + 1
     const afterSdk = ordinaryJobs.length + compatibilityLimit + windowsActive + Math.max(1, targets.split(',').length)
-    expect(beforeSdk).toBeLessThanOrEqual(10)
-    expect(afterSdk).toBeLessThanOrEqual(10)
+    expect(beforeSdk).toBeLessThanOrEqual(11)
+    expect(afterSdk).toBeLessThanOrEqual(11)
   })
 
   it('keeps the union of required PR verdicts equal to the pre-split blocking set', () => {
@@ -117,6 +119,7 @@ describe('CI workflow', () => {
       'node-24-bench',
       'node-24-consumers',
       'node-24-coverage',
+      'node-24-lint',
       'node-compat',
       'python-runtime',
       'python-sdk',
@@ -143,7 +146,7 @@ describe('CI workflow', () => {
     const scripts = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> }
     const hostSteps = scripts.scripts['build:lib:host']!.split(' && ')
     expect(hostSteps[0]).toBe('tsx scripts/compile-referenced-projects.ts host-libraries')
-    expect(hostSteps).toContain('node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc -p tsconfig.host.json')
+    expect(hostSteps).toContain('node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc -p tsconfig.host.json')
     expect(hostSteps.at(-1)).toBe('pnpm --filter @deepseek-ai/dsh-desktop run bundle')
     expect(scripts.scripts['build:lib:client']).toContain('tsc -b tsconfig.client.json')
     expect(scripts.scripts.typecheck).toBe('tsx scripts/build.ts --scope typecheck')
@@ -371,13 +374,14 @@ describe('CI workflow', () => {
       || !isRecord(windowsWorkflow.jobs['windows-checks-passed'])
       || !isRecord(workflow.jobs['node-24'])
       || !isRecord(workflow.jobs['node-24-coverage'])
+      || !isRecord(workflow.jobs['node-24-lint'])
       || !isRecord(workflow.jobs['node-24-bench'])
       || !isRecord(workflow.jobs['node-24-consumers'])
       || !isRecord(workflow.jobs['node-compat'])
       || !isRecord(workflow.jobs['all-checks-passed'])
       || !isRecord(masterWorkflow.jobs)
       || !isRecord(masterWorkflow.jobs['serial-windows'])) {
-      throw new TypeError('CI workflow must define node-24, node-24-coverage, node-24-bench, node-24-consumers, node-compat, and all-checks-passed; CI Windows must define windows-build, windows-coverage, windows-native-tests, and windows-checks-passed; ci-master must define serial-windows')
+      throw new TypeError('CI workflow must define node-24, node-24-coverage, node-24-lint, node-24-bench, node-24-consumers, node-compat, and all-checks-passed; CI Windows must define windows-build, windows-coverage, windows-native-tests, and windows-checks-passed; ci-master must define serial-windows')
     }
 
     const windowsBuild = windowsWorkflow.jobs['windows-build']
@@ -670,12 +674,19 @@ describe('CI workflow', () => {
     }
   })
 
-  it('runs required benchmarks on standard hosted Linux independently of failover', () => {
+  it('runs required benchmarks on a four-vCPU Blacksmith runner and falls back to hosted Linux', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
     const benchmark = workflowJob(workflow, 'node-24-bench')
     const aggregate = workflowJob(workflow, 'all-checks-passed')
 
-    expect(benchmark['runs-on']).toBe('ubuntu-24.04')
+    // The shared self-hosted pool is not an idle runner, so only the
+    // Blacksmith leg moves the benchmarks off hosted Linux.
+    expect(evaluateRunsOn(benchmark['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: 'blacksmith' } }))
+      .toBe('blacksmith-4vcpu-ubuntu-2404')
+    for (const mode of ['', 'selfhosted', 'unexpected']) {
+      expect(evaluateRunsOn(benchmark['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: mode } })).toBe('ubuntu-24.04')
+    }
+    expect(JSON.stringify(benchmark.steps)).not.toContain('DSH_CI_FAILOVER_LINUX')
     expect(benchmark.if).toBe("github.event_name == 'pull_request'")
     expect(benchmark.needs).toBeUndefined()
     expect(benchmark['continue-on-error']).toBeUndefined()
@@ -738,7 +749,7 @@ describe('CI workflow', () => {
       'wine_node "$scratch/logs/host-references.log" --import tsx/esm scripts/compile-referenced-projects.ts host',
     )
     const aggregate = wineGates.indexOf(
-      'wine_node "$scratch/logs/host-tsc.log" --max-old-space-size=4096 "$tsc_js" -p tsconfig.host.json --pretty false',
+      'wine_node "$scratch/logs/host-tsc.log" --max-old-space-size=8192 "$tsc_js" -p tsconfig.host.json --pretty false',
     )
     const metadata = wineGates.indexOf('wine_node "$scratch/logs/host-typert.log" --import tsx/esm scripts/generate-typert.ts')
     expect(metadata).toBeGreaterThan(-1)
@@ -1078,7 +1089,7 @@ describe('DeepSeek e2e workflow', () => {
     if (!Array.isArray(e2e.steps)) throw new TypeError('DeepSeek e2e workflow must define steps')
 
     const step = e2e.steps.filter(isRecord).find(candidate => candidate.name === 'E2E tests (real DeepSeek API)')
-    expect(step).toMatchObject({ env: { DSH_E2E_MAX_WORKERS: 4 } })
+    expect(step).toMatchObject({ env: { DSH_E2E_MAX_WORKERS: 6 } })
   })
 })
 
@@ -1371,6 +1382,27 @@ describe('Weighted approval workflow', () => {
         'persist-credentials': false,
       },
     })
+    const token = steps.find(step => step.id === 'decision-token')
+    expect(token).toMatchObject({
+      'continue-on-error': true,
+      uses: 'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1',
+      with: {
+        'client-id': '${{ vars.DSH_APPROVAL_APP_CLIENT_ID }}',
+        'private-key': '${{ secrets.DSH_APPROVAL_APP_PRIVATE_KEY }}',
+        owner: 'deepseek-harness',
+        repositories: 'deepseek-harness',
+        'permission-checks': 'write',
+      },
+    })
+    const tokenIndex = steps.indexOf(token!)
+    expect(tokenIndex).toBeGreaterThan(steps.indexOf(checkout!))
+    expect(tokenIndex).toBeLessThan(steps.findIndex(step => step.id === 'revoke'))
+    for (const step of steps.filter(step => typeof step.run === 'string' && step.run.startsWith('node .github/review-ownership/check-approval.mjs'))) {
+      expect(step.env).toMatchObject({
+        DECISION_TOKEN: '${{ steps.decision-token.outputs.token }}',
+        DECISION_APP_SLUG: '${{ vars.DSH_APPROVAL_APP_SLUG }}',
+      })
+    }
     const setupIndex = steps.findIndex(step => typeof step.uses === 'string' && step.uses.startsWith('actions/setup-python@'))
     expect(steps[setupIndex]?.if).toBe("steps.revoke.outputs.active == 'true'")
     expect(steps[setupIndex]?.uses).toBe('actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1')
@@ -1409,7 +1441,7 @@ describe('Weighted approval workflow', () => {
     expect(record?.run).toBe("echo 'Recorded a weighted approval review event.'")
     expect(recordSteps).toHaveLength(1)
     expect(JSON.stringify(publisher)).not.toContain('github.event.pull_request.head')
-    expect(JSON.stringify(publisher)).not.toContain('secrets.')
+    expect(JSON.stringify(publisher).match(/secrets\.[A-Za-z0-9_]+/gu)).toEqual(['secrets.DSH_APPROVAL_APP_PRIVATE_KEY'])
     expect(JSON.stringify(reviewEvent)).not.toContain('github.token')
     expect(JSON.stringify(reviewEvent)).not.toContain('secrets.')
   })
@@ -1554,8 +1586,13 @@ describe('npm release workflows', () => {
       isRecord(step) && typeof step.run === 'string' ? [step.run] : [])
 
     expect(Object.keys(workflow.on).sort()).toEqual(['pull_request', 'push', 'workflow_dispatch'])
-    expect(commands).toContain('pnpm run verify-package-dependencies')
-    expect(commands).toContain('pnpm run verify-npm-install-layout')
+    // Both verifications run from one step so the lane pays their longer half.
+    const combined = commands.find(command => command.includes('verify-package-dependencies'))
+    expect(combined).toContain('verify-npm-install-layout')
+    expect(combined).toContain('wait "$dependencies_pid"')
+    expect(commands).not.toContain('pnpm run verify-package-dependencies')
+    expect(commands).not.toContain('pnpm run verify-npm-install-layout')
+    expect(String(dependencies['runs-on'])).toContain('blacksmith-4vcpu-ubuntu-2404')
   })
 })
 
@@ -1649,3 +1686,49 @@ function workflowJob(workflow: Record<string, unknown>, job: string): Record<str
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
+
+describe('Policy workflows', () => {
+  const workflows = [
+    ['pr-check-on-head-branch.yml', ['master']],
+    ['pr-check-after-approve.yml', ['approve', 'review']],
+  ] as const
+
+  function stepsOf(job: Record<string, unknown>): Record<string, unknown>[] {
+    const steps = job.steps as unknown[]
+    if (!Array.isArray(steps)) throw new TypeError('job must define steps')
+    return steps.filter(isRecord)
+  }
+
+  it.each(workflows)('%s runs each check from master and reads its mode from a repository variable', (file, jobs) => {
+    const workflow = loadWorkflow('.github/workflows/' + file)
+    expect(Object.keys(workflow).filter(key => key !== 'name')).toEqual(['on', 'permissions', 'concurrency', 'jobs'])
+    const events = workflow.on
+    if (!isRecord(events)) throw new TypeError(`${file} must declare events`)
+    expect(events).not.toHaveProperty('pull_request')
+    expect(events).toHaveProperty('pull_request_target')
+    for (const job of jobs) {
+      const check = stepsOf(workflowJob(workflow, job)).find(step => typeof step.uses === 'string' && step.uses.startsWith('deepseek-harness/deepseek-harness-check@'))
+      if (check === undefined || !isRecord(check.env)) throw new TypeError(`${file} ${job} must run the check action with env`)
+      expect(String(check.env.CHECK_MODE)).toContain('vars.MERGE_POLICY_')
+    }
+  })
+
+  it('keeps the pre-merge build behind the merge step, which honours the mode on its failures', () => {
+    const steps = stepsOf(workflowJob(loadWorkflow('.github/workflows/pr-check-on-head-branch.yml'), 'pre-merge'))
+    const merge = steps.findIndex(step => step.id === 'merge')
+    const build = steps.findIndex(step => step.name === 'Run the pre-merge command')
+    expect(merge).toBeGreaterThanOrEqual(0)
+    expect(build).toBeGreaterThan(merge)
+    const merging = steps[merge]
+    if (merging === undefined || !isRecord(merging.env)) throw new TypeError('the merge step must set env')
+    expect(String(merging.env.CHECK_MODE)).toContain('MERGE_POLICY_PRE_MERGE')
+    for (const step of steps.slice(merge)) {
+      if (typeof step.run !== 'string') continue
+      expect(step.run).toContain('"$CHECK_MODE" = block')
+    }
+    for (const step of steps.slice(merge + 1)) {
+      if (step.name === 'Run the pre-merge command') continue
+      expect(step.if).toBe("steps.merge.outputs.merged == 'true'")
+    }
+  })
+})
