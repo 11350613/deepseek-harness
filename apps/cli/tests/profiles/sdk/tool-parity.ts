@@ -27,12 +27,10 @@ export const toolParityExceptions: Record<ToolMode, readonly Exception[]> = {
  * @param sdk - SDK capability names.
  * @param desktop - Desktop capability names.
  * @param exceptions - exact one-sided product differences with their rationale.
- * @param role - compared session role, included in mismatch diagnostics.
  */
 export function assertToolParity(
   mode: ToolMode, sdk: readonly string[], desktop: readonly string[],
   exceptions = toolParityExceptions[mode],
-  role = 'main',
 ): void {
   if (sdk.length === 0 || desktop.length === 0) throw new Error(`Empty tool inventory: ${mode}`)
   const only = {
@@ -46,7 +44,7 @@ export function assertToolParity(
   }
   if (only.sdk.size || only.desktop.size || stale.length) {
     throw new Error([
-      `SDK/Desktop tool mismatch: ${mode} / ${role}`,
+      `SDK/Desktop tool mismatch: ${mode}`,
       `Missing from SDK: ${[...only.desktop].sort().join(', ') || '(none)'}`,
       `Only in SDK: ${[...only.sdk].sort().join(', ') || '(none)'}`,
       `Stale exceptions: ${stale.sort().join(', ') || '(none)'}`,

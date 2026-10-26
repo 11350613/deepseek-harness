@@ -77,6 +77,6 @@ profile 继承 base 系统提示词，包括 `You are an AI agent powered by Dee
 <details>
 <summary>维护者工作上下文——点击展开</summary>
 
-[SDK/Desktop 工具比较](../../../apps/cli/tests/profiles/sdk/desktop-tools.expected.e2e.ts) 在 `test:expected` 中无需 API 凭据运行，并纳入 PR 必需的 consumer 作业。standard/PTC 覆盖默认主会话，以及启用真实 Team bundle 后的 Lead 和 fresh teammate。构建后运行 `CI=true pnpm run test:expected apps/cli/tests/profiles/sdk/desktop-tools.expected.e2e.ts`。在相邻的 `tool-parity.ts` 中维护精确、带理由的差异；差异消除后，对应例外会使检查失败。已有 SDK 会话快照和安装后运行时 smoke 分别检查模型输出和打包结果。
+[SDK/Desktop 工具比较](../../../apps/cli/tests/profiles/sdk/desktop-tools.expected.e2e.ts) 在 `test:expected` 中无需 API 凭据运行，并纳入 PR 必需的 consumer 作业。检查覆盖关闭 Team 的 standard/PTC 主会话；Team 对齐暂由 #7172 跟踪。构建后运行 `CI=true pnpm run test:expected apps/cli/tests/profiles/sdk/desktop-tools.expected.e2e.ts`。在相邻的 `tool-parity.ts` 中维护精确、带理由的差异；差异消除后，对应例外会使检查失败。已有 SDK 会话快照和安装后运行时 smoke 分别检查模型输出和打包结果。
 
 </details>

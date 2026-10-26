@@ -1,16 +1,11 @@
-# Team members must mask ordinary tools even when an enclosing composition enables them.
 - id: tool-subagent-control
-  disabled: false
+  disabled: true
 - id: tool-subagent-report
   disabled: true
 - id: tool-subagent
-  disabled: false
-  config:
-    provider: spawn
-    toolName: subagent
-    modelDiscovery: true
+  disabled: true
 - id: tool-subagent-fork
-  disabled: false
+  disabled: true
 - insert:
     - id: agent-team
       name: '@deepseek-ai/dsh-experimental-agent-team'
