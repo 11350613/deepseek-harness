@@ -121,6 +121,7 @@ describe('resolution work budget', () => {
     [277, 2524, 699_148],
     [316, 2780, 878_480],
     [316, 2786, 880_376],
+    [317, 2786, 883_162],
   ])('accepts the measured dual-release graph with %i packages and %i edges', (packages, edges, units) => {
     expect(assertResolutionWorkBudget({ dshPackagesPerVersion: packages, checkedDshEdges: edges }))
       .toBe(units)
@@ -143,6 +144,6 @@ describe('resolution work budget', () => {
     expect(assertResolutionWorkBudget({ dshPackagesPerVersion: 300, checkedDshEdges: 2800 }))
       .toBe(840_000)
     expect(() => assertResolutionWorkBudget({ dshPackagesPerVersion: 400, checkedDshEdges: 3000 }))
-      .toThrow('400 package(s) per release x 3000 internal edge(s) = 1200000 unit(s), budget 882000 unit(s)')
+      .toThrow(`400 package(s) per release x 3000 internal edge(s) = 1200000 unit(s), budget ${String(MAX_RESOLUTION_WORK_UNITS)} unit(s)`)
   })
 })

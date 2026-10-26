@@ -24,13 +24,13 @@ const DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependen
  * edges of its peer target (`canPlacePeers` calls `checkCanPlaceNoCurrent`,
  * which walks `depValid` over that target's edges), so resolution time grows
  * with this product and not with the package count alone. Measured on an M5 Pro
- * with Node 26.7.0 and npm 11.19.0: 316 package(s) x 2786 internal edge(s) =
- * 880,376 unit(s) cost 78.9 s of npm time out of 79.3 s end to end. The budget
- * rounds that measured work up to 882,000 units, so a graph that grows here
+ * with Node 26.7.0 and npm 11.19.0: 317 package(s) x 2786 internal edge(s) =
+ * 883,162 unit(s) cost 79.4 s of npm time out of 79.7 s end to end. The budget
+ * rounds that measured work up to 884,000 units, so a graph that grows here
  * fails with its own counts instead of on whichever runner happens to be slow.
  * Raising it requires re-measuring the resolution and recording the new counts.
  */
-export const MAX_RESOLUTION_WORK_UNITS = 882_000
+export const MAX_RESOLUTION_WORK_UNITS = 884_000
 
 /**
  * Measured npm seconds per resolution work unit on the reference host: 180.66 s
