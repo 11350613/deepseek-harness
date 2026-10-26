@@ -16,7 +16,7 @@ it.each([
   [['vscode'], '/workspace', 'Show in folder', true],
   [null, '/workspace', 'Show in folder', true],
   [['finder'], undefined, 'Show in Finder', true],
-] as const)('reveals the captured directory with catalog %j and path %s', (apps, cwd, label, disabled) => {
+] as const)('reveals the captured directory with catalog %j and path %s', async (apps, cwd, label, disabled) => {
   const ctx = new Context()
   onTestFinished(() => ctx.fiber.dispose())
   const locale = new LocaleRuntime(ctx)
@@ -32,11 +32,17 @@ it.each([
   ctx.provide('sessions', { list } as never)
   const controller = new OpenInAppController()
   controller.apps.set(apps)
-  const launch = vi.spyOn(controller, 'launch').mockResolvedValue()
-  registerSessionReveal(ctx, controller, locale.bind(NS))
+  const launch = vi.spyOn(controller, 'launch').mockResolvedValue({ kind: 'opened' })
+  const report = vi.fn()
+  registerSessionReveal(ctx, controller, locale.bind(NS), report)
   const menu = registry.resolve({ kind: 'session', value: { sessionId, displayTitle: 'Captured' } })
   expect(menu.source.getSnapshot()[0]).toMatchObject({ label, disabled })
   menu.select('open-in-app.reveal/reveal')
-  if (disabled) expect(launch).not.toHaveBeenCalled()
-  else expect(launch).toHaveBeenCalledWith(apps?.[0], cwd)
+  if (disabled) {
+    expect(launch).not.toHaveBeenCalled()
+    expect(report).not.toHaveBeenCalled()
+  } else {
+    expect(launch).toHaveBeenCalledWith(apps?.[0], cwd)
+    await vi.waitFor(() => { expect(report).toHaveBeenCalledWith({ kind: 'opened' }) })
+  }
 })

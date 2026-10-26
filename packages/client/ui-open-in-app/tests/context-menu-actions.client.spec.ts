@@ -12,6 +12,7 @@ import { OpenInAppPathController } from '../src/client/open-path.ts'
 import { OpenInAppController } from '../src/client/controller.ts'
 import { registerFileMenus } from '@deepseek-ai/dsh-client-ui-file-actions/src/client/context-menus.tsx'
 import { registerContextMenus } from '../src/client/context-menus.tsx'
+import type { OpenInAppToastSource } from '../src/client/open-toast.tsx'
 
 const sessionId = SessionId('menu-actions')
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
@@ -20,6 +21,7 @@ async function boot() {
   vi.stubGlobal('Blob', NodeBlob)
   const ctx = new Context()
   const notify = vi.fn<ContextMenus['notify']>(), failure = vi.fn(), writeText = vi.fn(async () => {})
+  const report = vi.fn<OpenInAppToastSource['report']>()
   vi.stubGlobal('navigator', { clipboard: { writeText } })
   const registry = new MenuRegistry(failure)
   const remote = {
@@ -52,7 +54,7 @@ async function boot() {
   ctx.provide('sidebarRight', sidebar as never)
   ctx.provide('sidebarRightTabs', { get: browserTab } as never)
   const fiber = ctx.plugin({ apply: (plugin: Context) => {
-    registerContextMenus(plugin, paths, key => key, directories)
+    registerContextMenus(plugin, paths, key => key, directories, report)
     registerFileMenus(plugin, ctx.fileActions, key => key)
   } })
   await fiber.await()
@@ -73,7 +75,7 @@ async function boot() {
     return action
   }
   return { registry, resolve, choose, remote, fileActions, paths, directories, directoryFetch, sessions,
-    sidebar, browserTab, notify, failure, writeText }
+    sidebar, browserTab, notify, failure, writeText, report }
 }
 
 it('routes file actions through the captured pane, line, native association and original bytes', async () => {
@@ -84,8 +86,10 @@ it('routes file actions through the captured pane, line, native association and 
     { paneId: 'pane', params: { line: 24 } })
   await h.choose(file, 'open-in-app.file/open')
   expect(h.remote.session.openWorkspacePath).toHaveBeenCalledWith({ path: '/workspace/file.svg', application: 'preview' })
+  await vi.waitFor(() => { expect(h.report).toHaveBeenLastCalledWith({ kind: 'opened' }) })
   await h.choose(file, 'open-in-app.file/reveal')
   expect(h.remote.session.openWorkspacePath).toHaveBeenCalledWith({ path: '/workspace/file.svg', action: 'reveal' })
+  await vi.waitFor(() => { expect(h.report).toHaveBeenLastCalledWith({ kind: 'revealed' }) })
   await h.choose(file, 'file-actions.file/copyImage')
   await vi.waitFor(() => { expect(h.notify).toHaveBeenCalledWith('menu.copied', true) })
   const source = h.fileActions.copyImage.mock.calls[0]![0]
@@ -117,7 +121,7 @@ it('keeps copy-path available on failed metadata and reports native action failu
   expect((await h.resolve(file)).source.getSnapshot().find(item => item.id.endsWith('/sidebar'))?.disabled).toBe(true)
   h.remote.session.openWorkspacePath.mockResolvedValueOnce({ ok: false } as never)
   await h.choose(file, 'open-in-app.file/reveal')
-  await vi.waitFor(() => { expect(h.notify).toHaveBeenCalledWith('path.revealError') })
+  await vi.waitFor(() => { expect(h.report).toHaveBeenLastCalledWith({ kind: 'failed', failure: 'revealError' }) })
   h.remote.session.workspacePathApplications.mockResolvedValueOnce({ ok: false } as never)
   expect((await h.resolve(file)).source.getSnapshot().find(item => item.id.endsWith('/open'))?.disabled).toBe(true)
   h.paths.desktop.set(false)
@@ -239,9 +243,10 @@ it('opens the captured Workspace through the directory app catalog and reports l
   const target: MenuTarget = { kind: 'workspace', value: { workspaceId: 'workspace' as never, path: '/workspace', displayTitle: 'Workspace' } }
   await h.choose(target, 'open-in-app.workspace/reveal')
   expect(h.directoryFetch).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ body: JSON.stringify({ app: 'finder', path: '/workspace' }) }))
+  await vi.waitFor(() => { expect(h.report).toHaveBeenLastCalledWith({ kind: 'opened' }) })
   h.directoryFetch.mockResolvedValueOnce(new Response('', { status: 500 }))
   await h.choose(target, 'open-in-app.workspace/reveal')
-  await vi.waitFor(() => { expect(h.failure).toHaveBeenCalledWith('path.revealError') })
+  await vi.waitFor(() => { expect(h.report).toHaveBeenLastCalledWith({ kind: 'failed', failure: 'revealError' }) })
   h.directories.apps.set([])
   expect((await h.resolve(target)).source.getSnapshot()[0]?.disabled).toBe(true)
 })

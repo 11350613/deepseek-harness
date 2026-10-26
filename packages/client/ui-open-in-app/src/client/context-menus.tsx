@@ -11,6 +11,7 @@ import type { OpenInAppController } from './controller.ts'
 import { fileAddressFor, resolveWorkspacePath } from '@deepseek-ai/dsh-util-workspace-path'
 import type { OpenInAppPathController } from './open-path.ts'
 import type { OpenInAppKey } from './locales.ts'
+import type { OpenInAppToastSource } from './open-toast.tsx'
 
 /**
  * Register native opening, original-path reveal, and URL actions.
@@ -18,17 +19,18 @@ import type { OpenInAppKey } from './locales.ts'
  * @param paths - existing native file actions.
  * @param t - localized action labels.
  * @param directories - installed directory applications.
+ * @param report - native operation feedback shared with the application controls.
  */
 export function registerContextMenus(
   ctx: Context,
   paths: OpenInAppPathController,
   t: (key: OpenInAppKey, values?: Record<string, string>) => string,
   directories: OpenInAppController,
+  report: OpenInAppToastSource['report'],
 ): void {
   const fileManager = () => t(directories.apps.getSnapshot()?.includes('finder') ? 'menu.finder' : 'menu.reveal')
   const open = async (path: string, action: 'open' | 'reveal', application?: string): Promise<void> => {
-    const failure = await paths.openPath(path, action, application)
-    if (failure !== null) ctx.menus.notify(t(`path.${failure}`))
+    report(await paths.openPath(path, action, application))
   }
   const resolvePath = async (sessionId: SessionId, path: string, signal: AbortSignal): Promise<string | undefined> => {
     try {
@@ -49,7 +51,10 @@ export function registerContextMenus(
       const manager = directories.apps.getSnapshot()?.find(id => ['finder', 'explorer', 'filemanager'].includes(id))
       return [{ id: 'reveal', icon: <IconFolderOpenOutlineRegular />, label: fileManager(), disabled: manager === undefined,
         failureLabel: t('path.revealError'),
-        ...manager === undefined ? {} : { run: () => directories.launch(manager, path) } }]
+        ...manager === undefined ? {} : { run: async () => {
+          const outcome = await directories.launch(manager, path)
+          report(outcome.kind === 'failed' ? { kind: 'failed', failure: 'revealError' } : outcome)
+        } } }]
     },
   }), 'open-in-app: Workspace context menu')
   ctx.effect(() => ctx.menus.register({

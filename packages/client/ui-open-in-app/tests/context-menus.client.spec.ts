@@ -38,7 +38,7 @@ it('offers image actions on file targets, copies absolute paths, and keeps save 
   const paths = new OpenInAppPathController(remote)
   const directories = new OpenInAppController()
   const fiber = ctx.plugin({ apply: (plugin: Context) => {
-    registerContextMenus(plugin, paths, key => key, directories)
+    registerContextMenus(plugin, paths, key => key, directories, vi.fn())
     registerFileMenus(plugin, ctx.fileActions, key => key)
   } })
   await fiber.await()
