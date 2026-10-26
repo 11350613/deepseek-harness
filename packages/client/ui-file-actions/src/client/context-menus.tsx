@@ -54,11 +54,15 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
         ...mediaType.startsWith('image/') ? [
           { id: 'copyImage', icon: <IconCopyOutlineRegular />, separatorBefore: true, failureLabel: t('menu.copyFailed'),
             label: t('menu.copyImage'), disabled: !available, run: () => copy(source) },
+        ] : [],
+        ...mediaType.startsWith('image/') || !actions.canSaveAs ? [
           { id: 'download', icon: <IconDownloadOutlineRegular />, failureLabel: t('menu.saveFailed'),
             label: t('menu.download'), disabled: !available, run: () => save(source, 'download') },
         ] : [],
-        { id: 'saveAs', icon: <IconSaveOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
-          disabled: !available || !actions.canSaveAs, run: () => save(source, 'saveAs') },
+        ...actions.canSaveAs ? [
+          { id: 'saveAs', icon: <IconSaveOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
+            disabled: !available, run: () => save(source, 'saveAs') },
+        ] : [],
       ]
     },
   }), 'file actions: file menu')
@@ -80,8 +84,10 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
       return [
         { id: 'copy', icon: <IconCopyOutlineRegular />, failureLabel: t('menu.copyFailed'), label: t('menu.copyImage'), run: () => copy(source) },
         { id: 'download', icon: <IconDownloadOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.download'), run: () => save(source, 'download') },
-        { id: 'saveAs', icon: <IconSaveOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
-          disabled: !actions.canSaveAs, run: () => save(source, 'saveAs') },
+        ...actions.canSaveAs ? [
+          { id: 'saveAs', icon: <IconSaveOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
+            run: () => save(source, 'saveAs') },
+        ] : [],
         ...saved === undefined ? [] : [{
           id: 'reveal', icon: <IconFolderOpenOutlineRegular />,
           label: t(document.documentElement.dataset.platform === 'darwin' ? 'menu.finder' : 'menu.reveal'),

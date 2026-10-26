@@ -39,8 +39,8 @@ export interface FileActions {
   /**
    * Save original bytes to the selected destination.
    * @param source - original content.
-   * @param mode - explicit destination policy.
-   * @returns save outcome.
+   * @param mode - download on either platform, or saveAs on Desktop only.
+   * @returns native save outcome or browser download request; rejects unsupported saveAs calls.
    */
   save(source: FileActionSource, mode: 'download' | 'saveAs'): Promise<FileSaveResult>
   /**
@@ -61,6 +61,6 @@ export interface FileActions {
    * @returns after reveal succeeds.
    */
   reveal(id: SavedFileId): Promise<void>
-  /** Whether this browser or native adapter can offer an explicit save picker. */
+  /** Whether the Desktop adapter can offer an explicit save picker; always false on Web. */
   readonly canSaveAs: boolean
 }

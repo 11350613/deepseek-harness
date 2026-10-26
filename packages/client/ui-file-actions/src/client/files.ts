@@ -12,19 +12,14 @@ export function exportName(name: string | undefined, mediaType: string): string 
   return resolveDragFileName({ name: name ?? 'image', mediaType })
 }
 
-type SavePicker = (options: { suggestedName: string }) => Promise<{
-  createWritable(): Promise<{ write(blob: Blob): Promise<void>; close(): Promise<void>; abort(): Promise<void> }>
-}>
-
 /** File action owner; native saved references never imply paths for browser downloads. */
 export class BrowserFileActions implements FileActions {
   private readonly saved = new Map<string, SavedFileId>()
   private downloadUrl: string | undefined
   private readonly lifetime = new AbortController()
-  private readonly picker = (window as Window & { showSaveFilePicker?: SavePicker }).showSaveFilePicker?.bind(window)
   readonly canSaveAs: boolean
   constructor(private readonly desktop: DesktopFileActions | undefined) {
-    this.canSaveAs = desktop !== undefined || this.picker !== undefined
+    this.canSaveAs = desktop !== undefined
   }
   savedFile(url: string): SavedFileId | undefined { return this.saved.get(url) }
   async reveal(id: SavedFileId): Promise<void> {
@@ -61,33 +56,18 @@ export class BrowserFileActions implements FileActions {
         return result
       } finally { if (blob !== undefined) URL.revokeObjectURL(url) }
     }
-    // The Web picker must be requested in the gesture, before reading the source loses activation.
+    if (mode === 'saveAs') throw new Error('Save as requires Desktop')
     const suggested = source.name ?? (URL.canParse(source.url) ? new URL(source.url).pathname.split('/').pop() : undefined)
-    const picked = mode === 'saveAs'
-      ? this.picker?.({ suggestedName: exportName(suggested, source.mediaType ?? '') }) : undefined
-    if (mode === 'saveAs' && picked === undefined) throw new Error('Save picker unavailable')
-    const handle = picked === undefined ? undefined : await picked.catch((error: unknown) => {
-      if (error instanceof DOMException && error.name === 'AbortError') return null
-      throw error
-    })
-    if (handle === null) return { status: 'cancelled' }
     const blob = await this.read(source)
     this.lifetime.signal.throwIfAborted()
     const name = exportName(suggested, blob.type || source.mediaType || '')
-    if (handle !== undefined) {
-      const writable = await handle.createWritable()
-      try { await writable.write(blob); await writable.close() }
-      catch (error) { await writable.abort(); throw error }
-    } else {
-      const url = URL.createObjectURL(blob)
-      if (this.downloadUrl !== undefined) URL.revokeObjectURL(this.downloadUrl)
-      this.downloadUrl = url
-      const anchor = document.createElement('a')
-      anchor.href = url; anchor.download = name
-      document.body.append(anchor); anchor.click(); anchor.remove()
-      return { status: 'requested' }
-    }
-    return { status: 'saved' }
+    const url = URL.createObjectURL(blob)
+    if (this.downloadUrl !== undefined) URL.revokeObjectURL(this.downloadUrl)
+    this.downloadUrl = url
+    const anchor = document.createElement('a')
+    anchor.href = url; anchor.download = name
+    document.body.append(anchor); anchor.click(); anchor.remove()
+    return { status: 'requested' }
   }
   async copyImage(source: FileActionSource): Promise<void> {
     this.lifetime.signal.throwIfAborted()

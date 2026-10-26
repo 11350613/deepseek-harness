@@ -101,6 +101,8 @@ it('routes file actions through the captured pane, line, native association and 
   const menu = await h.resolve(simple)
   expect(menu.source.getSnapshot().find(item => item.id.endsWith('/open'))?.disabled).toBe(true)
   expect(menu.source.getSnapshot().some(item => item.id.endsWith('/copyImage'))).toBe(false)
+  expect(menu.source.getSnapshot().filter(item => item.id.startsWith('file-actions.')).map(item => item.id))
+    .toEqual(['file-actions.file/saveAs'])
   menu.select('open-in-app.file/sidebar')
   expect(h.sidebar.openResourceIn).toHaveBeenLastCalledWith(SessionId('absent'), expect.any(String), {})
 })
@@ -123,7 +125,8 @@ it('keeps copy-path available on failed metadata and reports native action failu
   h.paths.desktop.set(false)
   h.fileActions.canSaveAs = false
   const web = await h.resolve(file)
-  expect(web.source.getSnapshot().filter(item => ['/open', '/reveal', '/saveAs'].some(suffix => item.id.endsWith(suffix)))
+  expect(web.source.getSnapshot().some(item => item.id.endsWith('/saveAs'))).toBe(false)
+  expect(web.source.getSnapshot().filter(item => ['/open', '/reveal'].some(suffix => item.id.endsWith(suffix)))
     .every(item => item.disabled)).toBe(true)
 })
 
@@ -188,7 +191,8 @@ it('uses original image reads and enables reveal only for an actual local or sav
   expect((await h.fileActions.save.mock.calls.at(-1)![0].read!(new AbortController().signal)).type).toBe('')
   h.fileActions.canSaveAs = false
   const remote = await h.resolve({ kind: 'image', value: { url: 'https://example.com/file.png' } })
-  expect(remote.source.getSnapshot().filter(item => item.id.endsWith('/saveAs') || item.id.endsWith('/reveal')).every(item => item.disabled)).toBe(true)
+  expect(remote.source.getSnapshot().some(item => item.id.endsWith('/saveAs'))).toBe(false)
+  expect(remote.source.getSnapshot().filter(item => item.id.endsWith('/reveal')).every(item => item.disabled)).toBe(true)
 })
 
 it('offers only folder reveal and path copy, retaining the captured directory', async () => {

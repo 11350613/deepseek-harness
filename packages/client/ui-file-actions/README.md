@@ -31,7 +31,7 @@ The Web application bundle mounts this Client plugin without configuration field
 
 Pass an original URL, optional filename and MIME, or an authorized `read(signal)` callback for Session-owned files. Saves preserve bytes. MIME determines the suffix when it conflicts with the supplied name; compatible and unknown suffixes remain. Suggested names exclude platform-reserved characters and device names and fit a 255-byte filename.
 
-`save(source, mode)` returns `cancelled`, `requested` for a browser download, or `saved` after a native or browser-picker write completes. Browser save-as requires the browser file picker and is disabled when unavailable. A regular browser download reports only that the download was requested. It returns no local reference. Native saves return an opaque ID, which `savedFile(url)` remembers for reveal. IDs are scoped to the originating window and expire on reload or close.
+`save(source, mode)` returns `cancelled`, `requested` for a browser download, or `saved` after a native save completes. Web menus offer Download for files and images and omit Save as. Web downloads pass original content to the browser with a suggested filename; the browser owns the destination and completion. They return no local reference. Save as requires Desktop: `canSaveAs` is false on Web and Web `saveAs` calls reject without reading the source. Native saves return an opaque ID, which `savedFile(url)` remembers for reveal. IDs are scoped to the originating window and expire on reload or close.
 
 Filename and MIME normalization reuse the file-drag utility, so saving and dragging retain the same original format and filename policy.
 
@@ -75,7 +75,7 @@ None; saving and copying do not change model requests.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- Web save-as depends on browser picker support; clipboard operations depend on browser permission and image decoding support.
+- Save as is Desktop-only; clipboard operations depend on browser permission and image decoding support.
 - Native downloads have a configurable startup deadline; once Chromium accepts the download, its completion or cancellation ends the operation; HTTP(S) clipboard reads omit credentials and stop on window navigation, close, timeout, or the configured byte limit.
 - Browser downloads have no reveal action unless a separate, actual Host file is known.
 

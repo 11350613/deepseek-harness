@@ -58,6 +58,7 @@ describe('file actions', () => {
     vi.stubGlobal('Blob', NodeBlob)
     const bridge = native(), actions = new BrowserFileActions(bridge)
     const source = { url: 'https://images.example/chart', name: 'chart.png', mediaType: 'image/png' }
+    expect(actions.canSaveAs).toBe(true)
     expect(actions.savedFile(source.url)).toBeUndefined()
     await actions.save(source, 'download')
     expect(bridge.save).toHaveBeenCalledWith({ ...source, mode: 'download' })
@@ -81,32 +82,22 @@ describe('file actions', () => {
     expect(vi.mocked(URL).revokeObjectURL).toHaveBeenCalledWith('blob:conversion')
     actions.dispose()
   })
-  it('requests the browser picker during activation and treats picker cancellation as normal', async () => {
+  it('rejects save-as on Web even when a browser picker exists, before reading the source', async () => {
     const read = vi.fn(async () => new Blob())
-    const picker = vi.fn(() => Promise.reject(new DOMException('cancelled', 'AbortError')))
+    const picker = vi.fn()
     vi.stubGlobal('showSaveFilePicker', picker)
     const actions = new BrowserFileActions(undefined)
-    const saving = actions.save({ url: 'original', name: 'a.gif', read }, 'saveAs')
-    expect(picker).toHaveBeenCalledWith({ suggestedName: 'a.gif' })
-    await expect(saving).resolves.toEqual({ status: 'cancelled' })
+    expect(actions.canSaveAs).toBe(false)
+    await expect(actions.save({ url: 'original', name: 'a.gif', read }, 'saveAs')).rejects.toThrow('requires Desktop')
+    expect(picker).not.toHaveBeenCalled()
     expect(read).not.toHaveBeenCalled()
     actions.dispose()
   })
-  it('writes the browser file and never invents a native reference', async () => {
-    const writable = { write: vi.fn(async () => {}), close: vi.fn(async () => {}), abort: vi.fn(async () => {}) }
-    vi.stubGlobal('showSaveFilePicker', vi.fn(async () => ({ createWritable: async () => writable })))
-    const actions = new BrowserFileActions(undefined), blob = new Blob(['original'])
-    await expect(actions.save({ url: 'identity', read: async () => blob }, 'saveAs')).resolves.toEqual({ status: 'saved' })
-    expect(writable.write).toHaveBeenCalledWith(blob)
-    expect(writable.close).toHaveBeenCalledOnce()
-    expect(actions.savedFile('identity')).toBeUndefined()
-    actions.dispose()
-  })
-  it('does not save a remote read that finishes after the plugin unloads', async () => {
+  it.each([false, true])('does not save a remote read that finishes after the plugin unloads (Desktop: %s)', async (desktop) => {
     const bridge = native()
     let settle!: (value: Blob) => void
     const read = vi.fn(() => new Promise<Blob>((resolve) => { settle = resolve }))
-    const actions = new BrowserFileActions(bridge)
+    const actions = new BrowserFileActions(desktop ? bridge : undefined)
     const pending = actions.save({ url: 'https://example.org/image', read }, 'download')
     actions.dispose(); settle(new Blob())
     await expect(pending).rejects.toThrow()
@@ -148,23 +139,33 @@ describe('file actions', () => {
     await expect(actions.save({ url: 'https://images.example/original.gif' }, 'download')).rejects.toThrow()
   })
 
-  it('does not write when the picker, network, or destination fails', async () => {
+  it('does not request a browser download when the network fails', async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     const actions = new BrowserFileActions(undefined)
-    await expect(actions.save({ url: 'identity' }, 'saveAs')).rejects.toThrow('picker unavailable')
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })))
     await expect(actions.save({ url: 'https://images.example/missing' }, 'download')).rejects.toThrow('unavailable')
+    expect(click).not.toHaveBeenCalled()
     actions.dispose()
-    vi.stubGlobal('showSaveFilePicker', vi.fn(async () => { throw new Error('Picker unavailable') }))
-    const rejected = new BrowserFileActions(undefined)
-    await expect(rejected.save({ url: 'identity' }, 'saveAs')).rejects.toThrow('Picker unavailable')
-    rejected.dispose()
-    const writable = { write: vi.fn(async () => { throw new Error('Disk full') }), close: vi.fn(), abort: vi.fn() }
-    vi.stubGlobal('showSaveFilePicker', vi.fn(async () => ({ createWritable: async () => writable })))
-    const writing = new BrowserFileActions(undefined)
-    await expect(writing.save({ url: 'identity', read: async () => new Blob() }, 'saveAs')).rejects.toThrow('Disk full')
-    expect(writable.abort).toHaveBeenCalledOnce()
-    expect(writable.close).not.toHaveBeenCalled()
-    writing.dispose()
+  })
+
+  it.each([
+    { mediaType: 'application/pdf', expected: 'image.pdf' },
+    { mediaType: undefined, expected: 'image' },
+  ])('downloads authorized opaque sources with suggested MIME $mediaType', async ({ mediaType, expected }) => {
+    const blob = new Blob(['original'])
+    fakeImage(1, 1)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.download).toBe(expected)
+      expect(this.href).toBe('blob:conversion')
+    })
+    const actions = new BrowserFileActions(undefined)
+    try {
+      await expect(actions.save({ url: 'authorized-resource', read: async () => blob,
+        ...(mediaType === undefined ? {} : { mediaType }),
+      }, 'download')).resolves.toEqual({ status: 'requested' })
+      expect(click).toHaveBeenCalledOnce()
+      expect(vi.mocked(URL).createObjectURL).toHaveBeenCalledWith(blob)
+    } finally { actions.dispose() }
   })
 
   it.each(['canvas', 'encoding'] as const)('releases a decoded image when %s conversion fails', async (failure) => {
