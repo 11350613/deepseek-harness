@@ -205,7 +205,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-gateway`
 
 - `inject`: `typert` · `remoteAccess`
-- `source`: [`packages/api/gateway/src/index.ts:156`](../packages/api/gateway/src/index.ts)
+- `source`: [`packages/api/gateway/src/index.ts:158`](../packages/api/gateway/src/index.ts)
 
 ```ts config-catalog
 /** Gateway transport configuration. */
@@ -244,8 +244,8 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-api-session-controller`
 
-- `inject`: `agentDefaultModel` · `agents` · `attachments` · `fileUploads` · `fs` · `llm` · `remoteAccess` · `sessions` · `sessionProjections` · `sessionQuery` · `typert` · `workspaceRegistry`
-- `source`: [`packages/api/session-controller/src/index.ts:93`](../packages/api/session-controller/src/index.ts)
+- `inject`: `agentDefaultModel` · `agents` · `attachments` · `fileUploads` · `fs` · `llm` · `remoteAccess` · `sessions` · `sessionProjections` · `sessionQuery` · `typert` · `typertGateway` · `workspaceRegistry`
+- `source`: [`packages/api/session-controller/src/index.ts:110`](../packages/api/session-controller/src/index.ts)
 
 ```ts config-catalog
 /** Session Controller deployment policy. */
@@ -2492,7 +2492,7 @@ export interface PlanModeConfig {
 
 - `inject`: `loader` · `profileContext`
 - `refs`: [`NpmFileSource`](subsystems/boot.zh.md)
-- `source`: [`packages/boot/plugin-manager/src/index.ts:52`](../packages/boot/plugin-manager/src/index.ts)
+- `source`: [`packages/boot/plugin-manager/src/index.ts:53`](../packages/boot/plugin-manager/src/index.ts)
 
 ```ts config-catalog
 /** The pnpm executable, registries, and limits for diagnostics, lookups and connection checks. */
@@ -4869,6 +4869,7 @@ export interface Config {
 | `@deepseek-ai/dsh-experimental-browser-use-runtime` | — | [`packages/experimental/browser-use-runtime/src/index.ts`](../packages/experimental/browser-use-runtime/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-cot-translation-bundle` | — | [`packages/experimental/cot-translation-bundle/src/index.ts`](../packages/experimental/cot-translation-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-inspector-profile` | — | [`packages/experimental/inspector-profile/src/index.ts`](../packages/experimental/inspector-profile/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-liveshare-protocol` | — | [`packages/experimental/liveshare-protocol/src/index.ts`](../packages/experimental/liveshare-protocol/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-plugin-market-bundle` | — | [`packages/experimental/plugin-market-bundle/src/index.ts`](../packages/experimental/plugin-market-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-ralph-bundle` | — | [`packages/experimental/ralph-bundle/src/index.ts`](../packages/experimental/ralph-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-session-search` | — | [`packages/experimental/session-search/src/index.ts`](../packages/experimental/session-search/src/index.ts) |
@@ -4889,6 +4890,7 @@ export interface Config {
 | `@deepseek-ai/dsh-official-bundles` | — | [`packages/util/official-bundles/src/index.ts`](../packages/util/official-bundles/src/index.ts) |
 | `@deepseek-ai/dsh-output-retention` | — | [`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts) |
 | `@deepseek-ai/dsh-package-manifest` | — | [`packages/util/package-manifest/src/index.ts`](../packages/util/package-manifest/src/index.ts) |
+| `@deepseek-ai/dsh-personalized-recommendations` | — | [`packages/experimental/personalized-recommendations/src/index.ts`](../packages/experimental/personalized-recommendations/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-detail` | — | [`packages/util/plugin-detail/src/index.ts`](../packages/util/plugin-detail/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-market-index` | — | [`packages/util/plugin-market-index/src/index.ts`](../packages/util/plugin-market-index/src/index.ts) |
 | `@deepseek-ai/dsh-remote-mock` | — | [`packages/test-support/remote-mock/src/index.ts`](../packages/test-support/remote-mock/src/index.ts) |
