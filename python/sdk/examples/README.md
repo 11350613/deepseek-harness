@@ -70,6 +70,8 @@ python python/sdk/examples/plan.py \
 
 The native plan is carried in `exit_plan_mode`, not written to a workspace document. Permissions remain workspace-write. Dismissal leaves plan mode active and ends the current turn. The example waits through `session/wait` and rejects truncated or failed root turns; its question callback is independent of the protocol reader. Ctrl+C stops the example even while it is waiting for input.
 
+Piped answers use the parent process's stdin encoding and leave later lines for subsequent questions. UTF-16 and UTF-32 input requires an explicit little-endian or big-endian encoding. Truncated characters at EOF are reported as input errors.
+
 <a id="run-a-goal"></a>
 ## Run a goal
 

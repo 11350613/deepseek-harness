@@ -25,7 +25,7 @@ class _PlanReviews:
     """Own cancellable readers with the parent's stdin encoding and join review callbacks before exit."""
 
     # A buffered reader can consume later answers from a pipe before it exits.
-    _READ_LINE = """import os, sys
+    _READ_LINE = """import codecs, os, sys
 sys.stdin.reconfigure(encoding=sys.argv[1])
 if sys.stdin.isatty():
     try:
@@ -33,15 +33,16 @@ if sys.stdin.isatty():
     except EOFError:
         text = ''
 else:
-    line = bytearray()
+    decoder = codecs.getincrementaldecoder(sys.stdin.encoding or 'utf-8')()
+    line = []
     while True:
         value = os.read(0, 1)
-        if not value:
+        decoded = decoder.decode(value, final=not value)
+        if decoded:
+            line.append(decoded)
+        if not value or '\\n' in decoded:
             break
-        line.extend(value)
-        if value == b'\\n':
-            break
-    text = line.decode(sys.stdin.encoding or 'utf-8')
+    text = ''.join(line)
 sys.stdout.buffer.write(text.encode('utf-8'))
 """
 

@@ -70,6 +70,8 @@ python python/sdk/examples/plan.py \
 
 原生计划通过 `exit_plan_mode` 携带，而不是写入工作区文档。权限仍为 workspace-write。关闭审查会保留计划模式并结束当前轮次。示例通过 `session/wait` 等待，并报告根轮次截断或失败；问答回调独立于协议读取线程。等待输入时也可以通过 Ctrl+C 结束示例。
 
+管道答案使用父进程的 stdin 编码，后续行保留给后续问题。UTF-16 和 UTF-32 输入须明确指定小端或大端编码。EOF 处截断的字符会作为输入错误报告。
+
 <a id="run-a-goal"></a>
 ## 运行目标
 

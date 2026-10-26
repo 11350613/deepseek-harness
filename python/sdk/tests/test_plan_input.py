@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from pathlib import Path
 
@@ -226,11 +227,51 @@ def test_plan_input_preserves_piped_lines_and_eof(tmp_path: Path, data: bytes, e
     assert _run(tmp_path, data) == expected
 
 
-def test_plan_input_preserves_reconfigured_stdin_feedback(tmp_path: Path) -> None:
-    assert _run(tmp_path, "k\nréviser\nd\n".encode("latin-1"), stdin_encoding="latin-1") == [
-        {"answers": [{"id": "plan-review", "selected": ["Keep planning"], "custom": "réviser"}]},
+@pytest.mark.parametrize("encoding,feedback", [
+    ("utf-8", "réviser Ċ encore"), ("latin-1", "réviser encore"),
+    ("utf-16-le", "réviser Ċ encore"), ("utf-16-be", "réviser Ċ encore"),
+    ("utf-32-le", "réviser Ċ encore"), ("utf-32-be", "réviser Ċ encore"),
+])
+def test_plan_input_preserves_reconfigured_stdin_feedback(tmp_path: Path, encoding: str, feedback: str) -> None:
+    # U+010A contains byte 0x0a in UTF-16/32 without being a line ending.
+    assert _run(tmp_path, f"k\r\n{feedback}\r\nd\r\n".encode(encoding), stdin_encoding=encoding) == [
+        {"answers": [{"id": "plan-review", "selected": ["Keep planning"], "custom": feedback}]},
         {"cancelled": True},
     ]
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "latin-1", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be"])
+@pytest.mark.parametrize("text", ["a", ""])
+def test_plan_input_preserves_reconfigured_stdin_at_eof(tmp_path: Path, encoding: str, text: str) -> None:
+    assert _run(tmp_path, text.encode(encoding), stdin_encoding=encoding) == [
+        {"answers": [{"id": "plan-review", "selected": ["Approve"]}]} if text else {"cancelled": True},
+    ]
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be"])
+def test_plan_input_rejects_truncated_character_at_eof_and_reaps_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str,
+) -> None:
+    owner_type = runpy.run_path(str(_EXAMPLE))["_PlanReviews"]
+    encoded_input = tmp_path / "stdin.bin"
+    encoded_input.write_bytes("é".encode(encoding)[:-1])
+    readers = []
+    popen = subprocess.Popen
+
+    def record_reader(*args, **kwargs):
+        reader = popen(*args, **kwargs)
+        readers.append(reader)
+        return reader
+
+    with encoded_input.open(encoding=encoding) as terminal, monkeypatch.context() as patch:
+        patch.setattr(sys, "stdin", terminal)
+        patch.setattr(subprocess, "Popen", record_reader)
+        with ThreadPoolExecutor(max_workers=1) as workers, owner_type() as owner:
+            reading = workers.submit(owner._read_line, "Review: ", threading.Event())
+            with pytest.raises(RuntimeError, match="UnicodeDecodeError"):
+                reading.result(timeout=_WAIT_SECONDS)
+            assert len(readers) == 1 and readers[0].poll() == 1
+            assert owner._readers == []
 
 
 def test_plan_input_print_failure_reaps_reader_before_owner_exit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -262,7 +303,9 @@ def test_plan_input_print_failure_reaps_reader_before_owner_exit(monkeypatch: py
 
 
 @pytest.mark.parametrize("stage", ["choice", "feedback"])
-def test_plan_input_cancellation_reaps_open_pipe_reader(tmp_path: Path, stage: str) -> None:
-    data = b"k\npartial feedback" if stage == "feedback" else b"partial choice"
-    assert _run(tmp_path, data, stage=stage, action="protocol") == [{"cancelled": True}]
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be"])
+def test_plan_input_cancellation_reaps_open_pipe_reader(tmp_path: Path, stage: str, encoding: str) -> None:
+    prefix = "k\npartial feedback" if stage == "feedback" else "partial choice"
+    data = prefix.encode(encoding) + "é".encode(encoding)[:-1]
+    assert _run(tmp_path, data, stage=stage, action="protocol", stdin_encoding=encoding) == [{"cancelled": True}]
     assert not (tmp_path / "answers.jsonl").exists()
