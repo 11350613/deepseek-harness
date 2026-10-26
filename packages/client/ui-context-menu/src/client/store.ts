@@ -2,7 +2,7 @@
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import type { MenuActionView, MenuPoint, MenuTarget } from './types.ts'
 
-interface Notice { id: number; text: string; success: boolean }
+interface Notice { id: number; text: string; success: boolean; action?: { label: string; onClick: () => void } }
 interface MenuState {
   occurrence: number
   closing: boolean

@@ -6,7 +6,7 @@ import { registerFileMenus } from './context-menus.tsx'
 import { zh, en, ja, es, fr, de, ru, pt, type FileActionKey } from './locales.ts'
 import { BrowserFileActions } from './files.ts'
 
-export type { FileActions, FileActionSource, FileSaveResult, SavedFileId } from '../types.ts'
+export type { FileActions, FileActionSource, FileSaveResult } from '../types.ts'
 declare module '@deepseek-ai/cordis' {
   interface Context { /** Original-file saving and image clipboard commands. */ fileActions: FileActions }
 }
@@ -24,7 +24,7 @@ export function apply(ctx: Context): void {
   const actions = new BrowserFileActions(desktop)
   ctx.provide('fileActions', actions)
   ctx.effect(() => () => { actions.dispose() }, 'file actions: lifetime')
-  ctx.inject(['menus', 'locale', 'remote', 'remote.workspaceFiles'], (child) => {
+  ctx.inject(['menus', 'locale', 'remote', 'remote.workspaceFiles', 'remote.session'], (child) => {
     child.effect(() => child.locale.register('fileActions', { zh, en, ja, es, fr, de, ru, pt }), 'file actions: locale')
     registerFileMenus(child, actions, child.locale.bind('fileActions'))
   })

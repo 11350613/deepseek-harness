@@ -1,8 +1,4 @@
-/** Original content and native file-save operations; raw paths never cross from the renderer. */
-import type { Branded } from '@deepseek-ai/dsh-brand'
-
-/** Native reference to a successfully saved file, valid until the owning application window reloads or closes. */
-export type SavedFileId = Branded<'SavedFileId'>
+/** Original content and native file-save outcomes. */
 /** Original content; the URL must identify the original, not a resized preview. */
 export interface FileActionSource {
   readonly url: string
@@ -11,15 +7,15 @@ export interface FileActionSource {
   readonly name?: string
   readonly mediaType?: string
 }
-/** Result of an explicit save gesture. Cancellation is not a failure. */
+/** Result of an explicit save gesture. Only native completion supplies an absolute destination path. */
 export type FileSaveResult = { readonly status: 'cancelled' }
   | { readonly status: 'requested' }
-  | { readonly status: 'saved'; readonly fileId?: SavedFileId }
+  | { readonly status: 'saved'; readonly path: string }
 /** Desktop-owned operations exposed only to the trusted application frame. */
 export interface DesktopFileActions {
   /**
    * @param request - captured original URL, suggested filename and destination policy.
-   * @returns saved reference, or cancellation.
+   * @returns the completed destination path, or cancellation.
    */
   save(this: void, request: { url: string; name?: string; mediaType?: string; mode: 'download' | 'saveAs' }): Promise<FileSaveResult>
   /**
@@ -28,11 +24,6 @@ export interface DesktopFileActions {
    * @returns original bytes and response MIME.
    */
   readClipboardImage(this: void, url: string): Promise<{ bytes: Uint8Array; mediaType: string }>
-  /**
-   * @param id - reference returned by save.
-   * @returns after the file manager accepts the request.
-   */
-  reveal(this: void, id: SavedFileId): Promise<void>
 }
 /** UI-independent Client file actions. */
 export interface FileActions {
@@ -49,18 +40,6 @@ export interface FileActions {
    * @returns after a pasteable image is on the clipboard.
    */
   copyImage(source: FileActionSource): Promise<void>
-  /**
-   * Find the native reference from a previous successful save.
-   * @param url - source identity.
-   * @returns a known local saved file, otherwise undefined.
-   */
-  savedFile(url: string): SavedFileId | undefined
-  /**
-   * Reveal a known saved file in the native file manager.
-   * @param id - reference to a successful save.
-   * @returns after reveal succeeds.
-   */
-  reveal(id: SavedFileId): Promise<void>
   /** Whether the Desktop adapter can offer an explicit save picker; always false on Web. */
   readonly canSaveAs: boolean
 }

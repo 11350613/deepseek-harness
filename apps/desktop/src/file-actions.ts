@@ -1,12 +1,11 @@
-/** Trusted-window Chromium downloads and clipboard fallback reads. Saved paths stay in the main process. */
-import { app, ipcMain, shell, session } from 'electron'
+/** Trusted-window Chromium downloads and clipboard fallback reads. */
+import { app, ipcMain, session } from 'electron'
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
-import { stat } from 'node:fs/promises'
 import { closeSync, openSync, rmSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { resolveDragFileName } from '@deepseek-ai/dsh-util-file-drag'
 import { randomUUID } from 'node:crypto'
-import type { FileSaveResult, SavedFileId } from '@deepseek-ai/dsh-client-ui-file-actions/types'
+import type { FileSaveResult } from '@deepseek-ai/dsh-client-ui-file-actions/types'
 import { DESKTOP_IPC } from './ipc.ts'
 import { resolveDurationMs } from './duration-env.ts'
 
@@ -33,24 +32,9 @@ function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: str
 export function installFileActions(
   assertOwner: (event: IpcMainInvokeEvent) => BrowserWindow, hostUrl: () => string | undefined = () => undefined,
 ): void {
-  const saved = new Map<SavedFileId, { owner: BrowserWindow; path: string }>()
-  const owners = new WeakSet<BrowserWindow>()
   const timeoutMs = resolveDurationMs(process.env, 'DSH_DESKTOP_IMAGE_READ_TIMEOUT_MS', 30_000)
   const maxBytes = Number(process.env.DSH_DESKTOP_IMAGE_READ_MAX_BYTES ?? 64 * 1024 * 1024)
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error('DSH_DESKTOP_IMAGE_READ_MAX_BYTES must be a positive integer')
-  const retainOwner = (owner: BrowserWindow): void => {
-    if (owners.has(owner)) return
-    owners.add(owner)
-    const contents = owner.webContents
-    const clear = (): void => {
-      for (const [id, entry] of saved) if (entry.owner === owner) saved.delete(id)
-    }
-    const navigate = (_event: Electron.Event, _url: string, inPlace: boolean, mainFrame: boolean): void => {
-      if (mainFrame && !inPlace) clear()
-    }
-    contents.on('did-start-navigation', navigate)
-    owner.once('closed', () => { clear(); contents.removeListener('did-start-navigation', navigate) })
-  }
   const pending = new Map<string, {
     event: IpcMainInvokeEvent
     owner: BrowserWindow
@@ -99,10 +83,7 @@ export function installFileActions(
           }
           if (!pending.has(url)) return
           assertOwner(entry.event)
-          retainOwner(entry.owner)
-          const fileId = randomUUID() as SavedFileId
-          saved.set(fileId, { owner: entry.owner, path: item.getSavePath() })
-          entry.finish({ status: 'saved', fileId })
+          entry.finish({ status: 'saved', path: item.getSavePath() })
         } catch (error) { entry.finish(error instanceof Error ? error : new Error('File download unavailable')) }
       })
     } catch (error) {
@@ -151,14 +132,6 @@ export function installFileActions(
       try { contents.downloadURL(url) }
       catch (error) { finish(error instanceof Error ? error : new Error('File download unavailable')) }
     })
-  })
-  ipcMain.handle(DESKTOP_IPC.fileReveal, async (event, id: unknown) => {
-    const owner = assertOwner(event)
-    const entry = typeof id === 'string' ? saved.get(id as SavedFileId) : undefined
-    if (entry === undefined || entry.owner !== owner) throw new Error('Saved file unavailable')
-    if (!(await stat(entry.path)).isFile()) throw new Error('Saved file unavailable')
-    assertOwner(event)
-    shell.showItemInFolder(entry.path)
   })
   ipcMain.handle(DESKTOP_IPC.clipboardImageRead, async (event, value: unknown) => {
     const owner = assertOwner(event)

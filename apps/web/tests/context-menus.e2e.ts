@@ -2,7 +2,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { chromium, type Browser, type Locator, type Page } from 'playwright'
-import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, onTestFailed, vi } from 'vitest'
 import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
@@ -260,7 +260,9 @@ describe.each(['MacIntel', 'Win32', 'Linux x86_64'])('web context menus on %s', 
     const fileDownload = await fileDownloadPromise
     expect(fileDownload.suggestedFilename()).toBe('first.txt')
     expect(await readFile(await fileDownload.path(), 'utf8')).toBe('FIRST\nSECOND\nTHIRD\n')
-    await page.getByRole('alert').filter({ hasText: 'Download started' }).waitFor()
+    const started = page.getByRole('alert').filter({ hasText: 'Download started' })
+    await started.waitFor()
+    expect(await started.getByRole('button', { name: /Show in/ }).count()).toBe(0)
     await file.click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Open in sidebar', exact: true }).click()
     await page.locator('[data-document-preview]').getByText('SECOND', { exact: true }).waitFor()
@@ -330,4 +332,50 @@ describe.each(['MacIntel', 'Win32', 'Linux x86_64'])('web context menus on %s', 
     expect(tripwire.pageErrors).toEqual([])
   })
 
+  it('offers completed Desktop destinations as toast text actions without enabling remote-image menu reveal', async () => {
+    const native = await browser.newPage({ viewport: { width: 1291, height: 768 }, locale: 'en-US' })
+    const opened = vi.spyOn(scaffold.ctx.sessionController, 'openWorkspacePath').mockResolvedValue({ opened: true })
+    try {
+      const destinations = { download: join(scaffold.workspaceCwd, 'downloaded.gif'), saveAs: join(scaffold.workspaceCwd, 'saved.txt') }
+      await native.addInitScript(({ platform, destinations }) => {
+        Object.defineProperty(navigator, 'platform', { value: platform })
+        Object.defineProperty(globalThis, 'dshDesktop', { value: { protocolVersion: 1, fileActions: {
+          save: async ({ mode }: { mode: 'download' | 'saveAs' }) => ({ status: 'saved', path: destinations[mode] }),
+        } } })
+      }, { platform, destinations })
+      await native.route('https://images.example/original.gif', route => route.fulfill({ body: GIF, contentType: 'image/gif' }))
+      await native.goto(scaffold.authenticatedUrl)
+      await native.evaluate((platform) => {
+        document.documentElement.dataset.platform = platform === 'MacIntel' ? 'darwin' : platform === 'Win32' ? 'win32' : 'linux'
+      }, platform)
+      const group = native.locator('[data-row-key^="workspace:"]').filter({ hasText: 'Ungrouped' })
+      if (await group.getAttribute('aria-expanded') !== 'true') await group.click()
+      await native.locator('[data-row-key="session:context-menu-first"]').click()
+      await native.getByText('CONTEXT_MENU_READY', { exact: true }).waitFor()
+      for (const [mode, label, text, theme] of [
+        ['download', 'Download', 'Download complete', 'light'],
+        ['saveAs', 'Save as…', 'Saved', 'dark'],
+      ] as const) {
+        await native.emulateMedia({ colorScheme: theme })
+        const trigger = mode === 'download'
+          ? native.getByRole('img', { name: 'Remote', exact: true })
+          : native.getByRole('button', { name: 'First file', exact: true })
+        await trigger.click({ button: 'right' })
+        await native.getByRole('menuitem', { name: label, exact: true }).click()
+        const notice = native.getByRole('alert').filter({ hasText: text })
+        const action = notice.getByRole('button', { name: platform === 'MacIntel' ? 'Show in Finder' : 'Show in folder', exact: true })
+        await action.click()
+        await notice.waitFor({ state: 'hidden' })
+        await expect.poll(() => opened.mock.calls.at(-1)?.[0]).toEqual({ path: destinations[mode], action: 'reveal' })
+      }
+      expect(opened).toHaveBeenCalledTimes(2)
+      await native.getByRole('img', { name: 'Remote', exact: true }).click({ button: 'right' })
+      const reveal = native.getByRole('menuitem', { name: 'Show in folder', exact: true })
+      await reveal.waitFor()
+      expect(await reveal.isDisabled()).toBe(true)
+    } finally {
+      await native.close()
+      opened.mockRestore()
+    }
+  })
 })

@@ -166,7 +166,7 @@ describe('open-in-app browser half', () => {
   })
 
   it('declares the services it binds', () => {
-    expect(inject).toEqual(['menus', 'fileActions', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout'])
+    expect(inject).toEqual(['menus', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout'])
   })
 
   it('does not open a retained workspace while a global panel hides the Session header', async () => {

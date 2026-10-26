@@ -10,7 +10,6 @@ import { DESKTOP_IPC } from '../src/ipc.ts'
 
 const electron = vi.hoisted(() => ({
   app: { getPath: vi.fn() }, ipcMain: { handle: vi.fn() }, session: { defaultSession: { on: vi.fn() } },
-  shell: { showItemInFolder: vi.fn() },
 }))
 vi.mock('electron', () => electron)
 const roots: string[] = []
@@ -54,19 +53,15 @@ function harness(root: string) {
     const download = item()
     if (mode === 'download') await writeFile(download.getSavePath(), new Uint8Array([0, 128, 255]))
     download.emit('done', {}, 'completed')
-    return pending as Promise<{ fileId: string }>
+    return pending
   }
   return { owner, assertOwner, invoke, item, save }
 }
 
-it('reveals only its saved references and retires them on navigation', async () => {
-  const f = harness(await directory())
-  const result = await f.save()
-  await f.invoke(DESKTOP_IPC.fileReveal, result.fileId)
-  expect(electron.shell.showItemInFolder).toHaveBeenCalledTimes(1)
-  f.owner.webContents.emit('did-start-navigation', {}, 'dsh-app://app/', false, true)
-  await expect(f.invoke(DESKTOP_IPC.fileReveal, result.fileId)).rejects.toThrow('unavailable')
-  f.owner.emit('closed')
+it('returns the completed destination and releases download listeners', async () => {
+  const root = await directory(), f = harness(root)
+  await expect(f.save()).resolves.toEqual({ status: 'saved', path: join(root, 'image.gif') })
+  expect(f.owner.listenerCount('closed')).toBe(0)
   expect(f.owner.webContents.listenerCount('did-start-navigation')).toBe(0)
 })
 
@@ -84,7 +79,7 @@ it('retains original downloads and reserves distinct paths until Chromium finish
   expect(await readFile(join(root, 'image (1).gif'))).toEqual(Buffer.from([0, 128, 255]))
 })
 
-it.each(['cancelled', 'interrupted'] as const)('reports native %s without a saved reference', async (state) => {
+it.each(['cancelled', 'interrupted'] as const)('reports native %s without a completed path', async (state) => {
   const root = await directory(), f = harness(root)
   const pending = f.invoke(DESKTOP_IPC.fileSave, { url: 'https://images.example/a', name: 'wrong.png', mode: 'download' })
   const download = f.item('image/webp')
@@ -189,13 +184,16 @@ it('aborts original-image reads on window navigation and releases lifecycle list
   expect(f.owner.webContents.listenerCount('did-start-navigation')).toBe(0)
 })
 
-it('preserves saved references across iframe and same-document navigation', async () => {
-  const f = harness(await directory())
-  const result = await f.save()
+it('preserves pending downloads across iframe and same-document navigation', async () => {
+  const root = await directory(), f = harness(root)
+  const pending = f.invoke(DESKTOP_IPC.fileSave, { url: 'https://images.example/a', mode: 'saveAs' })
+  const download = f.item()
   f.owner.webContents.emit('did-start-navigation', {}, 'https://example.org', false, false)
   f.owner.webContents.emit('did-start-navigation', {}, 'dsh-app://app/#tab', true, true)
-  await expect(f.invoke(DESKTOP_IPC.fileReveal, result.fileId)).resolves.toBeUndefined()
-  f.owner.emit('closed')
+  download.setSavePath(join(root, 'chosen.gif'))
+  download.emit('done', {}, 'completed')
+  await expect(pending).resolves.toEqual({ status: 'saved', path: join(root, 'chosen.gif') })
+  expect(download.cancel).not.toHaveBeenCalled()
 })
 
 it('rejects redirects to the application Host', async () => {

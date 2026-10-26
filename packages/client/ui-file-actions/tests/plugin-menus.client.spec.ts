@@ -21,8 +21,10 @@ it('contributes file and image operations without open-in-app and withdraws them
     stat: async () => ({ ok: true, value: { absolutePath: '/workspace/image.png' } }),
     readBytes,
   }
-  ctx.provide('remote', { workspaceFiles } as never)
+  const session = { openWorkspacePath: vi.fn() }
+  ctx.provide('remote', { workspaceFiles, session } as never)
   ctx.provide('remote.workspaceFiles', workspaceFiles as never)
+  ctx.provide('remote.session', session as never)
   const fiber = ctx.plugin({ apply })
   await fiber.await()
   try {
@@ -41,7 +43,7 @@ it('contributes file and image operations without open-in-app and withdraws them
     await downloading.ready
     expect(downloading.source.getSnapshot().map(action => action.id)).toEqual(['file-actions.file/download'])
     downloading.select('file-actions.file/download')
-    await vi.waitFor(() => { expect(notify).toHaveBeenCalledWith('menu.downloadStarted', true) })
+    await vi.waitFor(() => { expect(notify).toHaveBeenCalledWith('menu.downloadStarted', true, undefined) })
     expect(save).toHaveBeenCalledOnce()
     expect(readBytes).toHaveBeenCalledWith(SessionId('files'), 'report.txt', {}, expect.any(AbortSignal))
     save.mockRestore()

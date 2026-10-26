@@ -18,7 +18,7 @@ it('offers image actions on file targets, copies absolute paths, and keeps save 
   const notify = vi.fn(), failed = vi.fn()
   const registry = new MenuRegistry(failed)
   const id = SessionId('context-file')
-  const save = vi.fn(async (_source: import('@deepseek-ai/dsh-client-ui-file-actions/client').FileActionSource, _mode: 'download' | 'saveAs') => ({ status: 'saved' as const }))
+  const save = vi.fn(async (_source: import('@deepseek-ai/dsh-client-ui-file-actions/client').FileActionSource, _mode: 'download' | 'saveAs') => ({ status: 'saved' as const, path: '/downloads/original.svg' }))
   const copy = vi.fn(async () => {})
   const writeText = vi.fn(async () => {})
   vi.stubGlobal('navigator', { clipboard: { writeText } })
@@ -34,7 +34,7 @@ it('offers image actions on file targets, copies absolute paths, and keeps save 
   ctx.provide('remote', remote as never)
   ctx.provide('menus', { register: registry.register.bind(registry), notify } as never)
   ctx.provide('sessions', { list: createSnapshotStore({ byId: { [id]: { cwd: '/workspace' } } }) } as never)
-  ctx.provide('fileActions', { save, copyImage: copy, canSaveAs: true, savedFile: () => undefined } as never)
+  ctx.provide('fileActions', { save, copyImage: copy, canSaveAs: true } as never)
   const paths = new OpenInAppPathController(remote)
   const directories = new OpenInAppController()
   const fiber = ctx.plugin({ apply: (plugin: Context) => {
@@ -56,7 +56,7 @@ it('offers image actions on file targets, copies absolute paths, and keeps save 
     await downloading.ready
     downloading.select('file-actions.file/download')
     downloading.dispose()
-    await vi.waitFor(() => { expect(notify).toHaveBeenCalledWith('menu.downloaded', true) })
+    await vi.waitFor(() => { expect(notify).toHaveBeenCalledWith('menu.downloaded', true, expect.objectContaining({ failureLabel: 'path.revealError' })) })
     const source = save.mock.calls[0]?.[0]
     expect(source).toMatchObject({ name: 'original.svg', mediaType: 'image/svg+xml' })
     expect(await (await source!.read!(new AbortController().signal)).text()).toBe('<svg/>')

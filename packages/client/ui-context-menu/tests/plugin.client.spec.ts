@@ -57,6 +57,24 @@ it('lets an external contribution open another menu and withdraws its actions wh
     expect(store.getSnapshot().notice).toMatchObject({ text: 'Saved', success: true })
     ctx.menus.notify('Unavailable')
     expect(store.getSnapshot().notice).toMatchObject({ text: 'Unavailable', success: false })
+    const reveal = vi.fn(async () => {})
+    ctx.menus.notify('Saved', true, { label: 'Show in folder', run: reveal, failureLabel: 'Reveal failed' })
+    const previousAction = store.getSnapshot().notice!.action!
+    expect(previousAction.label).toBe('Show in folder')
+    previousAction.onClick()
+    previousAction.onClick()
+    expect(reveal).toHaveBeenCalledOnce()
+    expect(store.getSnapshot().notice).toBeNull()
+    ctx.menus.notify('Saved again', true, { label: 'Show in folder', run: reveal, failureLabel: 'Reveal failed' })
+    const replaced = store.getSnapshot().notice!.action!
+    ctx.menus.notify('New notice')
+    replaced.onClick()
+    expect(reveal).toHaveBeenCalledOnce()
+    for (const fail of [() => { throw new Error('denied') }, async () => { throw new Error('offline') }]) {
+      ctx.menus.notify('Saved', true, { label: 'Show in folder', run: fail, failureLabel: 'Reveal failed' })
+      store.getSnapshot().notice!.action!.onClick()
+      await vi.waitFor(() => { expect(store.getSnapshot().notice).toMatchObject({ text: 'Reveal failed', success: false }) })
+    }
     const removeFailure = ctx.menus.register({ target: 'pluginDocument', id: 'failure', order: 0,
       resolve: () => { throw new Error('Metadata unavailable') } })
     ctx.menus.open({ kind: 'pluginDocument', value: { id: 'failed' } }, { x: 0, y: 0 })

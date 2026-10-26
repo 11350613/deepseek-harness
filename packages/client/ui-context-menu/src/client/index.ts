@@ -49,8 +49,18 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   let finishOpening: (() => void) | undefined
   let returnFocus: HTMLElement | null = null
   let disposed = false
-  const notify: ContextMenus['notify'] = (text, success = false) => {
-    if (!disposed) instance.actions.notify({ id: ++sequence, text, success })
+  const notify: ContextMenus['notify'] = (text, success = false, action) => {
+    if (disposed) return
+    const id = ++sequence
+    instance.actions.notify({ id, text, success, ...action === undefined ? {} : { action: {
+      label: action.label,
+      onClick: () => {
+        if (disposed || instance.getSnapshot().notice?.id !== id) return
+        instance.actions.notify(null)
+        try { void Promise.resolve(action.run()).catch(() => { notify(action.failureLabel) }) }
+        catch (_error) { notify(action.failureLabel) }
+      },
+    } } })
   }
   const registry = new MenuRegistry((message) => { notify(message ?? t('failed')) }, config.resolutionTimeoutMs)
   const cancelOpening = (): void => {

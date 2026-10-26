@@ -2,7 +2,7 @@
 
 /** zh file-action labels. */
 export const zh = {
-  'menu.finder': '在 Finder 中显示',
+  'menu.finder': '在 Finder 显示',
   'menu.reveal': '在文件夹显示',
   'menu.saveAs': '另存为…',
   'menu.copied': '已复制',

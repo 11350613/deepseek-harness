@@ -107,6 +107,11 @@ export interface ContextMenus {
    * Show localized feedback outside the originating surface.
    * @param text - localized message.
    * @param success - successful action.
+   * @param action - optional text action retained by this notice; rejects with localized failure feedback.
    */
-  notify(text: string, success?: boolean): void
+  notify(text: string, success?: boolean, action?: {
+    readonly label: string
+    readonly run: () => void | Promise<void>
+    readonly failureLabel: string
+  }): void
 }

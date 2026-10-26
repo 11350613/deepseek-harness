@@ -1,8 +1,9 @@
 /** Original-file menu contributions owned by the file-action capability. */
-import { IconCopyOutlineRegular, IconDownloadOutlineRegular, IconSaveOutlineRegular, IconFolderOpenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCopyOutlineRegular, IconDownloadOutlineRegular, IconSaveOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
+import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { FileActions, FileActionSource } from '../types.ts'
 import { fileMediaUrl } from '@deepseek-ai/dsh-util-workspace-path'
@@ -16,6 +17,8 @@ import type { FileActionKey } from './locales.ts'
  * @param t - localized labels and feedback.
  */
 export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: FileActionKey) => string): void {
+  const lifetime = new AbortController()
+  ctx.effect(() => () => { lifetime.abort() }, 'file actions: feedback lifetime')
   const read = (sessionId: SessionId, path: string, mediaType: string, error: string) => async (signal: AbortSignal): Promise<Blob> => {
     const result = await ctx.remote.workspaceFiles.readBytes(sessionId, path, {}, signal)
     if (!result.ok) throw new Error(error)
@@ -23,8 +26,21 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
   }
   const save = async (source: FileActionSource, mode: 'download' | 'saveAs'): Promise<void> => {
     const result = await actions.save(source, mode)
-    if (result.status !== 'cancelled') ctx.menus.notify(t(result.status === 'requested'
-      ? 'menu.downloadStarted' : mode === 'download' ? 'menu.downloaded' : 'menu.saved'), true)
+    lifetime.signal.throwIfAborted()
+    if (result.status === 'cancelled') return
+    ctx.menus.notify(
+      t(result.status === 'requested' ? 'menu.downloadStarted' : mode === 'download' ? 'menu.downloaded' : 'menu.saved'),
+      true,
+      result.status !== 'saved' ? undefined : {
+        label: t(document.documentElement.dataset.platform === 'darwin' ? 'menu.finder' : 'menu.reveal'),
+        failureLabel: t('path.revealError'),
+        run: async () => {
+          lifetime.signal.throwIfAborted()
+          const opened = await ctx.remote.session.openWorkspacePath({ path: result.path, action: 'reveal' }, lifetime.signal)
+          if (!opened.ok) throw new Error('File location unavailable')
+        },
+      },
+    )
   }
   const copy = async (source: FileActionSource): Promise<void> => {
     await actions.copyImage(source)
@@ -80,7 +96,6 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
           read: read(sessionId, path, mediaType ?? '', 'Original image unavailable'),
         }),
       }
-      const saved = actions.savedFile(source.url)
       return [
         { id: 'copy', icon: <IconCopyOutlineRegular />, failureLabel: t('menu.copyFailed'), label: t('menu.copyImage'), run: () => copy(source) },
         { id: 'download', icon: <IconDownloadOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.download'), run: () => save(source, 'download') },
@@ -88,11 +103,6 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
           { id: 'saveAs', icon: <IconSaveOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
             run: () => save(source, 'saveAs') },
         ] : [],
-        ...saved === undefined ? [] : [{
-          id: 'reveal', icon: <IconFolderOpenOutlineRegular />,
-          label: t(document.documentElement.dataset.platform === 'darwin' ? 'menu.finder' : 'menu.reveal'),
-          failureLabel: t('path.revealError'), run: () => actions.reveal(saved),
-        }],
       ]
     },
   }), 'file actions: image menu')

@@ -3,7 +3,6 @@ import { IconFolderOpenOutlineRegular, IconCopyOutlineRegular, IconPanelLeftOutl
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import type {} from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-browser/client'
@@ -119,7 +118,6 @@ export function registerContextMenus(
     id: 'open-in-app.image', target: 'image', order: 200,
     resolve: async (target, signal) => {
       const { sessionId, path } = target
-      if (ctx.fileActions.savedFile(target.url) !== undefined) return []
       await paths.load()
       const local = path !== undefined && sessionId !== undefined && paths.desktop.getSnapshot() === true
         ? await resolvePath(sessionId, path, signal) : undefined

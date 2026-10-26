@@ -66,9 +66,6 @@
       "path": "../ui-context-menu"
     },
     {
-      "path": "../ui-file-actions"
-    },
-    {
       "path": "../../util/workspace-path"
     },
     {

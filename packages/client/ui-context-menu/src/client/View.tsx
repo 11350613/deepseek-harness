@@ -44,6 +44,7 @@ export function MenuOverlay({ useStore, actions, renderSlot, close, select, retu
       {target !== null && renderSlot('contextMenu.content', { target, dismiss: close }, { entryKey: target.kind })}
     </Menu>
     {notice !== null && <Toast key={notice.id} text={notice.text}
+      {...notice.action === undefined ? {} : { actions: [notice.action] }}
       {...notice.success ? { tone: 'success' as const } : {}} onDone={() => { actions.notify(null) }} />}
   </>
 }

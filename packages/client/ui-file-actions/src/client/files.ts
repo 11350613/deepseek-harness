@@ -1,6 +1,6 @@
 /** Original-byte transfer, platform save selection, and pasteable image encoding. */
 import { resolveDragFileName } from '@deepseek-ai/dsh-util-file-drag'
-import type { DesktopFileActions, FileActions, FileActionSource, FileSaveResult, SavedFileId } from '../types.ts'
+import type { DesktopFileActions, FileActions, FileActionSource, FileSaveResult } from '../types.ts'
 
 /**
  * Keep compatible filename suffixes and repair known MIME conflicts without changing bytes.
@@ -12,19 +12,13 @@ export function exportName(name: string | undefined, mediaType: string): string 
   return resolveDragFileName({ name: name ?? 'image', mediaType })
 }
 
-/** File action owner; native saved references never imply paths for browser downloads. */
+/** File action owner; browser download requests never imply a saved path. */
 export class BrowserFileActions implements FileActions {
-  private readonly saved = new Map<string, SavedFileId>()
   private downloadUrl: string | undefined
   private readonly lifetime = new AbortController()
   readonly canSaveAs: boolean
   constructor(private readonly desktop: DesktopFileActions | undefined) {
     this.canSaveAs = desktop !== undefined
-  }
-  savedFile(url: string): SavedFileId | undefined { return this.saved.get(url) }
-  async reveal(id: SavedFileId): Promise<void> {
-    if (this.desktop === undefined) throw new Error('File manager unavailable')
-    await this.desktop.reveal(id)
   }
   private async read(source: FileActionSource): Promise<Blob> {
     this.lifetime.signal.throwIfAborted()
@@ -52,7 +46,6 @@ export class BrowserFileActions implements FileActions {
           ...(blob?.type || source.mediaType ? { mediaType: blob?.type || source.mediaType } : {}),
         })
         this.lifetime.signal.throwIfAborted()
-        if (result.status === 'saved' && result.fileId !== undefined) this.saved.set(source.url, result.fileId)
         return result
       } finally { if (blob !== undefined) URL.revokeObjectURL(url) }
     }
@@ -99,6 +92,5 @@ export class BrowserFileActions implements FileActions {
     this.lifetime.abort()
     if (this.downloadUrl !== undefined) URL.revokeObjectURL(this.downloadUrl)
     this.downloadUrl = undefined
-    this.saved.clear()
   }
 }

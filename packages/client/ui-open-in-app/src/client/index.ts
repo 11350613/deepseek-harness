@@ -1,5 +1,4 @@
 import { registerContextMenus } from './context-menus.tsx'
-import type {} from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
  * Shared native opening controls for workspace directories, document previews,
@@ -44,7 +43,7 @@ export type { OpenPathActionProps, OpenPathInjected } from './OpenPathAction.tsx
 export type { OpenPathEmptyActionProps } from './OpenPathEmptyAction.tsx'
 
 /** Required services: sessions, layout selection, the slot registry, copy, Remote calls, and shortcuts. */
-export const inject = ['menus', 'fileActions', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout']
+export const inject = ['menus', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout']
 
 /**
  * Client plugin body: register dictionaries, workspace directory controls, and

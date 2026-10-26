@@ -2,7 +2,7 @@
 import { Blob as NodeBlob } from 'node:buffer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BrowserFileActions, exportName } from '../src/client/files.ts'
-import type { DesktopFileActions, SavedFileId } from '../src/types.ts'
+import type { DesktopFileActions } from '../src/types.ts'
 import { Context } from '@deepseek-ai/cordis'
 import { apply as clientApply } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -29,9 +29,8 @@ function fakeImage(width: number, height: number) {
 }
 
 function native(): DesktopFileActions {
-  return { save: vi.fn(async () => ({ status: 'saved' as const, fileId: 'saved' as SavedFileId })),
-    readClipboardImage: vi.fn(async () => ({ bytes: new Uint8Array([1, 2, 3]), mediaType: 'image/webp' })),
-    reveal: vi.fn(async () => {}) }
+  return { save: vi.fn(async () => ({ status: 'saved' as const, path: '/downloads/original.png' })),
+    readClipboardImage: vi.fn(async () => ({ bytes: new Uint8Array([1, 2, 3]), mediaType: 'image/webp' })) }
 }
 
 describe('original filenames', () => {
@@ -54,21 +53,18 @@ describe('original filenames', () => {
 })
 
 describe('file actions', () => {
-  it('saves the original encoded bytes and only retains successfully returned native references', async () => {
+  it('saves original encoded bytes and returns each completed destination without retaining history', async () => {
     vi.stubGlobal('Blob', NodeBlob)
     const bridge = native(), actions = new BrowserFileActions(bridge)
     const source = { url: 'https://images.example/chart', name: 'chart.png', mediaType: 'image/png' }
     expect(actions.canSaveAs).toBe(true)
-    expect(actions.savedFile(source.url)).toBeUndefined()
-    await actions.save(source, 'download')
+    await expect(actions.save(source, 'download')).resolves.toEqual({ status: 'saved', path: '/downloads/original.png' })
     expect(bridge.save).toHaveBeenCalledWith({ ...source, mode: 'download' })
     expect(bridge.readClipboardImage).not.toHaveBeenCalled()
-    expect(actions.savedFile(source.url)).toBe('saved')
-    await actions.reveal('saved' as SavedFileId)
-    expect(bridge.reveal).toHaveBeenCalledWith('saved')
+    vi.mocked(bridge.save).mockResolvedValueOnce({ status: 'saved', path: '/elsewhere/original.png' })
+    await expect(actions.save(source, 'saveAs')).resolves.toEqual({ status: 'saved', path: '/elsewhere/original.png' })
     vi.mocked(bridge.save).mockResolvedValue({ status: 'cancelled' })
     await expect(actions.save({ ...source, url: source.url + '2' }, 'saveAs')).resolves.toEqual({ status: 'cancelled' })
-    expect(actions.savedFile(source.url + '2')).toBeUndefined()
     actions.dispose()
   })
   it('uses an authorized resource reader without converting bytes', async () => {
@@ -132,8 +128,6 @@ describe('file actions', () => {
     expect(create).toHaveBeenCalledWith(blob)
     expect(click).toHaveBeenCalledTimes(2)
     expect(revoke).toHaveBeenCalledWith('blob:first')
-    expect(actions.savedFile('https://images.example/original.gif')).toBeUndefined()
-    await expect(actions.reveal('missing' as SavedFileId)).rejects.toThrow('unavailable')
     actions.dispose()
     expect(revoke).toHaveBeenLastCalledWith('blob:second')
     await expect(actions.save({ url: 'https://images.example/original.gif' }, 'download')).rejects.toThrow()

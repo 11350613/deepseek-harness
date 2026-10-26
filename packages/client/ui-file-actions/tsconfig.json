@@ -15,7 +15,7 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../../util/brand"
+      "path": "../../api/session-controller/tsconfig.client.json"
     },
     {
       "path": "../../util/file-drag"
