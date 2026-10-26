@@ -127,10 +127,16 @@ describe.skipIf(process.platform === 'win32')('Web sidebar shortcuts', () => {
 
       const terminalEntry = panel.locator('[data-sidebar-right-guide-entry="terminal"]')
       const shellMenu = terminalEntry.getByRole('button', { name: 'Choose shell', exact: true })
-      const titleBounds = await terminalEntry.getByText('New terminal', { exact: true }).boundingBox()
-      const arrowBounds = await shellMenu.boundingBox()
-      expect(arrowBounds!.x).toBeGreaterThanOrEqual(titleBounds!.x + titleBounds!.width)
-      expect(arrowBounds!.x - titleBounds!.x - titleBounds!.width).toBeLessThan(8)
+      // Sample both rectangles in one layout instead of crossing the panel's transition frames.
+      await expect.poll(() => terminalEntry.evaluate((entry) => {
+        const title = [...entry.querySelectorAll('span[aria-hidden="true"]')].find(element => element.textContent === 'New terminal')
+        const arrow = entry.querySelector('button[aria-label="Choose shell"]')
+        if (title === undefined || arrow === null) return null
+        const titleBounds = title.getBoundingClientRect()
+        const arrowBounds = arrow.getBoundingClientRect()
+        const gap = arrowBounds.left - titleBounds.right
+        return { ordered: gap >= 0, adjacent: gap < 8 }
+      })).toEqual({ ordered: true, adjacent: true })
       await shellMenu.click()
       await page.getByRole('menu').waitFor()
       expect(await panel.locator('[data-sidebar-terminal]').count()).toBe(0)
