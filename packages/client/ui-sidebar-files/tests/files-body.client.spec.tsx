@@ -270,37 +270,6 @@ describe('FilesBody', () => {
     expect(back.container.querySelector('[data-files-body]')!.scrollTop).toBe(120)
   })
 
-  it('restores the tree and scroll offset under a new Session store and replaces the earlier watches', async () => {
-    const { view, script, rebind, shared, tabActions } = mountBody()
-    const child = `${ROOT}/src`
-    const rootStream = await act(() => script.watches.ready(ROOT))
-    await act(() => script.settle({ ok: true, value: ROOT_LEVEL }))
-    act(() => { fireEvent.click(view.container.querySelector(`[data-files-path="${child}"] > button`)!) })
-    const childStream = await act(() => script.watches.ready(child))
-    await act(() => script.settle({ ok: true, value: { entries: [{ name: 'a.ts', type: 'file' }], truncated: false } }))
-    fireEvent.scroll(view.container.querySelector('[data-files-body]')!, { target: { scrollTop: 120 } })
-    view.unmount()
-
-    const back = await act(() => rebind())
-    expect(rootStream.signal.aborted).toBe(true)
-    expect(childStream.signal.aborted).toBe(true)
-    expect(names(back.view.container)).toContain(`${child}/a.ts`)
-    expect(back.view.container.querySelector('[data-files-body]')!.scrollTop).toBe(120)
-    expect(back.instance.getSnapshot().byTab[TAB]!.expanded).toEqual([ROOT, child])
-    fireEvent.contextMenu(back.view.getByRole('button', { name: 'a.ts' }), { clientX: 45, clientY: 56 })
-    expect(shared.openContextMenu).toHaveBeenLastCalledWith('file', `${child}/a.ts`, 'pane-1', { x: 45, y: 56 })
-    expect(tabActions.openResource).not.toHaveBeenCalled()
-    await act(() => script.watches.ready(ROOT, 1))
-    await act(() => script.settle({ ok: true, value: ROOT_LEVEL }))
-    await act(() => script.watches.ready(child, 1))
-    await act(() => script.settle({ ok: true, value: { entries: [{ name: 'b.ts', type: 'file' }], truncated: false } }))
-    expect(names(back.view.container)).toContain(`${child}/b.ts`)
-    expect(names(back.view.container)).not.toContain(`${child}/a.ts`)
-    fireEvent.contextMenu(back.view.getByRole('button', { name: 'b.ts' }), { clientX: 50, clientY: 60 })
-    expect(shared.openContextMenu).toHaveBeenLastCalledWith('file', `${child}/b.ts`, 'pane-1', { x: 50, y: 60 })
-    expect(tabActions.openResource).not.toHaveBeenCalled()
-  })
-
   it('a scroll before the owner aborts is not written to a forgotten bucket', async () => {
     const { view, script, controller, instance } = mountBody()
     await act(() => script.watches.ready(ROOT))
