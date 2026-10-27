@@ -55,6 +55,21 @@ function failedCell(name: string, texts: readonly string[], nested: boolean): Tr
 describe('PTC trajectory inspector', () => {
   it.each([
     ['run_code', false], ['read', false], ['read', true],
+  ] as const)('keeps failed %s JSON output as raw text (nested: %s)', (name, nested) => {
+    const output = '{ "reason" : "missing", "steps": [1, 2] }\n'
+    const view = render(<Harness cell={failedCell(name, [output], nested)} />)
+    const ui = within(view.container)
+    fireEvent.click(ui.getByRole('row', { name: /TOOL/ }))
+    for (const tab of ['Summary', 'Result']) {
+      fireEvent.click(ui.getByRole('tab', { name: tab }))
+      const panel = ui.getByRole('tabpanel')
+      expect(within(panel).queryByRole('tree', { name: 'Result JSON' })).toBeNull()
+      expect([...panel.querySelectorAll('pre')].filter(pre => pre.textContent === output)).toHaveLength(1)
+    }
+  })
+
+  it.each([
+    ['run_code', false], ['read', false], ['read', true],
   ] as const)('keeps error details for empty %s blocks (nested: %s)', async (name, nested) => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { clipboard: { writeText } })

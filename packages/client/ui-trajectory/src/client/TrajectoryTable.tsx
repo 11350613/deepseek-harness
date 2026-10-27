@@ -1727,7 +1727,7 @@ function RecordPayload({
   const payloadClass = preview ? css.jsonPreview : css.jsonPayload
   const payloadClassName = error ? `${payloadClass} ${css.errorPayload}` : payloadClass
 
-  const json = parseJsonContainer(value)
+  const json = error ? undefined : parseJsonContainer(value)
   const singleTextResult = direction === 'output'
     && record.cell.outputBlocks?.length === 1
     && record.cell.outputBlocks[0]?.type === 'text'

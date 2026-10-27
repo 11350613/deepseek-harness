@@ -57,7 +57,7 @@ The view is a pure projection: Trajectory-owned Definitions assemble business re
 
 User, steering, and context inputs and request prompt changes share their request's Step group in log order, before the request separator and assistant output.
 
-Native and nested PTC Tool results retain their raw structured error details and presentation metadata. Failed records use non-empty recorded result text for ledger previews, inspector output, and output copying, preserving whitespace-only text. With that text present, structured error names and codes are neither displayed nor separately indexed for search. Only failures without any non-empty text block fall back to the error code in the ledger and the error name and code in the inspector; image content remains visible beside that fallback.
+Native and nested PTC Tool results retain their raw structured error details and presentation metadata. Failed records use non-empty recorded result text for ledger previews, inspector output, and output copying, preserving whitespace-only text. JSON failure output stays as raw text in Summary and Result. With that text present, structured error names and codes are neither displayed nor separately indexed for search. Only failures without any non-empty text block fall back to the error code in the ledger and the error name and code in the inspector; image content remains visible beside that fallback.
 
 Tool records begin at durable tool/call events and retain complete argument text with a lazy `args` view, reused by paired results. Chat's transient preparing stage does not create Trajectory tool rows or alter historical tool timing.
 
