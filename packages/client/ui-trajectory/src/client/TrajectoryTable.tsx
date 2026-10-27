@@ -1485,7 +1485,7 @@ function ToolOutputBlocks({
 }: {
   blocks: readonly TrajectorySourceBlock[]
   error: boolean
-  /** Failure name and code preserved beside image-only error content. */
+  /** Failure name and code shown only when no recorded text block is non-empty. */
   errorDetail?: string | undefined
   preview: boolean
   renderSlot: PropsRenderSlots<'conversation.trajectory.images'>['renderSlot']

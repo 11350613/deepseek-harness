@@ -1098,7 +1098,8 @@ function detailResult(node: ToolResultNode, t: TrajectoryTranslate): string {
     .filter(block => block.type === 'text' && typeof block.text === 'string')
     .map(block => block.type === 'text' ? block.text : '')
     .join('\n')
-  if (text !== '') return text
+  if (text !== '' && (!node.isError || node.content.some(block =>
+    block.type === 'text' && typeof block.text === 'string' && block.text !== ''))) return text
   if (node.isError) {
     return node.error === undefined
       ? 'error'
