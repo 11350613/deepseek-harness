@@ -1140,8 +1140,7 @@ export class PluginManagerController {
       return
     }
     this.abortInspect()
-    const current = this.getSnapshot().install
-    const registry = current.open ? current.registry : this.registryMemory.getSnapshot() ?? OFFICIAL_REGISTRY
+    const registry = this.registryMemory.getSnapshot() ?? OFFICIAL_REGISTRY
     const local = target.spec.startsWith('link:')
     const subject: InstallSubject = {
       status: 'accepted', kind: local ? 'path' : 'registry', name: pkg.name, version: target.version, bundle: true,
@@ -1166,11 +1165,15 @@ export class PluginManagerController {
     const spec = install.spec.trim()
     if (install.phase === 'checking' || isInstallPending(install.phase) || spec === '') return
     const listed = state.packages.find(pkg => pkg.name === spec)
-    const catalogSubject = install.subject?.selection === undefined || install.subject.spec !== spec ? undefined : install.subject
+    let catalogSubject = install.subject?.selection === undefined || install.subject.spec !== spec ? undefined : install.subject
     if (listed?.availability === 'missing' && listed.installTarget !== undefined
       && listed.error === undefined && catalogSubject === undefined) {
-      this.openCatalogInstall(listed, listed.installTarget, false)
-      return
+      const target = listed.installTarget
+      const local = target.spec.startsWith('link:')
+      catalogSubject = {
+        status: 'accepted', kind: local ? 'path' : 'registry', name: listed.name, version: target.version, bundle: true,
+        spec: target.spec, registry: null, ...local ? {} : { saveExact: true },
+      }
     }
     if (this.ctx.get('productAnalytics')?.enabled) {
       this.analyticsAttempt = { input: sanitizeInstallInput(spec), started: Date.now() }

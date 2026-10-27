@@ -1930,6 +1930,7 @@ it.each(['registry', 'source'] as const)('installs a typed default-hidden Offici
   face.runInstall()
   await vi.waitFor(() => { expect(plugins.installBundle).toHaveBeenCalledOnce() })
   expect(plugins.inspect).not.toHaveBeenCalled()
+  expect(state().install.subject?.selection).toBeUndefined()
   expect(plugins.installBundle).toHaveBeenCalledWith(spec, {
     enabled: false, ...mode === 'registry' ? { saveExact: true } : {}, requestId: state().install.requestId, registry: null,
   })
