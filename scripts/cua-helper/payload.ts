@@ -53,7 +53,9 @@ export function cuaApplicationDigest(application: string): string {
  * @returns Selected application path and its content digest.
  */
 export function readCuaApplication(directory: string): { application: string; bundle: string } {
+  if (!lstatSync(directory).isDirectory() || !lstatSync(join(directory, 'current.json')).isFile()) throw new Error('CUA receipt requires regular files and directories')
   const { bundle } = z.object({ bundle: Digest }).strict().parse(JSON.parse(readFileSync(join(directory, 'current.json'), 'utf8')))
+  if (!lstatSync(join(directory, bundle)).isDirectory()) throw new Error('CUA generation must be a real directory')
   const application = join(directory, bundle, CUA_APPLICATION)
   for (const path of ['Contents/Info.plist', 'Contents/MacOS/dsh-cua-native', 'Contents/Resources/DSHComputerUse.icns', 'Contents/_CodeSignature/CodeResources']) {
     if (!lstatSync(join(application, path)).isFile()) throw new Error(`CUA application omits ${path}`)

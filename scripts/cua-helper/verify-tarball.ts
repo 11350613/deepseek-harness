@@ -16,7 +16,7 @@ export async function verifyCuaHelperTarball(tarball: string, expected: { versio
   try {
     await extract({ file: tarball, cwd: root, strict: true, filter: (path, entry) => {
       if (!path.startsWith('package/') || path.split('/').includes('..')
-        || !['File', 'Directory'].includes(entry.type)) throw new Error(`Invalid CUA package entry: ${path}`)
+        || !('type' in entry) || !['File', 'Directory'].includes(entry.type)) throw new Error(`Invalid CUA package entry: ${path}`)
       return true
     } })
     verifyCuaHelperPayload(join(root, 'package'), expected)

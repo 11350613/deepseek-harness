@@ -1165,16 +1165,16 @@ export class PluginManagerController {
     const install = state.install
     const spec = install.spec.trim()
     if (install.phase === 'checking' || isInstallPending(install.phase) || spec === '') return
-    if (this.ctx.get('productAnalytics')?.enabled) {
-      this.analyticsAttempt = { input: sanitizeInstallInput(spec), started: Date.now() }
-      this.ctx.get('productAnalytics')?.track('plugin_install_click', { input_value: sanitizeInstallInput(spec) })
-    }
     const listed = state.packages.find(pkg => pkg.name === spec)
     const catalogSubject = install.subject?.selection === undefined || install.subject.spec !== spec ? undefined : install.subject
     if (listed?.availability === 'missing' && listed.installTarget !== undefined
       && listed.error === undefined && catalogSubject === undefined) {
       this.openCatalogInstall(listed, listed.installTarget, false)
       return
+    }
+    if (this.ctx.get('productAnalytics')?.enabled) {
+      this.analyticsAttempt = { input: sanitizeInstallInput(spec), started: Date.now() }
+      this.ctx.get('productAnalytics')?.track('plugin_install_click', { input_value: sanitizeInstallInput(spec) })
     }
     if (listed?.availability === 'installation' && listed.optional && listed.listedByDefault === false
       && !listed.enabled && listed.error === undefined && listed.readOnlyReason === undefined) {
