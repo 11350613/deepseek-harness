@@ -11,6 +11,17 @@ import tempfile
 import time
 
 
+def wait_for_exit(pid, seconds):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.025)
+    return False
+
+
 def main():
     executable = Path(sys.argv[1]).resolve(strict=True)
     key = hashlib.sha256(executable.read_bytes()).hexdigest()
@@ -49,22 +60,20 @@ def main():
                 connection.shutdown(socket.SHUT_WR)
                 assert stream.read() == b"", "helper did not acknowledge connection cleanup"
                 stream.close()
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                try:
-                    os.kill(pid, 0)
-                except ProcessLookupError:
-                    pid = None
-                    break
-                time.sleep(0.025)
-            assert pid is None, "helper remained alive after its final connection closed"
+            assert wait_for_exit(pid, 10), "helper remained alive after its final connection closed"
+            pid = None
             print("CUA distribution smoke: capabilities, helper identity and cleanup passed")
         finally:
             if pid is not None:
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
+                for action in [signal.SIGTERM, signal.SIGKILL]:
+                    try:
+                        os.kill(pid, action)
+                    except ProcessLookupError:
+                        break
+                    if wait_for_exit(pid, 5):
+                        break
+                else:
+                    raise RuntimeError("failed helper did not exit during cleanup")
             subprocess.run(["/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
                             "-u", str(executable.parents[2])], check=True, capture_output=True, timeout=10)
 

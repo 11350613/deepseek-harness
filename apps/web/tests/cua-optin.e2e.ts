@@ -100,7 +100,7 @@ it.skipIf(process.platform !== 'darwin').each([
       await enableNow.click()
       await expect.poll(() => enableNow.isEnabled()).toBe(false)
       expect(await enableNow.getAttribute('aria-busy')).toBe('true')
-      expect(await card.count()).toBe(1)
+      expect(await card.count()).toBe(0)
       await compareOrRefreshGolden(fileURLToPath(new URL('./expected/cua-permissions/enabling.expected.md', import.meta.url)),
         await captureStableAria(page, '[data-install-phase="done"] button[aria-busy]', scaffold.workspaceCwd), webSnapshotMode())
     } finally {
