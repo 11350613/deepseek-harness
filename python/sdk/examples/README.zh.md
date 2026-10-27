@@ -29,6 +29,19 @@ python python/sdk/examples/minimal.py \
 
 持久 PTY 可以修改运行时进程可访问的任何路径，因此只应在一次性 checkout 或容器中使用。
 
+## 通过审批管理完整 profile 的插件
+
+[`manage_plugins.py`](manage_plugins.py) 先显式下载可选创作运行时，再以 `workspace-write` 权限和 stdio 审批启动完整 `sdk` profile。它显示每次请求的操作，只有输入 `y` 才批准一次，其他回答均拒绝。准备好的 Node/pnpm 可在没有系统 pnpm 时执行包操作。下载该载荷也会准备其中的 Python 库和 Office skills。
+
+```sh
+python python/sdk/examples/manage_plugins.py \
+  --dsh-home /absolute/path/to/example-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  "Install and enable the bundle at /absolute/path/to/my-plugin-bundle."
+```
+
+当前进程保留原有插件。收到 `restart-required` 后，使用相同 home 重新运行示例以加载已保存的配置。删除仍被当前启动组合使用的组合包，需要先停止该运行时，再使用 `dsh plugin`。
+
 ## 添加插件
 
 对同一个显式 home 使用运行时 wheel 包提供的 `dsh` 命令，以进行持久 profile 变更：

@@ -29,6 +29,30 @@ kind: "package-library"
 
 若由客户端处理审批，先调用 `harness.client.start()`，安装 `harness.client.onRequest(handler)`，再调用 `harness.start()`，并在 Harness 选项中设置 `approvalRequests: true`。处理器接收 `approval/request` 参数，返回 `{ outcome: "allowed-once" | "rejected" | "cancelled" }`；处理器拒绝时返回 JSON-RPC 错误，运行时拒绝放行该审批。替换客户端时需要为新实例安装处理器；已关闭的客户端不能重启。原生问答仍由 `onUserQuestion` 回调处理。启用审批但未安装附加请求处理器时，服务端请求收到未知请求错误，审批以 `unavailable` 拒绝放行。未启用时保留现有审批应答链。请求字段与取消规则见[协议](../protocol/README.zh.md)。
 
+下面的终端接入示例会逐项询问一次性授权，不改变会话的权限模式。Node 部署的包操作需要可用的 pnpm；[Python 运行时](../../../python/sdk-runtime/README.zh.md) 可以提供显式下载的 Node/pnpm。
+
+```ts
+import { createInterface } from 'node:readline/promises'
+import { stdin, stdout } from 'node:process'
+import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
+
+const terminal = createInterface({ input: stdin, output: stdout })
+try {
+  await using harness = new DeepSeekHarness({
+    dshHome: '/absolute/path/to/isolated-dsh-home', approvalRequests: true,
+  })
+  harness.client.start()
+  harness.client.onRequest(async (method, params) => {
+    if (method !== 'approval/request') throw new Error(`Unsupported request: ${method}`)
+    const answer = await terminal.question(`${JSON.stringify(params)}\nAllow once? [y/N] `)
+    return { outcome: answer.trim().toLowerCase() === 'y' ? 'allowed-once' : 'rejected' }
+  })
+  console.log((await harness.run('List the installed plugins.')).finalResponse)
+} finally {
+  terminal.close()
+}
+```
+
 `await harness.resumeSession(savedId)` 从配置的 `dshHome` 恢复持久化会话，并返回可调用 `run()` 的 `HarnessSession`。请保存原会话 id，并沿用其 home 和工作区。恢复会保留对话历史及其目录、修复最后一个被中断的轮次，且不发送新输入。会话缺失、不可读、不兼容或被占用时，请求失败且不创建替代会话。`session(id)` 仍是当前进程内会话的惰性句柄，不会请求持久化恢复。此 API 不恢复 shell、浏览器或其他外部进程。
 
 `HarnessSession.getWorkingDirectory()` 读取有效目录；`setWorkingDirectory(path)` 修改目录并返回校验后的绝对路径。两个方法都可创建未知 Session，而不启动模型轮次。相对路径以 Session 当前目录解析。起始目录元数据、权限与已有进程保持不变。`HarnessClient` 提供同名方法，并以 `sessionId` 作为首个参数。
