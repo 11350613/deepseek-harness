@@ -1140,7 +1140,8 @@ export class PluginManagerController {
       return
     }
     this.abortInspect()
-    const registry = this.registryMemory.getSnapshot() ?? OFFICIAL_REGISTRY
+    const current = this.getSnapshot().install
+    const registry = current.open ? current.registry : this.registryMemory.getSnapshot() ?? OFFICIAL_REGISTRY
     const local = target.spec.startsWith('link:')
     const subject: InstallSubject = {
       status: 'accepted', kind: local ? 'path' : 'registry', name: pkg.name, version: target.version, bundle: true,
@@ -1170,6 +1171,11 @@ export class PluginManagerController {
     }
     const listed = state.packages.find(pkg => pkg.name === spec)
     const catalogSubject = install.subject?.selection === undefined || install.subject.spec !== spec ? undefined : install.subject
+    if (listed?.availability === 'missing' && listed.installTarget !== undefined
+      && listed.error === undefined && catalogSubject === undefined) {
+      this.openCatalogInstall(listed, listed.installTarget, false)
+      return
+    }
     if (listed?.availability === 'installation' && listed.optional && listed.listedByDefault === false
       && !listed.enabled && listed.error === undefined && listed.readOnlyReason === undefined) {
       this.abortInspect()

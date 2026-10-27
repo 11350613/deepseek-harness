@@ -1776,6 +1776,9 @@ it('lists absent Official entries offline without resolving their packages or co
     expect(bundles.filter(bundle => bundle.name === entry.packageName)).toEqual([{
       name: entry.packageName, official: true, availability: 'missing', enabled: false, installed: false, optional: false,
       removable: false, updatable: false, rows: [], overrides: [], meta: entry.meta,
+      ...entry.listedByDefault === undefined ? {} : { listedByDefault: entry.listedByDefault },
+      ...entry.platforms !== undefined && !entry.platforms.includes(process.platform)
+        ? { listedByDefault: false, error: { code: 'unsupported-platform' } } : {},
       installTarget: { spec: `${entry.packageName}@${getDshRuntimeVersion()}`, version: getDshRuntimeVersion() },
     }])
     expect(resolve.mock.calls.some(([name]) => name === entry.packageName)).toBe(false)

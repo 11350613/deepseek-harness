@@ -27,6 +27,10 @@ kind: "package-reference"
 
 `native/.build/prepared/<arch>` 和 `native/bin/darwin-<arch>` 中的各代应用不会自动清理。正式打包时使用全新的 `--output-directory`，或确认没有客户端使用后清理打包输出再构建，避免旧应用进入 tarball。安全签名时间戳可能让相同源码生成不同代应用。
 
+手动工作流 **Package CUA helper · macOS** 的[配置](../../../../.github/workflows/cua-helper-package.yml)在 `dsh-mac-package-trial` 构建两种架构。选择可信的 `source_ref` 和机器 `preset`；凭据沿用[macOS 打包配置](../../../../apps/desktop/packaging/README.zh.md#macos-actions)。runner 需要已登录的 macOS 桌面会话，以及用于 x64 启动检查的 Rosetta。在仓库根目录运行 `pnpm exec tsx scripts/cua-helper/package.ts --out <new-directory>` 可执行相同准备。完整应用签名、公证和贴票后才确定最终内容摘要，再从解包后的 `cua-helper.tgz` 验证签名、票据、Gatekeeper、helper 身份和退出清理。权限查询不会申请授权或观察应用。
+
+工作流保留 `cua-helper.tgz` 和 `cua-helper.json`，后者记录产品版本、源码 commit、Team ID 和两份应用摘要。[Release publish](../../../../.github/workflows/release-publish.yml)在生成 provider 的 npm 包前接入该产物；普通 PR 发布检查不使用签名凭据。准备步骤拒绝源码或版本不匹配、架构不全、旧应用目录、链接、字节变化和执行权限缺失。npm 发布在写入注册表前重新检查实际 provider tarball。重新签名会改变产物字节，重试部分发布的版本时需保留原产物。
+
 启动错误通过当前用户专用、每次启动独立的错误文件和 launcher 的 JSON 错误帧保留错误码与消息。等待启动锁和就绪状态共用一个期限，系统启动应用的耗时计入该预算。就绪记录必须指向本次启动的 PID。新实例启动失败后，launcher 强制终止并等待其退出，再报告失败；清理另有与启动超时等长的期限。连接已有服务失败时不会终止该服务。
 
 应用图标通过 `pnpm --dir packages/experimental/cua-macos run build:icon` 从 [Computer Use 图形](../../cua-bundle/icon.svg)生成。系统授权提示和 DSH 权限页使用这个应用图标。
