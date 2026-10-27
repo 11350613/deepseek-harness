@@ -28,8 +28,8 @@
             name: '@deepseek-ai/dsh-tool-fs'
             config:
               # Set true to add the apply_patch tool beside edit.
-              applyPatch: true
-              # applyPatch: true
+              applyPatch: false
+              # applyPatch: false
           - id: tool-fs-search
             name: '@deepseek-ai/dsh-tool-fs-search'
             config:
