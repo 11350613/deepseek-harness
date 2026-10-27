@@ -84,7 +84,7 @@
       - cell "(tool call only)"
     - 'row "TOOL, mystery {\"secret\":\"hidden-input\"}"':
       - cell "TOOL"
-      - 'cell "mystery{\"secret\":\"hidden-input\"} → AUTO_REVIEW_DENIED"'
+      - 'cell "mystery{\"secret\":\"hidden-input\"} → Error: Auto review rejected tool \"mystery\"; its body was not executed"'
     - row "Request 2, ASSISTANT, (tool call only)":
       - 'cell "Request #2 ASSISTANT"':
         - 'button "Request #2"'
@@ -95,7 +95,7 @@
       - cell "run_codeCatch an Auto-denied inner call → denial caught"
     - 'row "SUBTOOL, bash {\"command\":\"echo hidden-input-ptc\"}" [selected]':
       - cell "SUBTOOL"
-      - 'cell "bash{\"command\":\"echo hidden-input-ptc\"} → AUTO_REVIEW_DENIED"'
+      - 'cell "bash{\"command\":\"echo hidden-input-ptc\"} → Error: Auto review rejected tool \"bash\"; its body was not executed"'
 - complementary "Event details":
   - separator "Resize event details"
   - text: SUBTOOL Turn 1 · Step 2
@@ -106,7 +106,7 @@
     - tab "Result" [selected]
     - tab "Schema"
     - tab "Timing"
-  - tabpanel "Result": "AutoReviewDeniedError: AUTO_REVIEW_DENIED Error: Auto review rejected tool \"bash\"; its body was not executed"
+  - tabpanel "Result": "Error: Auto review rejected tool \"bash\"; its body was not executed"
 - textbox "Message or run a task, / commands, @ files or sessions"
 - button "Add files or run commands"
 - 'button "Access mode, current: Auto review"': Auto review

@@ -1499,6 +1499,7 @@ function ToolOutputBlocks({
     ].filter((value): value is string => value !== undefined).join(' ')}
     >
       {error && errorDetail !== undefined && errorDetail !== ''
+        && !blocks.some(block => block.type === 'text' && block.content !== '')
         && <pre className={css.resultBlockText}>{errorDetail}</pre>}
       {blocks.map((block, index) => (
         block.attachment !== undefined
