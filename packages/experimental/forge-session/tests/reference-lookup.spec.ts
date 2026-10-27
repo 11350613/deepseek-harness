@@ -1,182 +1,191 @@
-/** Reference observation over the real service graph with a platform-independent shell provider. */
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { expect, it, vi } from 'vitest'
+/** Reference observation through Cordis services without a platform shell or CLI process. */
+
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
-import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import { pluginRecordOf, SessionId } from '@deepseek-ai/dsh-session'
-import { ShellExecutor } from '@deepseek-ai/dsh-shell'
+import ShellExecutor from '@deepseek-ai/dsh-shell'
 import type { ShellExecRequest, ShellExecSpec, ShellExecution, ShellRunResult } from '@deepseek-ai/dsh-shell'
 import * as ShellEnv from '@deepseek-ai/dsh-shell-env'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { ToolExecution, ToolExecutionResult, ToolExecutionToken } from '@deepseek-ai/dsh-tools'
-import WorkingDirectoryService from '@deepseek-ai/dsh-working-directory'
-import { commandEvidence } from '../src/commands.ts'
 import { bench, pullUrl } from './fixtures.ts'
 
+const contexts: Context[] = []
+const releases: (() => void)[] = []
+
+afterEach(async () => {
+  for (const release of releases.splice(0)) release()
+  for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
+})
+
 function output(overrides: Partial<ShellRunResult> = {}): ShellRunResult {
-  return { exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000,
+  return {
+    exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1_234,
     stdout: { text: JSON.stringify({ url: pullUrl(9) }), truncated: false },
-    stderr: { text: '', truncated: false }, ...overrides }
+    stderr: { text: '', truncated: false },
+    ...overrides,
+  }
 }
 
 function execution(result: () => Promise<ShellRunResult>): ShellExecution {
-  const reader = { readFrom: (offset: number) => ({ text: '', nextOffset: offset, lossy: false }) }
-  return { status: 'completed', exitCode: 0, signal: null, done: Promise.resolve(undefined),
-    readOutput: () => ({ delta: '', lossy: false }), observed: { stdout: reader, stderr: reader },
-    kill: () => false, result }
+  const reader = { readFrom: (from: number) => ({ text: '', nextOffset: from, lossy: false }) }
+  return {
+    status: 'completed', exitCode: 0, signal: null, done: Promise.resolve(),
+    observed: { stdout: reader, stderr: reader },
+    readOutput: () => ({ delta: '', lossy: false }), kill: () => false, result,
+  }
 }
 
-class ScriptedShell extends ShellExecutor {
-  readonly seen: ShellExecSpec[] = []
-  run: (spec: ShellExecSpec) => Promise<ShellExecution> = () => Promise.resolve(execution(() => Promise.resolve(output())))
-
+class LookupShell extends ShellExecutor {
   resolve(request: ShellExecRequest): ShellExecSpec {
-    return { command: request.command, workdir: request.workdir ?? process.cwd(),
-      timeoutMs: request.timeoutMs ?? 1000, onExpiry: 'kill', stdoutMaxBytes: 4096,
-      signal: request.signal, dshEnv: request.dshEnv, sandboxPolicy: request.sandboxPolicy }
+    return {
+      ...request,
+      workdir: request.workdir ?? process.cwd(), timeoutMs: request.timeoutMs ?? 1_234,
+      onExpiry: 'kill', stdoutMaxBytes: 64_000, sandboxPolicy: request.sandboxPolicy,
+    }
   }
 
-  execute(spec: ShellExecSpec): Promise<ShellExecution> {
-    this.seen.push(spec)
-    return this.run(spec)
+  async execute(): Promise<ShellExecution> {
+    return execution(async () => output())
   }
 }
 
-async function fixture(test: { onTestFinished: (cleanup: () => Promise<void>) => void }, policy = false) {
-  const f = await bench()
-  const root = await mkdtemp(join(tmpdir(), 'forge-reference-')).catch(async (error: unknown) => {
-    await f.ctx.fiber.dispose()
-    throw error
-  })
-  test.onTestFinished(async () => {
-    try { await f.ctx.fiber.dispose() }
-    finally { await rm(root, { recursive: true, force: true }) }
-  })
-  const ctx = f.ctx
-  await ctx.plugin(LocalFileSystem)
-  await ctx.plugin(WorkingDirectoryService)
-  await ctx.plugin(LlmRuntime)
+async function fixture() {
+  const b = await bench({ discoveryTimeoutMs: 1_234 })
+  const { ctx } = b
+  contexts.push(ctx)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  await ctx.plugin(NativeToolExecutor)
+  await ctx.plugin(LlmRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
-  if (policy) await ctx.plugin(SandboxPolicy, { mode: 'workspace-write', workspaceRoot: root })
-  await ctx.plugin(ShellEnv, { dshHome: root })
-  await ctx.plugin(ScriptedShell)
-  await ctx.fiber.await()
-  const handle = await ctx.agents.create({ sessionId: SessionId('reference-observer') })
+  await ctx.plugin(ShellEnv, { dshHome: process.cwd() })
+  await ctx.plugin(LookupShell)
+  const { agent } = await ctx.agents.create({ sessionId: SessionId('reference-observer') })
   const controller = new AbortController()
   const exec: ToolExecution = {
-    name: 'bash', agent: handle.agent, callId: ToolCallId('reference'), rootCallId: ToolCallId('reference'),
-    token: Symbol('reference') as ToolExecutionToken,
+    name: 'bash', agent,
+    callId: ToolCallId('reference'), rootCallId: ToolCallId('reference'), token: Symbol('reference') as ToolExecutionToken,
     arguments: { command: 'gh pr view 9 -R octo/demo --json number' }, signal: controller.signal,
   }
-  const result: ToolExecutionResult = { isError: false, content: [{ type: 'text', text: '{"number":9}' }],
-    value: { kind: 'foreground', cwd: root, exitCode: 0, signal: null, timedOut: false, aborted: false } }
-  const records = () => handle.agent.session.snapshotEvents().flatMap((event) => {
+  const result: ToolExecutionResult = {
+    isError: false, content: [{ type: 'text', text: '{"number":9}' }],
+    value: { kind: 'foreground', cwd: process.cwd(), exitCode: 0, signal: null, timedOut: false, aborted: false },
+  }
+  const records = () => agent.session.snapshotEvents().flatMap((event) => {
     const record = pluginRecordOf(event)
     return record?.type === 'plugin:forge-session/binding' ? [record.data] : []
   })
-  return { ...f, root, exec, result, controller, records, shell: ctx.shell as ScriptedShell }
+  const execute = vi.spyOn(ctx.shell, 'execute')
+  const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+  const emit = (call: ToolExecution = exec, outcome: ToolExecutionResult = result) => { ctx.emit('tools/result', call, outcome) }
+  return { ...b, agent, exec, result, controller, records, execute, warn, emit }
 }
 
-it('records confirmed URLs once, preserving the execution world and policy', async (test) => {
-  const f = await fixture(test, true)
-  f.shell.run = spec => Promise.resolve(execution(() => Promise.resolve(output({
-    stdout: { text: JSON.stringify({ url: pullUrl(spec.command.includes('10') ? 10 : 9) }), truncated: false },
-  }))))
-  f.ctx.emit('tools/result', f.exec, f.result)
-  await vi.waitFor(() => { expect(f.records()).toEqual([{ action: 'reference', url: pullUrl(9) }]) })
-  f.ctx.emit('tools/result', f.exec, f.result)
-  f.ctx.emit('tools/result', { ...f.exec, arguments: { command: 'gh pr view 10 -R octo/demo' } }, f.result)
-  await vi.waitFor(() => { expect(f.records()).toEqual([
-    { action: 'reference', url: pullUrl(9) }, { action: 'reference', url: pullUrl(10) },
-  ]) })
-  expect(f.shell.seen).toHaveLength(3)
-  expect(f.shell.seen[0]).toMatchObject({ workdir: f.root, sandboxPolicy: { mode: 'workspace-write' } })
-  expect(commandEvidence('gh pr view 9 -R octo/demo')).toEqual({ urls: 'referenced', pushes: false, named: [] })
-})
+describe('PR reference lookup', () => {
+  it('records the resolved URL with the caller cwd and environment, without restoring a dismissed binding', async () => {
+    const f = await fixture()
+    const resolve = vi.spyOn(f.ctx.shell, 'resolve')
+    f.emit()
+    await vi.waitFor(() => { expect(f.records()).toEqual([{ action: 'reference', url: pullUrl(9) }]) })
+    expect(resolve).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'env gh pr view 9 --repo octo/demo --json url', workdir: process.cwd(), timeoutMs: 1_234,
+      dshEnv: f.ctx.shellEnv.collect(f.exec),
+    }))
+    f.ctx.forgeSession.dismiss(f.agent.session, pullUrl(9))
+    f.emit()
+    expect(f.execute).toHaveBeenCalledTimes(2)
+    const returned = f.execute.mock.results[1]
+    if (returned?.type !== 'return') throw new Error('missing second lookup')
+    await (await returned.value).result()
+    await f.service.dispose()
+    expect(f.records()).toEqual([{ action: 'reference', url: pullUrl(9) }, { action: 'dismiss', url: pullUrl(9) }])
+    expect(f.warn).not.toHaveBeenCalled()
+  })
 
-it('ignores incomplete, nested, unrelated and already-resolved results', async (test) => {
-  const f = await fixture(test)
-  const emit = (exec: ToolExecution, result: ToolExecutionResult = f.result) => { f.ctx.emit('tools/result', exec, result) }
-  emit({ ...f.exec, name: 'pwsh' })
-  const { agent: _agent, ...withoutAgent } = f.exec
-  emit(withoutAgent)
-  emit({ ...f.exec, parent: f.exec.token })
-  emit(f.exec, { isError: true, error: { message: 'failed' }, content: [] })
-  emit({ ...f.exec, arguments: {} })
-  emit(f.exec, { isError: false, value: { kind: 'background' }, content: [] })
-  emit({ ...f.exec, arguments: { command: 'gh pr view 9' } }, { ...f.result, content: [{ type: 'reasoning', text: 'thinking' }] })
-  emit({ ...f.exec, arguments: { command: `gh pr view ${pullUrl(9)}` } })
-  emit(f.exec, { ...f.result, content: [{ type: 'text', text: pullUrl(9) }] })
-  f.controller.abort()
-  emit(f.exec)
-  await f.service.dispose()
-  expect(f.shell.seen).toEqual([])
-  expect(f.records()).toEqual([])
-})
-
-it.for(['exit', 'signal', 'timeout', 'abort', 'truncated', 'json', 'url', 'prepare'] as const)(
-  'reports %s lookup failure without changing the completed tool result', async (kind, test) => {
-    const f = await fixture(test)
-    const reported = Promise.withResolvers<undefined>()
-    const warn = vi.spyOn(f.ctx.logger, 'warn').mockImplementation(() => { reported.resolve(undefined) })
-    f.shell.run = async () => {
-      if (kind === 'prepare') throw 'preparation unavailable'
-      return execution(() => Promise.resolve(output({
-        ...kind === 'exit' ? { exitCode: 1 } : {},
-        ...kind === 'signal' ? { signal: 'SIGTERM' } : {},
-        ...kind === 'timeout' ? { timedOut: true } : {},
-        ...kind === 'abort' ? { aborted: true } : {},
-        stdout: { text: kind === 'json' ? '{' : kind === 'url' ? '{}' : JSON.stringify({ url: pullUrl(9) }),
-          truncated: kind === 'truncated' },
-      })))
-    }
-    f.ctx.emit('tools/result', f.exec, f.result)
-    await reported.promise
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('PR reference lookup failed'))
+  it.each([
+    ['failed exit', { exitCode: 1 }],
+    ['signal', { signal: 'SIGTERM' }],
+    ['timeout', { timedOut: true }],
+    ['abort result', { aborted: true }],
+    ['truncated output', { stdout: { text: '{', truncated: true } }],
+    ['invalid JSON', { stdout: { text: '{', truncated: false } }],
+    ['missing URL', { stdout: { text: '{}', truncated: false } }],
+    ['non-PR URL', { stdout: { text: '{"url":"https://fake.test/octo/demo/issues/9"}', truncated: false } }],
+  ] satisfies [string, Partial<ShellRunResult>][])('reports %s without changing bindings or the completed tool result', async (_label, overrides) => {
+    const f = await fixture()
+    f.execute.mockResolvedValue(execution(async () => output(overrides)))
+    f.emit()
+    await vi.waitFor(() => { expect(f.warn).toHaveBeenCalledWith(expect.stringContaining('PR reference lookup failed')) })
     expect(f.records()).toEqual([])
     expect(f.result.isError).toBe(false)
   })
 
-it.for(['caller', 'service'] as const)('awaits an in-flight lookup on %s cancellation', async (owner, test) => {
-  const f = await fixture(test)
-  const started = Promise.withResolvers<undefined>()
-  const stopped = Promise.withResolvers<undefined>()
-  const warn = vi.spyOn(f.ctx.logger, 'warn').mockImplementation(() => {})
-  f.shell.run = async spec => execution(() => new Promise((resolve) => {
-    spec.signal!.addEventListener('abort', () => { stopped.resolve(undefined); resolve(output({ aborted: true })) }, { once: true })
-    started.resolve(undefined)
-  }))
-  f.ctx.emit('tools/result', f.exec, f.result)
-  await started.promise
-  if (owner === 'caller') f.controller.abort()
-  await f.service.dispose()
-  await stopped.promise
-  expect(f.records()).toEqual([])
-  expect(warn).not.toHaveBeenCalled()
-})
+  it('reports a shell preparation rejection that is not an Error', async () => {
+    const f = await fixture()
+    f.execute.mockRejectedValue('unavailable')
+    f.emit()
+    await vi.waitFor(() => { expect(f.warn).toHaveBeenCalledWith(expect.stringContaining('unavailable')) })
+    expect(f.records()).toEqual([])
+  })
 
-it('contains a cancelled preparation failure without recording a binding', async (test) => {
-  const f = await fixture(test)
-  const entered = Promise.withResolvers<undefined>()
-  const pending = Promise.withResolvers<ShellExecution>()
-  const warn = vi.spyOn(f.ctx.logger, 'warn').mockImplementation(() => {})
-  f.shell.run = () => { entered.resolve(undefined); return pending.promise }
-  f.ctx.emit('tools/result', f.exec, f.result)
-  await entered.promise
-  f.controller.abort()
-  pending.reject(new Error('cancelled during preparation'))
-  await f.service.dispose()
-  expect(f.records()).toEqual([])
-  expect(warn).not.toHaveBeenCalled()
+  it.each(['caller', 'service'] as const)('joins pending preparation after %s cancellation and ignores its late result', async (owner) => {
+    const f = await fixture()
+    const pending = Promise.withResolvers<ShellExecution>()
+    const started = Promise.withResolvers<ShellExecSpec>()
+    releases.push(() => { pending.resolve(execution(async () => output())) })
+    f.execute.mockImplementation((spec) => { started.resolve(spec); return pending.promise })
+    f.emit()
+    const spec = await started.promise
+    const aborted = Promise.withResolvers<undefined>()
+    spec.signal!.addEventListener('abort', () => { aborted.resolve(undefined) }, { once: true })
+    if (owner === 'caller') f.controller.abort()
+    let disposed = false
+    const disposal = f.service.dispose().then(() => { disposed = true })
+    await aborted.promise
+    expect(disposed).toBe(false)
+    pending.resolve(execution(async () => output()))
+    await disposal
+    expect(f.records()).toEqual([])
+    expect(f.warn).not.toHaveBeenCalled()
+  })
+
+  it('joins a cancelled preparation rejection without warning', async () => {
+    const f = await fixture()
+    const pending = Promise.withResolvers<ShellExecution>()
+    const started = Promise.withResolvers<undefined>()
+    releases.push(() => { pending.resolve(execution(async () => output())) })
+    f.execute.mockImplementation(() => { started.resolve(undefined); return pending.promise })
+    f.emit()
+    await started.promise
+    f.controller.abort()
+    pending.reject(new Error('cancelled during preparation'))
+    await f.service.dispose()
+    expect(f.records()).toEqual([])
+    expect(f.warn).not.toHaveBeenCalled()
+  })
+
+  it('skips unsupported, unsuccessful, already identified, nested, or cancelled calls', async () => {
+    const f = await fixture()
+    f.emit({ ...f.exec, name: 'pwsh' })
+    const { agent: _agent, ...withoutAgent } = f.exec
+    f.emit(withoutAgent)
+    f.emit({ ...f.exec, parent: f.exec.token })
+    f.emit(f.exec, { isError: true, error: { message: 'failed' }, content: [] })
+    f.emit({ ...f.exec, arguments: {} })
+    f.emit(f.exec, { isError: false, value: { kind: 'background' }, content: [] })
+    f.emit({ ...f.exec, arguments: { command: 'gh pr view 9' } }, { ...f.result, content: [{ type: 'reasoning', text: 'thinking' }] })
+    f.emit({ ...f.exec, arguments: { command: 'gh pr view 9 -R fake.test/octo/demo' } })
+    f.emit(f.exec, { ...f.result, content: [{ type: 'text', text: JSON.stringify({ url: pullUrl(9) }) }] })
+    f.controller.abort()
+    f.emit()
+    await f.service.dispose()
+    expect(f.execute).not.toHaveBeenCalled()
+    expect(f.records()).toEqual([])
+    expect(f.warn).not.toHaveBeenCalled()
+  })
 })
