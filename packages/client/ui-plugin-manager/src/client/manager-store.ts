@@ -139,7 +139,7 @@ export type InstallSubject = Extract<PluginSpecInspection, { status: 'accepted' 
   readonly spec: string
   /** The installation already provides this bundle; only explicit enablement remains. */
   readonly bundled?: true
-  /** Present for a catalog install or update: desired selection after installation. */
+  /** Explicit selection for a catalog toggle or update; typed installation offers enablement afterward. */
   readonly selection?: boolean
   /** Save an exact dependency version through the generic installer. */
   readonly saveExact?: boolean
