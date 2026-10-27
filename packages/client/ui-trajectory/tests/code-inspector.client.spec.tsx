@@ -84,6 +84,7 @@ describe('PTC trajectory inspector', () => {
       expect(ui.getByRole('tabpanel').textContent).toContain('ToolError: TOOL_FAILED')
     }
     if (name === 'run_code') {
+      fireEvent.click(ui.getByRole('tab', { name: 'Summary' }))
       fireEvent.click(ui.getByRole('button', { name: 'Copy output' }))
       await waitFor(() => { expect(writeText).toHaveBeenLastCalledWith('ToolError: TOOL_FAILED') })
     }
@@ -135,6 +136,7 @@ describe('PTC trajectory inspector', () => {
       expect([...panel.querySelectorAll('pre')].filter(pre => pre.textContent === output)).toHaveLength(1)
     }
     if (name === 'run_code') {
+      fireEvent.click(ui.getByRole('tab', { name: 'Summary' }))
       fireEvent.click(ui.getByRole('button', { name: 'Copy output' }))
       await waitFor(() => { expect(writeText).toHaveBeenLastCalledWith(output) })
     }
