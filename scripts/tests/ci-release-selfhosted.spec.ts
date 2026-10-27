@@ -21,7 +21,7 @@ interface Workflow {
   on: Record<string, unknown>
   permissions: Record<string, string>
   concurrency?: Record<string, unknown>
-  jobs: Record<string, { name: string; 'runs-on': string; steps: Step[] }>
+  jobs: Record<string, { name: string; 'runs-on': string; steps: Step[]; uses?: string; if?: string; with?: Record<string, unknown> }>
 }
 
 function workflow(file: string): Workflow {
@@ -163,8 +163,15 @@ for (const [file, jobIds] of [['release.yml', ['dependencies', 'pack']], ['relea
   })
 }
 
-it.each(['release-publish.yml', 'release-vendor-publish.yml'])('keeps %s manual and entirely hosted', (file) => {
+it.each(['release-publish.yml', 'release-vendor-publish.yml'])('keeps %s manual with hosted npm jobs and an explicit signed-helper producer', (file) => {
   const publish = workflow(file)
   expect(Object.keys(publish.on)).toEqual(['workflow_dispatch'])
-  for (const job of Object.values(publish.jobs)) expect(job['runs-on']).toBe(hosted)
+  for (const [name, job] of Object.entries(publish.jobs)) {
+    if (file === 'release-publish.yml' && name === 'cua-helper') {
+      expect(job).toEqual({
+        if: "startsWith(github.ref, 'refs/tags/dsh-v')", uses: './.github/workflows/cua-helper-package.yml',
+        with: { source_ref: '${{ github.ref }}', preset: 'production' },
+      })
+    } else expect(job['runs-on']).toBe(hosted)
+  }
 })
