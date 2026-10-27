@@ -49,7 +49,7 @@ The policy plugin is optional: without it the tools run against the bare provide
 | `read_image` | `file_path` | Reads and persists a PNG/JPEG/WebP/GIF source; an extension-less path (normalized attachment object paths included) is identified from its file signature; normalization can downscale it before the next model request, so the model need not create a thumbnail first |
 | `write` | `file_path`, `content` | Creates or fully replaces a file; with the policy plugin, overwriting requires a prior `read` at the unchanged version, creating does not |
 | `edit` | `file_path`, `old_string`, `new_string`, `replace_all?` | Literal replacement requiring a unique match unless `replace_all` is true; with the policy plugin, requires a prior `read` and an unchanged file |
-| `apply_patch` | `patch`, sandbox escalation fields when available | Add/update/delete/move with whole-patch admission and known partial effects |
+| `apply_patch` | `input`, sandbox escalation fields when available | Add/update/delete/move with whole-patch admission and known partial effects |
 
 Field names are snake_case to match Claude Code and existing harness tool schemas. The `write` and `edit` path descriptions ask the model to emit `file_path` before the content or replacement strings; this guides streaming presentation but does not enforce JSON member order. Successes return compact envelopes — a read window, an image reference, or a `Created file`/`Updated file` confirmation — and `write`/`edit` derive replayable diff-card metadata for UI presentation.
 
@@ -260,7 +260,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 #### What the model sees
 
-The `apply_patch` schema requires one `patch` string containing `*** Begin Patch` / `*** End Patch`, Add/Update/Delete headers, optional Move to, and context/add/remove hunk lines. Paths are Session-relative. A confining backend adds the same escalation fields as write/edit. Success lines group A/M/D and a completed move reports `M <destination>`, matching Codex rust-v0.158.0. An empty patch renders `Success. No operations in patch.`. A stopped patch includes only the applicable Completed, Failed, Outcome unknown and Not executed sections; unknown outcomes end with the re-read remedy. Syntax errors keep the parser message.
+The `apply_patch` schema requires one `input` string (the Codex parameter name, which models trained on that tool send unprompted) containing `*** Begin Patch` / `*** End Patch`, Add/Update/Delete headers, optional Move to, and context/add/remove hunk lines. Paths are Session-relative. A confining backend adds the same escalation fields as write/edit. Success lines group A/M/D and a completed move reports `M <destination>`, matching Codex rust-v0.158.0. An empty patch renders `Success. No operations in patch.`. A stopped patch includes only the applicable Completed, Failed, Outcome unknown and Not executed sections; unknown outcomes end with the re-read remedy. Syntax errors keep the parser message.
 
 ##### System guidance
 

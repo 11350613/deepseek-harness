@@ -79,7 +79,7 @@ async function boot(environment: string) {
   }
   const seed = (path: string, text = 'old\n') => writeFile(join(cwd, path), text)
   const read = async (path: string) => { expect((await execute('read', { file_path: path })).isError).toBe(false) }
-  const apply = (text: string) => execute('apply_patch', { patch: text })
+  const apply = (text: string) => execute('apply_patch', { input: text })
   async function finish() {
     endTurn(session, 1)
     await settle(ctx, session)

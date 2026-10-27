@@ -7,7 +7,7 @@ import { presentPatchCall, presentPatchResult } from './apply-patch-presentation
 import type { FsEscalationArgs, FsSandboxController } from './sandbox.ts'
 
 /** Model arguments after tool-schema validation. */
-interface ApplyPatchArgs extends FsEscalationArgs { patch: string }
+interface ApplyPatchArgs extends FsEscalationArgs { input: string }
 
 /**
  * Register the patch tool and scope-aware guidance using the shared mutation controller.
@@ -27,8 +27,9 @@ export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController):
     description: 'Create, update, delete, or move UTF-8 text files with one Codex-style patch; '
       + 'prefer it over multiple edit calls when a change spans several files or separated regions.',
     parameters: {
-      patch: { type: 'string', required: true,
-        description: 'Codex patch: start with *** Begin Patch and end with *** End Patch. '
+      // Named `input` as in the Codex apply_patch tool; models trained on it send that key.
+      input: { type: 'string', required: true,
+        description: 'Codex patch text: start with *** Begin Patch and end with *** End Patch. '
           + 'Use *** Add File: path with + lines; *** Update File: path, optionally followed by *** Move to: path, '
           + 'with @@ or @@ context and space-prefixed context, + added, or - removed lines; '
           + '*** End of File anchors the last hunk to the file end. Use *** Delete File: path to delete. '
@@ -43,9 +44,9 @@ export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController):
     },
     async execute(args: ApplyPatchArgs, exec) {
       const sandboxPolicy = await sandbox.resolvePolicy('apply_patch', args, exec)
-      return patchToolValue(await executePatch(ctx, sandbox, exec, { patch: args.patch, sandboxPolicy }))
+      return patchToolValue(await executePatch(ctx, sandbox, exec, { patch: args.input, sandboxPolicy }))
     },
-    presentCall: args => presentPatchCall(args.patch),
+    presentCall: args => presentPatchCall(args.input),
     presentResult: (_args, result) => presentPatchResult(result),
   }))
 }

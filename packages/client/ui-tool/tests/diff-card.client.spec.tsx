@@ -51,7 +51,7 @@ const settled = (over?: Partial<ToolResultNode>): ToolResultNode => {
 
 describe('diffCardModel', () => {
   it('derives applied diffs from settled metadata when the arguments carry no single intended diff', () => {
-    const call = { name: 'apply_patch', argsRaw: '{"patch":"invalid"}' }
+    const call = { name: 'apply_patch', argsRaw: '{"input":"invalid"}' }
     expect(diffCardModel(running(call))).toBeNull()
     expect(diffCardModel(settled({ call }))).toEqual({ card: { diffs: DIFFS } })
     expect(diffCardModel(settled({ call: null }))).toEqual({ card: { diffs: DIFFS } })
@@ -242,7 +242,7 @@ describe('FileMutationRow diff card', () => {
 
   it('shows patch titles, applied multi-file diffs, and stopped reasons together', () => {
     const output = 'Patch stopped after 1 of 3 operations.\nFailed:\nsource removal denied\n  destination b was written; source a remains'
-    const block = settled({ call: { name: 'apply_patch', argsRaw: JSON.stringify({ patch: '*** Begin Patch' }) },
+    const block = settled({ call: { name: 'apply_patch', argsRaw: JSON.stringify({ input: '*** Begin Patch' }) },
       content: [{ type: 'text', text: output }], meta: { stopped: true, diffs: [
         { path: 'first', oldText: null, newText: 'created' }, { path: 'b', oldText: 'before', newText: 'after' },
       ] } })

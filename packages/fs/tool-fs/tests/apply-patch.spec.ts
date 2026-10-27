@@ -16,7 +16,7 @@ const guidance = 'Prefer apply_patch over separate edit calls for changes across
 
 type Fixture = Awaited<ReturnType<typeof setup>>
 function call(t: Fixture, text: string) {
-  return executeToolFixture(t.ctx, { ...t.exec, arguments: { patch: text } })
+  return executeToolFixture(t.ctx, { ...t.exec, arguments: { input: text } })
 }
 
 it('omits patch registration and guidance when disabled', async () => {
@@ -149,7 +149,7 @@ it('advertises escalation only for a confining backend and throws the sandbox re
   expect(t.ctx.tools.get('apply_patch')?.parameters).toHaveProperty('properties.sandbox_permissions')
   // The provider denies the first commit; with nothing written, the tool rejects like a preflight refusal.
   const result = await executeToolFixture(t.ctx, { signal: t.exec.signal, callId: t.exec.callId, name: 'apply_patch',
-    arguments: { patch: patch(add(resolve(t.workspace, 'a')), add(resolve(t.workspace, 'b'))) } })
+    arguments: { input: patch(add(resolve(t.workspace, 'a')), add(resolve(t.workspace, 'b'))) } })
   expect(result.error?.info).toEqual({ name: 'FsError', code: 'FS_SANDBOX_DENIED' })
   expect(result.content).toEqual([{ type: 'text', text: `Error: Patch rejected before any change (1 problems):\n- operation 1 (add ${resolve(t.workspace, 'a')}, patch line 2): [sandbox: file access denied under read-only mode]\n[sandbox: escalation available — retry this exact operation once with sandbox_permissions (the narrowest wider mode that suffices) + justification; the approval prompt asks the user]` }])
   expect(result.meta).toBeUndefined()
@@ -163,7 +163,7 @@ class PatchPtcRuntime extends PtcRuntime {
     return { ...request, cwd: request.cwd ?? process.cwd(), timeoutMs: request.timeoutMs ?? 120_000 }
   }
   async run(request: PtcRunSpec) {
-    return { logs: [], value: await request.bindings[0]!.functions.apply_patch!({ patch: this.patch }) }
+    return { logs: [], value: await request.bindings[0]!.functions.apply_patch!({ input: this.patch }) }
   }
 }
 

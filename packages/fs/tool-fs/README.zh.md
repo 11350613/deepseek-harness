@@ -49,7 +49,7 @@ kind: "package-reference"
 | `read_image` | `file_path` | 读取并持久保存 PNG/JPEG/WebP/GIF 源图；无扩展名路径（包括规范化附件对象路径）按文件签名识别格式；规范化可在下一次模型请求前缩小图片，因此模型无需先创建缩略图 |
 | `write` | `file_path`、`content` | 创建或完整替换文件；有策略插件时，覆盖要求先在未变版本上执行 `read`，创建不需要 |
 | `edit` | `file_path`、`old_string`、`new_string`、`replace_all?` | 字面量替换，除非 `replace_all` 为 true 否则要求唯一匹配；有策略插件时，要求先执行 `read` 且文件未变 |
-| `apply_patch` | `patch`，以及可用时的沙箱提权字段 | 新增/更新/删除/移动，整份预检后顺序执行并保留已知部分效果 |
+| `apply_patch` | `input`，以及可用时的沙箱提权字段 | 新增/更新/删除/移动，整份预检后顺序执行并保留已知部分效果 |
 
 字段名使用 snake_case，与 Claude Code 和现有 harness 工具 schema 一致。`write` 和 `edit` 的路径描述要求模型先输出 `file_path`，再输出内容或替换字符串；这用于引导流式展示，不强制 JSON 成员顺序。成功返回紧凑信封——读取窗口、图像引用或 `Created file`/`Updated file` 确认——`write`/`edit` 还会派生可回放的 diff 卡片元数据供 UI 展示。
 
@@ -260,7 +260,7 @@ Read a file before editing it (the default fs-observation-policy requires it), u
 
 #### 模型看到的内容
 
-`apply_patch` schema 要求一个 `patch` 字符串，包含 `*** Begin Patch` / `*** End Patch`、Add/Update/Delete 文件头、可选 Move to，以及上下文/新增/删除 hunk 行。路径相对于 Session 工作目录。有围栏后端追加与 write/edit 相同的提权字段。成功行按 A/M/D 分组，完成的移动显示 `M <destination>`，与 Codex rust-v0.158.0 一致。空补丁显示 `Success. No operations in patch.`。停止的补丁只包含适用的 Completed、Failed、Outcome unknown 与 Not executed 小节；结果不确定时以重读建议结束。语法错误保留解析器消息。
+`apply_patch` schema 要求一个 `input` 字符串（沿用 Codex 的参数名，在该工具上训练过的模型会不经提示地发送这个键），包含 `*** Begin Patch` / `*** End Patch`、Add/Update/Delete 文件头、可选 Move to，以及上下文/新增/删除 hunk 行。路径相对于 Session 工作目录。有围栏后端追加与 write/edit 相同的提权字段。成功行按 A/M/D 分组，完成的移动显示 `M <destination>`，与 Codex rust-v0.158.0 一致。空补丁显示 `Success. No operations in patch.`。停止的补丁只包含适用的 Completed、Failed、Outcome unknown 与 Not executed 小节；结果不确定时以重读建议结束。语法错误保留解析器消息。
 
 ##### 系统提示
 

@@ -15,7 +15,7 @@ it('previews every operation using raw paths, counting distinct files including 
   ], locations: ['a', 'b', 'c', 'd', 'e', 'empty'].map(path => ({ path })) }
   expect(presentPatchCall(text)).toEqual(expected)
   const t = await setup()
-  expect(t.ctx.tools.get('apply_patch')?.presentCall?.({ patch: text })).toEqual(expected)
+  expect(t.ctx.tools.get('apply_patch')?.presentCall?.({ input: text })).toEqual(expected)
   expect(presentPatchCall(patch(remove('only')))).toEqual({ card: 'diff', title: 'Apply patch (1 file)', diffs: [], locations: [{ path: 'only' }] })
   expect(presentPatchCall('invalid')).toBeUndefined()
 })
@@ -35,7 +35,7 @@ it('falls back on failed or missing metadata and titles known stopped diffs', as
   const stopped = { ...result, meta: { diffs, stopped: true } }
   expect(presentPatchResult(stopped)).toEqual({ card: 'diff', title: 'Apply patch (stopped)', diffs })
   const t = await setup()
-  expect(t.ctx.tools.get('apply_patch')?.presentResult?.({ patch: patch() }, stopped))
+  expect(t.ctx.tools.get('apply_patch')?.presentResult?.({ input: patch() }, stopped))
     .toEqual({ card: 'diff', title: 'Apply patch (stopped)', diffs })
 })
 

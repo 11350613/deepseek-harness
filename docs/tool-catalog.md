@@ -1051,13 +1051,13 @@ Create, update, delete, or move UTF-8 text files with one Codex-style patch; pre
 {
   "type": "object",
   "properties": {
-    "patch": {
+    "input": {
       "type": "string",
-      "description": "Codex patch: start with *** Begin Patch and end with *** End Patch. Use *** Add File: path with + lines; *** Update File: path, optionally followed by *** Move to: path, with @@ or @@ context and space-prefixed context, + added, or - removed lines; *** End of File anchors the last hunk to the file end. Use *** Delete File: path to delete. Paths are relative to the Session working directory. Read existing files before updating, deleting, or moving them."
+      "description": "Codex patch text: start with *** Begin Patch and end with *** End Patch. Use *** Add File: path with + lines; *** Update File: path, optionally followed by *** Move to: path, with @@ or @@ context and space-prefixed context, + added, or - removed lines; *** End of File anchors the last hunk to the file end. Use *** Delete File: path to delete. Paths are relative to the Session working directory. Read existing files before updating, deleting, or moving them."
     }
   },
   "required": [
-    "patch"
+    "input"
   ]
 }
 ```
