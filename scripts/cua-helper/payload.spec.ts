@@ -49,7 +49,7 @@ it.skipIf(process.platform === 'win32')('verifies staged and repacked provider b
   expect(verifyCuaHelperPayload(f.payload, identity)).toEqual(f.manifest)
   const packageRoot = join(f.root, 'package')
   stageCuaHelperPayload(f.payload, packageRoot, identity)
-  expect(() => stageCuaHelperPayload(f.payload, packageRoot, identity)).toThrow('empty native/bin')
+  expect(() => { stageCuaHelperPayload(f.payload, packageRoot, identity) }).toThrow('empty native/bin')
   const tarball = join(f.root, 'provider.tgz')
   await create({ file: tarball, cwd: f.root, gzip: true, portable: true }, ['package'])
   await verifyCuaHelperTarball(tarball, identity)
@@ -70,7 +70,7 @@ it.skipIf(process.platform === 'win32').each(['version', 'commit', 'architecture
   if (damage === 'permissions') chmodSync(join(before.application, 'Contents/MacOS/dsh-cua-native'), 0o644)
   if (damage === 'symlink') symlinkSync(join(f.root, 'outside'), join(before.application, 'outside'))
   writeFileSync(join(f.payload, CUA_MANIFEST), JSON.stringify(f.manifest))
-  expect(() => stageCuaHelperPayload(f.payload, join(f.root, 'consumer'), identity)).toThrow()
+  expect(() => { stageCuaHelperPayload(f.payload, join(f.root, 'consumer'), identity) }).toThrow()
 })
 
 it('keeps company signing outside pull-request release rehearsals', () => {

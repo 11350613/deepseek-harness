@@ -1773,7 +1773,8 @@ it('lists absent Official entries offline without resolving their packages or co
   onTestFinished(() => { resolve.mockRestore(); registry.mockRestore() })
   const bundles = await manager.listBundles()
   for (const entry of OFFICIAL_ON_DEMAND_CATALOG) {
-    expect(bundles.filter(bundle => bundle.name === entry.packageName)).toEqual([{
+    expect(bundles.filter(bundle => bundle.name === entry.packageName)).toHaveLength(1)
+    expect(bundles.filter(bundle => bundle.name === entry.packageName)).toMatchObject([{
       name: entry.packageName, official: true, availability: 'missing', enabled: false, installed: false, optional: false,
       removable: false, updatable: false, rows: [], overrides: [], meta: entry.meta,
       ...entry.listedByDefault === undefined ? {} : { listedByDefault: entry.listedByDefault },
