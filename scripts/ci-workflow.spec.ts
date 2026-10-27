@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -1686,3 +1687,71 @@ function workflowJob(workflow: Record<string, unknown>, job: string): Record<str
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
+
+describe('Policy workflow shells', () => {
+  it.each(['pr-check-on-head-branch.yml', 'pr-check-after-approve.yml', 'pr-check-on-base-branch.yml'])(
+    '%s runs shell blocks that parse',
+    (file) => {
+      if (process.platform === 'win32') return
+      const workflow = loadWorkflow('.github/workflows/' + file)
+      if (!isRecord(workflow.jobs)) throw new TypeError(`${file} must define jobs`)
+      for (const job of Object.values(workflow.jobs)) {
+        if (!isRecord(job) || !Array.isArray(job.steps)) continue
+        for (const step of job.steps) {
+          if (!isRecord(step) || typeof step.run !== 'string') continue
+          const parsed = spawnSync('bash', ['-n'], { input: step.run, encoding: 'utf8' })
+          expect(`${String(step.name ?? step.id)}: ${parsed.status}: ${parsed.stderr}`).toBe(`${String(step.name ?? step.id)}: 0: `)
+        }
+      }
+    },
+  )
+})
+
+describe('Policy workflows', () => {
+  const workflows = [
+    ['pr-check-on-head-branch.yml', ['master']],
+    ['pr-check-after-approve.yml', ['approve', 'review']],
+  ] as const
+
+  function stepsOf(job: Record<string, unknown>): Record<string, unknown>[] {
+    const steps = job.steps as unknown[]
+    if (!Array.isArray(steps)) throw new TypeError('job must define steps')
+    return steps.filter(isRecord)
+  }
+
+  it.each(workflows)('%s runs each check from master and reads its mode from a repository variable', (file, jobs) => {
+    const workflow = loadWorkflow('.github/workflows/' + file)
+    expect(Object.keys(workflow).filter(key => key !== 'name')).toEqual(['on', 'permissions', 'concurrency', 'jobs'])
+    const events = workflow.on
+    if (!isRecord(events)) throw new TypeError(`${file} must declare events`)
+    expect(events).not.toHaveProperty('pull_request')
+    expect(events).toHaveProperty('pull_request_target')
+    for (const job of jobs) {
+      const check = stepsOf(workflowJob(workflow, job)).find(step => typeof step.uses === 'string' && step.uses.startsWith('deepseek-harness/deepseek-harness-check@'))
+      if (check === undefined || !isRecord(check.env)) throw new TypeError(`${file} ${job} must run the check action with env`)
+      expect(String(check.env.CHECK_MODE)).toContain('vars.MERGE_POLICY_')
+    }
+  })
+
+  it('keeps the pre-merge build behind the merge step, which honours the mode on its failures', () => {
+    const steps = stepsOf(workflowJob(loadWorkflow('.github/workflows/pr-check-on-head-branch.yml'), 'pre-merge'))
+    const merge = steps.findIndex(step => step.id === 'merge')
+    const build = steps.findIndex(step => step.name === "Run the tree's pre-merge check")
+    expect(merge).toBeGreaterThanOrEqual(0)
+    expect(build).toBeGreaterThan(merge)
+    const merging = steps[merge]
+    if (merging === undefined || !isRecord(merging.env)) throw new TypeError('the merge step must set env')
+    expect(String(merging.env.CHECK_MODE)).toContain('MERGE_POLICY_PRE_MERGE')
+    for (const step of steps.slice(merge)) {
+      if (typeof step.run !== 'string') continue
+      expect(step.run).toContain('"$CHECK_MODE" = block')
+    }
+    for (const step of steps.slice(merge + 1)) expect(step.if).toBe("steps.merge.outputs.merged == 'true'")
+    const run = steps[build]?.run
+    if (typeof run !== 'string') throw new TypeError('the pre-merge check step must run a command')
+    expect(run).toContain('node scripts/pre-merge-check.ts')
+    // The script annotates its own failures; the step keeps a mode-aware guard for a check that crashes.
+    expect(run).toContain('exited without reporting')
+    expect(run).toContain('"$CHECK_MODE" = block')
+  })
+})
