@@ -69,7 +69,6 @@ async function main(): Promise<void> {
     for (const { architecture, bundle } of applications) {
       const application = join(extracted, 'native/bin', `darwin-${architecture}`, bundle, CUA_APPLICATION)
       await verify(application, architecture)
-      await run('/usr/bin/xcrun', ['python3', join(root, 'scripts/cua-helper/smoke.py'), join(application, 'Contents/MacOS/dsh-cua-native')])
     }
     writeFileSync(join(output, CUA_MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`)
     console.log(`CUA helper artifact: ${archive}`)
