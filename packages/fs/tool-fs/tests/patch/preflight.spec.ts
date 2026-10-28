@@ -227,3 +227,31 @@ it('names the missing move source operation', async () => {
       failure: { code: 'FS_NOT_FOUND', message: `cannot move "${resolve(t.workspace, 'missing')}": not found` } }],
   })
 })
+
+it('applies unread, externally changed, and overwritten targets on context match alone with the guard off', async () => {
+  const t = await setup({ guard: 'none' })
+  await t.file('a', 'old\n', false)
+  await t.file('b', 'old\n')
+  await writeFile(resolve(t.workspace, 'b'), 'old\nexternal\n')
+  await t.file('c', 'existing\n', false)
+  expect((await t.run(patch(update('a'), update('b'), add('c'), remove('a')))).phase).toBe('commit')
+  await expect(t.bytes('a')).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(await t.bytes('b')).toBe('new\nexternal\n')
+  expect(await t.bytes('c')).toBe('new\n')
+  // Commits still publish observations, so a following guarded edit sees the patched version.
+  expect(t.observations.map(entry => [entry.path, entry.observation.kind])).toEqual([
+    [resolve(t.workspace, 'a'), 'present'], [resolve(t.workspace, 'b'), 'present'],
+    [resolve(t.workspace, 'c'), 'present'], [resolve(t.workspace, 'a'), 'absent'],
+  ])
+  await expect(t.editIntent('b')).resolves.toEqual({ version: await t.version('b') })
+})
+
+it('still rejects a mismatched hunk with the guard off', async () => {
+  const t = await setup({ guard: 'none' })
+  await t.file('a', 'other\n', false)
+  const a = t.record('update', 'a')
+  expect(await t.run(patch(update('a')))).toEqual({ phase: 'preflight', refusals: [
+    { operation: a, failure: { code: 'FS_PATCH_MISMATCH', hunkLine: 3, message: `cannot patch "${a.path}": hunk at patch line 3 (oldLines) does not match — old` } },
+  ] })
+  expect(await t.bytes('a')).toBe('other\n')
+})

@@ -7,7 +7,7 @@ import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { FsSandboxController } from '../sandbox.ts'
 import { destinationIntent, mutationTargets, patchFailure, sourceIntent } from './plan.ts'
-import type { PatchExecutionReport, PatchOperationOutcome, PlannedOperation } from './types.ts'
+import type { PatchExecutionReport, PatchGuard, PatchOperationOutcome, PlannedOperation } from './types.ts'
 
 interface BeforeTarget {
   target: FsTarget
@@ -34,11 +34,12 @@ async function unchanged(ctx: Context, before: readonly BeforeTarget[]): Promise
  * @param sandbox - existing model-facing denial mapper.
  * @param exec - session actor and cancellation signal.
  * @param policy - request's resolved confinement policy.
+ * @param guard - whether operations consult the observation policy.
  * @param operations - operations that all passed preflight.
  * @returns known changes, failed or unknown effects, and skipped successors in patch order.
  */
 export async function commitPatch(
-  ctx: Context, sandbox: FsSandboxController, exec: ToolExecution, policy: SandboxExecutionPolicy | undefined,
+  ctx: Context, sandbox: FsSandboxController, exec: ToolExecution, policy: SandboxExecutionPolicy | undefined, guard: PatchGuard,
   operations: readonly PlannedOperation[],
 ): Promise<PatchExecutionReport> {
   const outcomes: PatchOperationOutcome[] = operations.map(operation => ({ status: 'skipped', operation: operation.record }))
@@ -55,7 +56,7 @@ export async function commitPatch(
       before = await Promise.all(mutationTargets(operation).map(async target => ({ target, info: await ctx.fs.stat(target, exec.signal) })))
       switch (operation.kind) {
         case 'add': {
-          const intent = await destinationIntent(ctx, exec, target)
+          const intent = await destinationIntent(ctx, exec, target, guard)
           started = true
           const result = await ctx.fs.writeText(target, operation.content, intent, exec.signal, policy)
           ctx.emit('fs/observed', target, { kind: 'present', version: result.version }, exec)
@@ -63,7 +64,7 @@ export async function commitPatch(
           break
         }
         case 'update': {
-          const intent = await sourceIntent(ctx, exec, target, 'edit')
+          const intent = await sourceIntent(ctx, exec, target, 'edit', guard)
           started = true
           const result = await ctx.fs.patchText(target, operation.hunks, intent, exec.signal, policy)
           ctx.emit('fs/observed', target, { kind: 'present', version: result.version }, exec)
@@ -71,7 +72,7 @@ export async function commitPatch(
           break
         }
         case 'delete': {
-          const intent = await sourceIntent(ctx, exec, target, 'delete')
+          const intent = await sourceIntent(ctx, exec, target, 'delete', guard)
           started = true
           const result = await ctx.fs.deleteFile(target, intent, exec.signal, policy)
           ctx.emit('fs/observed', target, { kind: 'absent' }, exec)
@@ -79,9 +80,9 @@ export async function commitPatch(
           break
         }
         case 'move': {
-          const expectedSource = await sourceIntent(ctx, exec, target, 'edit')
+          const expectedSource = await sourceIntent(ctx, exec, target, 'edit', guard)
           failurePath = operation.destination.displayPath
-          const expectedDestination = await destinationIntent(ctx, exec, operation.destination)
+          const expectedDestination = await destinationIntent(ctx, exec, operation.destination, guard)
           started = true
           const result = await ctx.fs.moveFile(target, operation.destination, {
             hunks: operation.hunks,

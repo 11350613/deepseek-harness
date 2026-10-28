@@ -43,6 +43,19 @@ it('registers patch guidance when enabled and removes tool and section on dispos
   expect(await section()).toBeUndefined()
 })
 
+it('drops the read-first guidance and schema sentence when the guard is off', async () => {
+  const t = await setup({ guard: 'none' })
+  const section = (await t.ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:apply_patch')
+  expect(section?.text).toBe('Prefer apply_patch over separate edit calls for changes across files or separated regions. '
+    + 'Give every hunk enough surrounding context lines to match one place in the current file. '
+    + 'Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.')
+  const guarded = await setup()
+  const description = (fixture: Fixture) => (fixture.ctx.tools.get('apply_patch')?.parameters as { properties: { input: { description: string } } }).properties.input.description
+  expect(description(guarded)).toContain('Read existing files before updating, deleting, or moving them.')
+  expect(description(t)).not.toContain('Read existing files')
+  expect(description(t)).toMatch(/working directory\.$/)
+})
+
 it('returns exact native values and applied metadata for all four operation kinds', async () => {
   const t = await setup()
   await t.file('edit', 'old\n')

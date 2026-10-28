@@ -9,7 +9,7 @@ import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { remediateFsError } from '../error.ts'
 import type { FsSandboxController } from '../sandbox.ts'
 import { sessionResolveOptions } from '../session-cwd.ts'
-import type { PatchExecutionRequest, PatchFailure, PatchOperationRecord, PatchPlan, PlannedOperation } from './types.ts'
+import type { PatchExecutionRequest, PatchFailure, PatchGuard, PatchOperationRecord, PatchPlan, PlannedOperation } from './types.ts'
 
 /**
  * Resolve every operation without dropping repeated aliases or splitting moves.
@@ -73,9 +73,13 @@ export async function planPatch(
  * @param exec - opaque observation actor.
  * @param target - resolved source.
  * @param kind - deletion or edit-family source policy.
- * @returns the observed version, or undefined for a bare provider.
+ * @param guard - `none` skips the intent waterfalls and mutates unconditionally.
+ * @returns the observed version, or undefined for a bare provider or an unguarded patch.
  */
-export function sourceIntent(ctx: Context, exec: ToolExecution, target: FsTarget, kind: 'delete' | 'edit'): Promise<{ version: FsVersion } | undefined> {
+export async function sourceIntent(
+  ctx: Context, exec: ToolExecution, target: FsTarget, kind: 'delete' | 'edit', guard: PatchGuard,
+): Promise<{ version: FsVersion } | undefined> {
+  if (guard === 'none') return undefined
   return kind === 'delete'
     ? ctx.waterfall('fs/delete-intent', target, exec, () => undefined)
     : ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
@@ -86,9 +90,13 @@ export function sourceIntent(ctx: Context, exec: ToolExecution, target: FsTarget
  * @param ctx - intent dispatcher.
  * @param exec - opaque observation actor.
  * @param target - resolved write destination.
- * @returns the observed write intent, or undefined for a bare provider.
+ * @param guard - `none` skips the intent waterfall and writes unconditionally.
+ * @returns the observed write intent, or undefined for a bare provider or an unguarded patch.
  */
-export function destinationIntent(ctx: Context, exec: ToolExecution, target: FsTarget): Promise<FsWriteIntent | undefined> {
+export async function destinationIntent(
+  ctx: Context, exec: ToolExecution, target: FsTarget, guard: PatchGuard,
+): Promise<FsWriteIntent | undefined> {
+  if (guard === 'none') return undefined
   return ctx.waterfall('fs/write-intent', target, exec, () => undefined)
 }
 

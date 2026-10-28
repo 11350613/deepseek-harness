@@ -12,6 +12,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import { applyReadTool, READ_LIMIT, STREAM_MIN_SIZE } from './read.ts'
 import { applyWriteTool } from './write.ts'
 import { applyApplyPatchTool } from './apply-patch.ts'
+import type { PatchGuard } from './patch/types.ts'
 import { applyEditTool } from './edit.ts'
 import { applyReadImageTool } from './read-image.ts'
 import { READ_MAX_BYTES, READ_MAX_LINE_LENGTH } from './read-render.ts'
@@ -35,6 +36,12 @@ export interface Config {
   edit?: boolean
   /** Register `apply_patch` and its guidance beside `edit`. Defaults to false; shipped compositions set it on their `tool-fs` rows. */
   applyPatch?: boolean
+  /**
+   * Mutation guards for `apply_patch`. `observation` consults the mounted observation policy (prior read required,
+   * stale versions rejected) like `write` and `edit`; `none` applies hunks unconditionally on context match alone,
+   * as the Codex tool does, and drops the read-first guidance. Defaults to `none`.
+   */
+  applyPatchGuard?: PatchGuard
   /** Default and maximum number of lines returned by one `read` call. */
   readLimit?: number
   /** Maximum characters returned for a single line before truncation. */
@@ -51,6 +58,7 @@ export const Config: z<Config> = z.object({
   write: z.boolean().default(true),
   edit: z.boolean().default(true),
   applyPatch: z.boolean().default(false),
+  applyPatchGuard: z.union([z.const('observation'), z.const('none')]).default('none'),
   readLimit: z.number().default(READ_LIMIT),
   readMaxLineLength: z.number().default(READ_MAX_LINE_LENGTH),
   readMaxBytes: z.number().default(READ_MAX_BYTES),
@@ -98,6 +106,6 @@ export function apply(ctx: Context, config: Config): void {
     const sandbox = new FsSandboxController(ctx)
     if (resolved.write) applyWriteTool(ctx, sandbox)
     if (resolved.edit) applyEditTool(ctx, sandbox)
-    if (resolved.applyPatch) applyApplyPatchTool(ctx, sandbox)
+    if (resolved.applyPatch) applyApplyPatchTool(ctx, sandbox, resolved.applyPatchGuard)
   }
 }
