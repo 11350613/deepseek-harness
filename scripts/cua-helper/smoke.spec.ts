@@ -9,4 +9,5 @@ it.skipIf(process.platform === 'win32')('retains native startup and timeout diag
   expect(result.isCanceled).toBe(false)
   expect(result.signal).toBeUndefined()
   expect(result.exitCode, result.stderr).toBe(0)
+  expect(result.stderr).toMatch(/Ran [1-9]\d* tests?\b/)
 })
