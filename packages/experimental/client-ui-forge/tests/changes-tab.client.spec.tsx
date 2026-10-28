@@ -10,6 +10,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import { CHANGES_KIND, changesAddress, type ChangesParams, type ChangesSource } from '../src/client/changes-address.ts'
+import { ReviewQueue } from '../src/client/review-queue.ts'
 import { createChangesStore } from '../src/client/changes-store.ts'
 import { ChangesTab, type ChangesTabInjected, type ChangesTabProps } from '../src/client/ChangesTab.tsx'
 import { en } from '../src/client/locales.ts'
@@ -34,6 +35,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   scrolled.mockReset()
+  localStorage.clear()
   Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
 })
 
@@ -200,6 +202,9 @@ function mount(options: MountOptions = {}) {
     changeRequestText: vi.fn<ChangesTabInjected['changeRequestText']>(async () => ok(APP_TEXT)),
     openLink: vi.fn<ChangesTabInjected['openLink']>(),
     copyPath: vi.fn<ChangesTabInjected['copyPath']>(),
+    reviewQueue: vi.fn<ChangesTabInjected['reviewQueue']>().mockReturnValue(new ReviewQueue('test-review')),
+    submitReview: vi.fn<ChangesTabInjected['submitReview']>().mockResolvedValue({ ok: true, value: { ok: true, url: URL7 } }),
+    addReviewToInput: vi.fn<ChangesTabInjected['addReviewToInput']>().mockReturnValue(true),
     createChangeRequest: vi.fn<ChangesTabInjected['createChangeRequest']>(),
     report: vi.fn<ChangesTabInjected['report']>(),
   }
@@ -562,14 +567,12 @@ describe('ChangesTab layout', () => {
     await settle()
     fireEvent.click(within(m.section('docs/gone.txt')).getByRole('button', { name: 'Collapse gone.txt' }))
     fireEvent.click(m.view.getByRole('button', { name: 'All 6 files' }))
-    // Each row shows the name before its directory; assistive technology reads the complete path.
-    expect(m.view.getAllByRole('menuitem')).toEqual([
-      'src/app.ts+2−2', 'src/new.ts+2−0', `assets/logo.png${en['diff.binaryLabel']}`, 'docs/gone.txt+0−1', 'lib/b.txt+0−0', 'logs/big.log+0−0',
-    ].map(name => m.view.getByRole('menuitem', { name })))
-    expect(m.view.getAllByRole('menuitem')[0]?.querySelector('[aria-hidden="true"]')?.textContent).toBe('app.tssrc')
+    expect(m.view.getAllByRole('menuitem').map(item => item.getAttribute('aria-label'))).toEqual([
+      'assets', 'assets/logo.png', 'docs', 'docs/gone.txt', 'lib', 'lib/a.txt → lib/b.txt', 'logs', 'logs/big.log', 'src', 'src/app.ts', 'src/new.ts',
+    ])
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
     fireEvent.click(m.view.getByRole('button', { name: 'All 6 files' }))
-    fireEvent.click(m.view.getByRole('menuitem', { name: 'docs/gone.txt+0−1' }))
+    fireEvent.click(m.view.getByRole('menuitem', { name: 'docs/gone.txt' }))
     expect(m.view.queryAllByRole('menuitem')).toEqual([])
     expect(m.section('docs/gone.txt').hasAttribute('data-expanded')).toBe(true)
     expect(scrolled).toHaveBeenCalledOnce()
@@ -852,5 +855,92 @@ describe('ChangesTab change requests', () => {
     const other = mount({ source: { kind: 'change', url: 'https://example.com/review' }, state: null })
     expect(within(other.view.container).queryByText(/^#/)).toBeNull()
     expect(other.faces.changeRequestDiff).not.toHaveBeenCalled()
+  })
+})
+
+describe('line review actions', () => {
+  it('extends a range on one side and adds successive frozen references without submitting a message', async () => {
+    const m = mount()
+    await settle()
+    const section = within(m.section('src/app.ts'))
+    fireEvent.click(section.getByRole('button', { name: 'Select line R4' }))
+    expect(section.queryByRole('textbox')).toBeNull()
+    fireEvent.click(section.getByRole('button', { name: 'Select line R5' }), { shiftKey: true })
+    fireEvent.click(section.getByRole('button', { name: 'Add comment' }))
+    fireEvent.change(section.getByRole('textbox'), { target: { value: 'Explain these lines' } })
+    expect(section.getByRole('textbox')).toHaveProperty('value', 'Explain these lines')
+    fireEvent.click(within(m.section('src/app.ts').querySelector('[data-forge-comment]')!).getByRole('button', { name: 'Add to input' }))
+    expect(m.faces.addReviewToInput.mock.lastCall?.[0]).toMatchObject({ source: { kind: 'local', scope: 'branch' },
+      comment: { path: 'src/app.ts', side: 'R', startLine: 4, endLine: 5, body: 'Explain these lines' } })
+    fireEvent.click(section.getByRole('button', { name: 'Select line L4' }))
+    fireEvent.click(section.getByRole('button', { name: 'Add comment' }))
+    fireEvent.change(section.getByRole('textbox'), { target: { value: 'Why remove this?' } })
+    fireEvent.click(within(m.section('src/app.ts').querySelector('[data-forge-comment]')!).getByRole('button', { name: 'Add to input' }))
+    expect(m.faces.addReviewToInput).toHaveBeenCalledTimes(2)
+    expect(m.section('src/app.ts').querySelectorAll('[data-forge-review-thread="agent"]')).toHaveLength(2)
+    expect(m.faces.submitReview).not.toHaveBeenCalled()
+    expect(m.faces.createChangeRequest).not.toHaveBeenCalled()
+  })
+  it('queues comments and submits them together with the selected review decision', async () => {
+    const m = mount({ source: { kind: 'change', url: URL7 }, state: ready({ changeRequests: [entry(7, snapshot(7))] }) })
+    await settle()
+    const section = within(m.section('src/app.ts'))
+    fireEvent.click(section.getByRole('button', { name: 'Select line R4' }))
+    fireEvent.click(section.getByRole('button', { name: 'Add comment' }))
+    fireEvent.change(section.getByRole('textbox'), { target: { value: 'Please fix' } })
+    fireEvent.click(section.getByRole('button', { name: 'Start review' }))
+    expect(m.faces.submitReview).not.toHaveBeenCalled()
+    const pending = within(m.section('src/app.ts').querySelector('[data-forge-review-thread="pending"]')!)
+    expect(pending.getByText('Please fix')).toBeTruthy()
+    fireEvent.click(pending.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(pending.getByRole('textbox'), { target: { value: 'Please fix the guard' } })
+    fireEvent.click(pending.getByRole('button', { name: 'Done' }))
+    fireEvent.click(m.view.getByRole('button', { name: 'Submit review (1)' }))
+    const dialog = within(m.view.getByRole('dialog', { name: 'Submit review' }))
+    expect(dialog.getAllByRole('textbox')).toHaveLength(1)
+    expect(dialog.queryByText('Please fix the guard')).toBeNull()
+
+    fireEvent.change(m.view.getByRole('textbox', { name: 'Review summary…' }), { target: { value: 'Needs a fix' } })
+    fireEvent.click(m.view.getByRole('radio', { name: 'Request changes' }))
+    fireEvent.click(m.view.getByRole('button', { name: 'Submit review' }))
+    await settle()
+    expect(m.faces.submitReview).toHaveBeenCalledWith(URL7, expect.objectContaining({ kind: 'review', event: 'request-changes', body: 'Needs a fix', headSha: HEAD,
+      comments: [expect.objectContaining({ path: 'src/app.ts', side: 'R', startLine: 4, endLine: 4, body: 'Please fix the guard' })] }))
+    expect(m.faces.reviewQueue({ id: TAB, signal: m.aborter.signal }).getSnapshot().comments).toEqual([])
+    expect(m.section('src/app.ts').querySelector('[data-forge-review-thread="published"]')?.textContent).toContain('Please fix the guard')
+  })
+  it('keeps a pending comment editable when its file leaves the diff', async () => {
+    const m = mount({ source: { kind: 'change', url: URL7 }, state: ready({ changeRequests: [entry(7, snapshot(7))] }) })
+    await settle()
+    const section = within(m.section('src/app.ts'))
+    fireEvent.click(section.getByRole('button', { name: 'Select line R4' }))
+    fireEvent.click(section.getByRole('button', { name: 'Add comment' }))
+    fireEvent.change(section.getByRole('textbox'), { target: { value: 'Keep this draft' } })
+    fireEvent.click(section.getByRole('button', { name: 'Start review' }))
+    m.faces.changeRequestDiff.mockResolvedValue(ok({ ...CHANGE, files: [] }))
+    fireEvent.click(m.view.getByRole('button', { name: 'Refresh changes' }))
+    await settle()
+    const record = within(m.view.container.querySelector('[data-forge-review-file="src/app.ts"]')!)
+    expect(record.getByText('Keep this draft')).toBeTruthy()
+    fireEvent.click(record.getByRole('button', { name: 'Delete' }))
+    expect(m.faces.reviewQueue({ id: TAB, signal: m.aborter.signal }).getSnapshot().comments).toHaveLength(0)
+  })
+  it('retains an uncertain write across tab remount and requires explicit reconciliation', async () => {
+    const m = mount({ source: { kind: 'change', url: URL7 }, state: ready({ changeRequests: [entry(7, snapshot(7))] }),
+      setup: (faces) => { faces.submitReview.mockResolvedValue({ ok: true, value: { ok: false, code: 'unknown', message: 'timeout' } }) } })
+    await settle()
+    const section = within(m.section('src/app.ts'))
+    fireEvent.click(section.getByRole('button', { name: 'Select line R4' }))
+    fireEvent.click(section.getByRole('button', { name: 'Add comment' }))
+    fireEvent.change(section.getByRole('textbox'), { target: { value: 'Comment once' } })
+    fireEvent.click(section.getByRole('button', { name: 'GitHub comment options' }))
+    fireEvent.click(m.view.getByRole('menuitem', { name: 'Publish single comment' }))
+    await settle()
+    expect(new ReviewQueue('test-review').getSnapshot().uncertain).toMatchObject({ kind: 'comment', comment: { body: 'Comment once' } })
+    expect(section.getByRole('button', { name: 'GitHub comment options' })).toHaveProperty('disabled', true)
+    await settle()
+    expect(m.faces.submitReview).toHaveBeenCalledTimes(1)
+    fireEvent.click(m.view.getByRole('button', { name: 'Checked; allow resubmission' }))
+    expect(m.faces.reviewQueue({ id: TAB, signal: m.aborter.signal }).getSnapshot().uncertain).toBeNull()
   })
 })

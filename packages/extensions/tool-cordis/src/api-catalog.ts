@@ -1285,6 +1285,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['when no provider serves the change request\'s forge, or with `signal.reason` when it aborts.'],
       },
       {
+        signature: 'async submitReview(ref: ChangeRequestRef, request: ForgeReviewRequest, signal: AbortSignal): Promise<ForgeReviewResult>',
+        description: 'Publish one comment or a completed review, then refresh the watched status.',
+        parameters: [{ name: 'ref', description: 'change request served by a registered provider.' }, { name: 'request', description: 'explicitly selected commit, comments, and review decision.' }, { name: 'signal', description: 'request cancellation.' }],
+        returns: 'a publication URL or a failure, including an unknown write outcome.',
+      },
+      {
         signature: 'async fileText(ref: ChangeRequestRef, commit: string, path: string, signal: AbortSignal): Promise<string | ForgeFailure>',
         description: 'Read the text of one file at a commit of a change request\'s repository.',
         parameters: [{ name: 'ref', description: 'change request served by a registered provider.' }, { name: 'commit', description: 'commit object name.' }, { name: 'path', description: 'path relative to the repository root.' }, { name: 'signal', description: 'cancellation of the read.' }],
@@ -1386,6 +1392,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'session', description: 'Session the change request is bound to.' }, { name: 'url', description: 'binding URL of the change request.' }, { name: 'commit', description: 'commit object name, the head commit of the diff.' }, { name: 'path', description: 'path relative to the repository root.' }, { name: 'signal', description: 'request cancellation.' }],
         returns: 'the text.',
         throws: ['`forgePanel/not-bound` unless the URL is a visible binding of the Session that a provider serves; `forgePanel/diff-too-large` when the host or its provider refuses the file over a size limit; `forgePanel/diff-failed` when the host does not provide the file otherwise.'],
+      },
+      {
+        signature: '@Remote async submitReview(session: Session, url: string, request: ForgeReviewRequest, signal: AbortSignal): Promise<ForgeReviewResult>',
+        description: 'Publish a line comment or completed review for a visible Session binding.',
+        parameters: [{ name: 'session', description: 'Session retaining the change request.' }, { name: 'url', description: 'visible binding URL.' }, { name: 'request', description: 'reviewed head, ranges, plain text, and explicit review decision.' }, { name: 'signal', description: 'request cancellation.' }],
+        returns: 'confirmed publication or a typed failure; unknown outcomes require reconciliation on the host.',
       },
       {
         signature: '@Remote async markReady(session: Session, url: string, signal: AbortSignal): Promise<void>',
@@ -6225,6 +6237,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ForgeFailure {\n    readonly code: \'not-found\' | \'unauthenticated\' | \'too-large\' | \'unavailable\';\n    readonly message: string;\n}',
   },
   {
+    name: 'ForgeLineComment',
+    declaration: 'export interface ForgeLineComment {\n    readonly path: string;\n    readonly side: \'L\' | \'R\';\n    readonly startLine: number;\n    readonly endLine: number;\n    readonly body: string;\n}',
+  },
+  {
     name: 'ForgeLocalChanges',
     declaration: 'export interface ForgeLocalChanges {\n    readonly base: string;\n    readonly files: readonly ForgeChangedFile[];\n}',
   },
@@ -6254,7 +6270,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ForgeProvider',
-    declaration: 'export interface ForgeProvider {\n    readonly forge: string;\n    repositoryFromRemote(url: string): ForgeRepository | undefined;\n    changeRequestFromUrl(url: string): ChangeRequestRef | undefined;\n    changeRequestUrl(ref: ChangeRequestRef): string;\n    fetch(refs: readonly ChangeRequestRef[], signal: AbortSignal): Promise<ReadonlyMap<ChangeRequestKey, ChangeRequestSnapshot | ForgeFailure>>;\n    findByHead(repository: ForgeRepository, branch: string, signal: AbortSignal): Promise<readonly ChangeRequestRef[]>;\n    readiness(host: string, signal: AbortSignal): Promise<ForgeReadiness>;\n    markReady(ref: ChangeRequestRef, signal: AbortSignal): Promise<ForgeActionFailure | undefined>;\n    merge(ref: ChangeRequestRef, request: MergeRequest, signal: AbortSignal): Promise<ForgeActionFailure | undefined>;\n    diff(ref: ChangeRequestRef, signal: AbortSignal): Promise<string | ForgeFailure>;\n    fileText(ref: ChangeRequestRef, commit: string, path: string, signal: AbortSignal): Promise<string | ForgeFailure>;\n    fileUrl(ref: ChangeRequestRef, commit: string, path: string): string;\n}',
+    declaration: 'export interface ForgeProvider {\n    readonly forge: string;\n    submitReview?(ref: ChangeRequestRef, request: ForgeReviewRequest, signal: AbortSignal): Promise<ForgeReviewResult>;\n    repositoryFromRemote(url: string): ForgeRepository | undefined;\n    changeRequestFromUrl(url: string): ChangeRequestRef | undefined;\n    changeRequestUrl(ref: ChangeRequestRef): string;\n    fetch(refs: readonly ChangeRequestRef[], signal: AbortSignal): Promise<ReadonlyMap<ChangeRequestKey, ChangeRequestSnapshot | ForgeFailure>>;\n    findByHead(repository: ForgeRepository, branch: string, signal: AbortSignal): Promise<readonly ChangeRequestRef[]>;\n    readiness(host: string, signal: AbortSignal): Promise<ForgeReadiness>;\n    markReady(ref: ChangeRequestRef, signal: AbortSignal): Promise<ForgeActionFailure | undefined>;\n    merge(ref: ChangeRequestRef, request: MergeRequest, signal: AbortSignal): Promise<ForgeActionFailure | undefined>;\n    diff(ref: ChangeRequestRef, signal: AbortSignal): Promise<string | ForgeFailure>;\n    fileText(ref: ChangeRequestRef, commit: string, path: string, signal: AbortSignal): Promise<string | ForgeFailure>;\n    fileUrl(ref: ChangeRequestRef, commit: string, path: string): string;\n}',
   },
   {
     name: 'ForgeReadiness',
@@ -6263,6 +6279,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ForgeRepository',
     declaration: 'export interface ForgeRepository {\n    readonly forge: string;\n    readonly host: string;\n    readonly owner: string;\n    readonly name: string;\n}',
+  },
+  {
+    name: 'ForgeReviewRequest',
+    declaration: 'export type ForgeReviewRequest = {\n    readonly headSha: string;\n} & ({\n    readonly kind: \'comment\';\n    readonly comment: ForgeLineComment;\n} | {\n    readonly kind: \'review\';\n    readonly event: \'comment\' | \'approve\' | \'request-changes\';\n    readonly body: string;\n    readonly comments: readonly ForgeLineComment[];\n});',
+  },
+  {
+    name: 'ForgeReviewResult',
+    declaration: 'export type ForgeReviewResult = {\n    readonly ok: true;\n    readonly url: string;\n} | {\n    readonly ok: false;\n    readonly code: \'unsupported\' | \'stale\' | \'failed\' | \'unknown\';\n    readonly message: string;\n};',
   },
   {
     name: 'ForgeSessionWorktree',

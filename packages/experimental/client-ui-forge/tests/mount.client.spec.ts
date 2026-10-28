@@ -25,6 +25,7 @@ import type { SessionListInjected } from '../src/client/session-list.ts'
 import { SessionHoverForge } from '../src/client/SessionHoverForge.tsx'
 import { SessionRowForge } from '../src/client/SessionRowForge.tsx'
 import type { NoticeSource } from '../src/client/source.ts'
+import type { ReviewSelection } from '../src/client/review.ts'
 import { WorktreeProgress, type WorktreeProgressInjected } from '../src/client/WorktreeProgress.tsx'
 import { WorktreeToggle, type WorktreeToggleInjected } from '../src/client/WorktreeToggle.tsx'
 import type {
@@ -40,6 +41,7 @@ const LOCAL: ForgeLocalDiff = { base: 'origin/main', files: [], omitted: 0 }
 const CHANGE: ForgeChangeRequestDiff = { headSha: 'a'.repeat(40), files: [], localAhead: null, fileUrls: {} }
 
 afterEach(() => {
+  localStorage.clear()
   vi.restoreAllMocks()
   Reflect.deleteProperty(navigator, 'clipboard')
 })
@@ -688,6 +690,32 @@ describe('mountForgePanel worktree card actions', () => {
 })
 
 describe('mountForgePanel changes view', () => {
+  it.each(['local', 'change'] as const)('retains %s records across Session switches and clears only the closed tab', async (kind) => {
+    const f = await fixture()
+    const lifetime = new AbortController()
+    const tab = { id: 'review-tab' as TabId, signal: lifetime.signal }
+    const selection: ReviewSelection = { source: kind === 'local' ? { kind, scope: 'branch' }
+      : { kind, url: 'https://github.com/octo/demo/pull/7', headSha: 'a'.repeat(40) },
+    comment: { path: 'a.ts', side: 'R', startLine: 1, endLine: 1, body: 'Check this', hunk: '@@ -1 +1 @@\n-old\n+new' } }
+    const queue = f.changes(S1).reviewQueue(tab)
+    queue.recordAgent(selection)
+    if (kind === 'change') queue.add(selection)
+    queue.summarize('Summary', 'comment')
+    const otherTab = { id: 'other-tab' as TabId, signal: new AbortController().signal }
+    const other = f.changes(S1).reviewQueue(otherTab)
+    other.recordAgent(selection)
+    expect(f.changes(S2).reviewQueue({ id: tab.id, signal: new AbortController().signal }).getSnapshot().records).toEqual([])
+    expect(f.changes(S1).reviewQueue(tab)).toBe(queue)
+    expect(queue.getSnapshot().records).toHaveLength(1)
+    lifetime.abort()
+    expect(queue.getSnapshot()).toMatchObject({ comments: [], records: [], body: '', uncertain: null })
+    expect(other.getSnapshot().records).toHaveLength(1)
+    const reopened = f.changes(S1).reviewQueue({ id: tab.id, signal: new AbortController().signal })
+    expect(reopened).not.toBe(queue)
+    expect(reopened.getSnapshot()).toMatchObject({ comments: [], records: [], body: '' })
+    expect(queue.recordAgent(selection)).toBe(false)
+    await f.dispose()
+  })
   it('reads the changes of the Session through the Remote and shares its panel stream', async () => {
     const f = await fixture()
     const view = f.changes(S1)
@@ -716,6 +744,11 @@ describe('mountForgePanel changes view', () => {
     expect(f.notice()).toMatchObject({ key: 'toast.expandStale', tone: 'failure', params: {} })
     f.changes(S1).report('toast.expandFailed', { message: 'gone' })
     expect(f.notice()).toMatchObject({ key: 'toast.expandFailed', tone: 'failure', params: { message: 'gone' } })
+
+    f.changes(S1).report('review.submitted')
+    expect(f.notice()).toMatchObject({ key: 'review.submitted', tone: 'success' })
+    f.changes(S1).report('review.published')
+    expect(f.notice()).toMatchObject({ key: 'review.published', tone: 'success' })
 
     const writeText = vi.fn(async (_text: string) => {})
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
