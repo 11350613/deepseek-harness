@@ -280,8 +280,10 @@ export interface InstallState {
     /** The packages an `incompatible-version` refusal names. */
     readonly incompatible?: readonly IncompatiblePlugin[]
     readonly kind?: PluginInstallFailureKind
-    /** The step the failed change reached; `enable` means the installation finished and activating the bundle failed. */
+    /** The step the failed change reached; `enable` means the installation finished and applying the bundle failed. */
     readonly stage?: ChangeResult['stage']
+    /** Whether the failed change also asked to enable the installed bundle; an enable-stage sentence needs both. */
+    readonly enabled?: boolean
     /** What the last failed run could not reach, as the Host attributed it: the registry, or the spec's own host. */
     readonly failedAt?: 'registry' | 'spec-host'
     readonly pendingBuilds?: readonly string[]
@@ -506,7 +508,7 @@ class RemoteAnswerError extends Error {
 /** The dialog's reading of a failed change: the Host's code and diagnostic, the step it reached, and the run's classified failure. */
 function failureOf(
   error: ManagementError | undefined, kind: PluginInstallFailureKind | undefined, pendingBuilds: readonly string[] | undefined,
-  failedAt: ChangeResult['failedAt'], stage: ChangeResult['stage'],
+  failedAt: ChangeResult['failedAt'], stage: ChangeResult['stage'], enabled: ChangeResult['enabled'],
 ): NonNullable<InstallState['failure']> {
   return {
     reason: error?.diagnostic ?? '',
@@ -514,6 +516,7 @@ function failureOf(
     ...error?.incompatible === undefined ? {} : { incompatible: error.incompatible },
     ...kind === undefined ? {} : { kind },
     stage,
+    ...enabled === undefined ? {} : { enabled },
     ...failedAt === undefined ? {} : { failedAt },
     ...pendingBuilds === undefined || pendingBuilds.length === 0 ? {} : { pendingBuilds },
   }
@@ -1005,8 +1008,9 @@ export class PluginManagerController {
   }
 
   /**
-   * Fold a chunk belonging to this installation into its pnpm command.
-   * A final chunk may arrive after the install answer and still updates an existing run.
+   * Fold a chunk belonging to this installation into its run. The install answer and the log travel over
+   * separate transports, so the run that ended the installation can arrive after its answer: a settled
+   * dialog keeps that run too, with the outcome's exit code when the chunk carries none of its own.
    * @param chunk - the chunk the Host forwarded.
    */
   appendLog(chunk: PluginInstallLogChunk): void {
@@ -1017,10 +1021,14 @@ export class PluginManagerController {
       this.installProgress({ requestId: install.requestId, phase: 'installing' })
     }
     const index = install.runs.findIndex(run => run.jobId === chunk.jobId)
-    if (index === -1 && !isInstallPending(install.phase)) return
     const settled = chunk.exitCode === undefined ? {} : { exitCode: chunk.exitCode }
+    const settledRun = install.phase === 'failed' || install.phase === 'done'
+    if (index === -1 && !isInstallPending(install.phase) && !settledRun) return
     const runs = index === -1
-      ? [...install.runs, { jobId: chunk.jobId, command: chunk.argv.join(' '), cwd: chunk.cwd, output: chunk.text, ...settled }]
+      ? [...install.runs, {
+        jobId: chunk.jobId, command: chunk.argv.join(' '), cwd: chunk.cwd, output: chunk.text,
+        ...settledRun && chunk.exitCode === undefined ? { exitCode: null } : settled,
+      }]
       : install.runs.map((run, at) => at === index ? { ...run, output: run.output + chunk.text, ...settled } : run)
     this.patchInstall({ runs })
   }
@@ -1309,7 +1317,7 @@ export class PluginManagerController {
       const packages = result.packageResult
       this.patchInstall({
         phase: 'failed', runs: settledRuns(runs, packages?.exitCode ?? null),
-        failure: failureOf(result.error, packages?.kind, result.pendingBuilds, result.failedAt, result.stage),
+        failure: failureOf(result.error, packages?.kind, result.pendingBuilds, result.failedAt, result.stage, result.enabled),
         logPath: result.packageResult?.logPath ?? null,
         ...asked,
       })

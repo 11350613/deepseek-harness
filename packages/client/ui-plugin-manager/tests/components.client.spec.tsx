@@ -1856,9 +1856,9 @@ describe('PluginManagerPage', () => {
     expect(screen.queryByText('line 8')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: en.terminalExpandAria.replace('{n}', '3') }))
     expect(screen.getByText('line 8')).toBeTruthy()
-    // Before the first chunk there is no location to name, and the details say so honestly.
+    // Before the first chunk there is no location to name, and a running install claims no output yet.
     set({ install: { ...IDLE_INSTALL, open: true, spec: 'dsh-x', phase: 'running', subject, detailsOpen: true } })
-    expect(screen.getByText(en.installDetailsNoOutput)).toBeTruthy()
+    expect(screen.queryByText(en.installDetailsNoOutput)).toBeNull()
     // Cancel and the back control each ask the Host to stop the run; the close control asks too, and closes once the Host confirms.
     fireEvent.click(screen.getByRole('button', { name: en.installCancel }))
     fireEvent.click(screen.getByRole('button', { name: en.installCancelAndEdit }))
@@ -2063,22 +2063,29 @@ describe('PluginManagerPage', () => {
   it('names an enable-stage failure and points the details at the complete Host log', () => {
     const subject = { spec: 'dsh-x', status: 'accepted', kind: 'registry', name: 'dsh-x', bundle: true, registry: null } as const
     const logPath = '/home/u/.dsh/profiles/web/plugin-manager/runs/install.log'
-    const failed: InstallState = {
+    const enabling: InstallState = {
       ...IDLE_INSTALL, open: true, spec: 'dsh-x', phase: 'failed', subject, detailsOpen: true, logPath,
-      failure: { reason: 'activation refused', stage: 'enable' },
+      failure: { reason: 'activation refused', stage: 'enable', enabled: true },
     }
-    const { set } = renderTab({ install: failed })
-    // The installed bundle could not be activated, so the screen separates the finished install from the failure.
+    const { set } = renderTab({ install: enabling })
+    // The enabled bundle could not be applied, so the screen separates the finished install from the failure.
     expect(screen.getByText(en.installFailedEnabling)).toBeTruthy()
-    // No terminal chunk reached the dialog; the details say that instead of claiming the run printed nothing.
+    // No terminal chunk reached the dialog; the details say what the dialog received, not what the run printed.
     expect(screen.getByText(en.installDetailsNoOutput)).toBeTruthy()
     // They still point at the Host's complete log for the run that settled the dialog.
     expect(screen.getByText(en.installLogPath.replace('{path}', logPath))).toBeTruthy()
     // A failure of the install itself names no finished install.
-    set({ install: { ...failed, failure: { reason: 'activation refused', stage: 'install' } } })
+    set({ install: { ...enabling, failure: { reason: 'activation refused', stage: 'install', enabled: true } } })
     expect(screen.queryByText(en.installFailedEnabling)).toBeNull()
+    // An install that never asked to enable the bundle cannot have failed enabling it.
+    set({ install: { ...enabling, failure: { reason: 'activation refused', stage: 'enable', enabled: false } } })
+    expect(screen.queryByText(en.installFailedEnabling)).toBeNull()
+    // Without a reason the sentence is the only line: it names the step instead of the install command it finished.
+    set({ install: { ...enabling, failure: { reason: '', stage: 'enable', enabled: true } } })
+    expect(screen.getAllByText(en.installFailedEnabling)).toHaveLength(1)
+    expect(screen.queryByText(en.installFailureGeneric)).toBeNull()
     // Without a settled run's log the details offer no path.
-    set({ install: { ...failed, logPath: null } })
+    set({ install: { ...enabling, logPath: null } })
     expect(screen.queryByText(en.installLogPath.replace('{path}', logPath))).toBeNull()
   })
 
