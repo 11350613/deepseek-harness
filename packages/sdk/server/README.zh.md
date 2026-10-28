@@ -43,7 +43,7 @@ Host 与桌面适配器共用 `dsh-commands/builtin` 的定义身份及中英文
 
 第一个文本块提供完整命令行；编码图片可位于它之前或之后。该行匹配到受支持命令时，它必须是唯一的文本块，其余块必须为编码图片。额外文本块、持久图片引用及其他内容类型会在执行或入队前返回 JSON-RPC 错误，不回退为普通提示词。普通提示词保留全部内容块及其顺序。空数组和只包含空白文本的数组会被拒绝；允许仅图片输入。
 
-`session/command` 接受 `{ sessionId, line }`，使用同样四类内置定义的 ASCII 注册名或英文规范别名；中文别名使用 `session/query`。不支持的定义身份返回 JSON-RPC 错误。命令身份校验使用已初始化的接收 Agent 目录；身份校验拒绝会保留该 Session，不执行 handler，也不提交 prompt。它要求 permission preset 非空，其余参数由原生 handler 校验。完整 sdk profile 组成这些原生 handler；缺少所请求命令的 profile 会拒绝调用。服务端解析自己拥有的存活 Agent，并调用 `commands.execute()`，不排入普通 prompt，也不等待 idle。压缩负责其辅助模型请求、历史替换和 checkpoint，并拒绝忙碌 Agent。权限变更保留原生状态和通知行为。Shutdown 取消待决命令，在释放 Agent 前排空 SDK 命令等待者。超时不等于回滚，客户端不能自动重试。结果和错误见[协议](../protocol/README.zh.md)。
+`session/command` 接受 `{ sessionId, line }`，使用同样四类内置定义的 ASCII 注册名或英文规范别名；忽略前导空白。中文别名使用 `session/query`。不支持的定义身份返回 JSON-RPC 错误。命令身份校验使用已初始化的接收 Agent 目录；身份校验拒绝会保留该 Session，不执行 handler，也不提交 prompt。它要求 permission preset 非空，其余参数由原生 handler 校验。完整 sdk profile 组成这些原生 handler；缺少所请求命令的 profile 会拒绝调用。服务端解析自己拥有的存活 Agent，并调用 `commands.execute()`，不排入普通 prompt，也不等待 idle。压缩负责其辅助模型请求、历史替换和 checkpoint，并拒绝忙碌 Agent。权限变更保留原生状态和通知行为。Shutdown 取消待决命令，在释放 Agent 前排空 SDK 命令等待者。超时不等于回滚，客户端不能自动重试。结果和错误见[协议](../protocol/README.zh.md)。
 
 权限命令只修改接收命令的 Session。后续输入和恢复的 Session 保留其持久化权限事实；其他 Session 保留各自状态，新 Session 使用配置的默认值。调用方的启动配置和已保存的用户默认值均不会被重写。模型选择不是 SDK slash 命令；恢复时的模型覆盖仍按上文描述的独立行为执行。
 

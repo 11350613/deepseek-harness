@@ -49,6 +49,8 @@ import type {
   SubagentStartedNotification,
 } from '@deepseek-ai/dsh-sdk-protocol'
 
+const COMMAND_USAGE = 'The SDK command endpoint supports only /compact, /permission <preset>, /plan [off|message], or /goal [objective|clear|edit objective|pause|resume]'
+
 interface SessionRecord {
   handle: AgentHandle
   /** Latest live failure not superseded by a subsequently committed terminal. */
@@ -352,9 +354,9 @@ export class HarnessSdkJsonRpcServer {
   private async runCommand(params: SessionCommandParams, images: SdkEncodedImageBlock[]): Promise<CommandExecution> {
     if (!this.initialized) throw new Error('SDK server is not initialized')
     if (this.shuttingDown) throw new Error('SDK server is shutting down')
-    const parsed = parseCommand(params.line)
+    const parsed = parseCommand(params.line.trimStart())
     if (parsed === undefined) {
-      throw new TypeError('The SDK command endpoint supports only /compact, /permission <preset>, /plan [off|message], or /goal [objective|clear|edit objective|pause|resume]')
+      throw new TypeError(COMMAND_USAGE)
     }
     const commands = this.ctx.get('commands')
     if (commands === undefined) {
@@ -368,7 +370,7 @@ export class HarnessSdkJsonRpcServer {
     const builtin = builtinCommandName(descriptor)
     if (builtin !== 'compact' && builtin !== 'plan' && builtin !== 'goal'
       && (builtin !== 'permission' || parsed.rawInput.trim() === '')) {
-      throw new TypeError('The SDK command endpoint supports only /compact, /permission <preset>, /plan [off|message], or /goal [objective|clear|edit objective|pause|resume]')
+      throw new TypeError(COMMAND_USAGE)
     }
     const line = `/${descriptor.name}${parsed.rawInput}`
     const task = commands.execute(rec.handle.agent, line, images.map(image => ({

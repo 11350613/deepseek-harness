@@ -47,10 +47,25 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         execution?: { commandId: string; result?: { kind: string; text?: string } }
       } | null
       if (response?.kind === 'command' && response.execution?.result !== undefined) {
+        const lifecycle = process.env.QUERY_LIFECYCLE
+        if (lifecycle !== 'missing-run' && lifecycle !== 'missing-both') {
+          event(sessionId, 'command/run', { commandId: response.execution.commandId })
+        }
+        if (lifecycle === 'invalid-done') {
+          notify('session.event', { sessionId, event: { type: 'command/done', seq: seq++, time: 0, data: null } })
+        } else if (lifecycle !== 'missing-done' && lifecycle !== 'missing-both' && lifecycle !== 'late-done') {
+          event(sessionId, 'command/done', {
+            commandId: lifecycle === 'unrelated-done' ? 'another-command' : response.execution.commandId,
+            ...response.execution.result,
+          })
+        }
         notify('session.query.completed', { sessionId, commandId: response.execution.commandId,
           finalResponse: response.execution.result.text ?? '',
           finishReason: response.execution.result.kind === 'error' ? 'error' : 'completed',
           ...JSON.parse(process.env.QUERY_COMPLETION ?? '{}') as object })
+        if (lifecycle === 'late-done') {
+          event(sessionId, 'command/done', { commandId: response.execution.commandId, ...response.execution.result })
+        }
       }
       respond(response)
       return

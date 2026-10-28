@@ -59,6 +59,17 @@ async function setup(registry = true, peer?: JsonRpcTransportPeer) {
 }
 
 describe('SDK command dispatch', () => {
+  it.each([' ', '\t\n', '\u3000'])('accepts leading whitespace through the strict wire endpoint: %j', async (prefix) => {
+    const h = await setup()
+    await h.initialize()
+    const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const }))
+    h.register(handler)
+    await expect(h.server.handleRequest('session/command', { sessionId: 'strict-space', line: `${prefix}/compact` }))
+      .resolves.toMatchObject({ result: { kind: 'success' } })
+    expect(handler).toHaveBeenCalledOnce()
+    expect(handler.mock.calls[0]![0].rawInput).toBe('')
+  })
+
   it.each(['success', 'error'] as const)('returns the logged native %s without a model turn', async (kind) => {
     const h = await setup()
     await h.initialize()

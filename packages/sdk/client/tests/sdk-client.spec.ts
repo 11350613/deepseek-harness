@@ -83,7 +83,10 @@ describe('DeepSeekHarness', () => {
     expect(await harness.client.executeCommand(session.id, ' /compact ')).toEqual({
       commandId: 'command-1', result: { kind: 'success', text: ' /compact ' },
     })
-    expect(await session.run('/compact')).toMatchObject({ finalResponse: '/compact', finishReason: 'completed' })
+    const result = await session.run('/compact')
+    expect(result).toMatchObject({ finalResponse: '/compact', finishReason: 'completed' })
+    expect(result.events.map(event => event.type)).toEqual(['command/run', 'command/done'])
+    expect(result.notifications.some(notification => notification.method === 'session.status')).toBe(false)
   })
 
   it.each([

@@ -63,7 +63,7 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
 
 `session.run(input, on_notification=..., delivery="queue")` 是字符串和内容块数组共用的公开提示词／命令输入入口。两者都使用运行时的[命令形式与 Desktop 别名](../../packages/sdk/server/README.zh.md#command-input)识别规则；未识别的输入保持普通提示词及原始内容块顺序。对普通输入，包括图片，`delivery="steer"` 指向下一个可用步骤。命令的接纳规则与执行时序仍由原生处理器负责。
 
-每次调用都返回 `RunResult`，包含接收输入的 `session_id`、根会话事件和会话树通知。`final_response` 包含最终助手文本；活动未输出助手文本时为空字符串。仅改变状态的命令返回原生 handler 的结果文本。`finish_reason` 表示结束结果。原生命令身份与结果保留在 `command/run` 和 `command/done` 事件中。
+每次调用都返回 `RunResult`，包含接收输入的 `session_id`、根会话事件和会话树通知。`final_response` 包含最终助手文本；活动未输出助手文本时为空字符串。仅改变状态的命令返回原生 handler 的结果文本。`finish_reason` 表示结束结果。原生命令身份与结果保留在 `command/run` 和 `command/done` 事件中。完成通知缺少匹配的命令生命周期事件时抛出 `SdkProtocolError`，不会返回不完整的结果。
 
 内容块数组与字符串使用相同的命令路由。`session.run([{"type": "text", "text": "/compact"}])` 和 `session.run("/compact")` 都调用原生压缩并返回 `RunResult`。要绕过原生命令路由，调用底层 `client.session_prompt(session_id, blocks)` 并管理后续活动；运行时 skill（技能）识别仍然适用。
 

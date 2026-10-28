@@ -69,7 +69,7 @@ const result = await session.run('/compact')
 console.log(result.finalResponse)
 ```
 
-字符串和内容块输入始终返回 `RunResult`，包含 `sessionId`、`finalResponse`、`finishReason`、根会话事件和会话树通知。仅改变状态的命令返回原生结果文本；提交模型工作的命令等待对应活动并返回最终助手文本，未输出助手文本时返回空字符串。原生拒绝通过 `finishReason === "error"` 表达，路由、协议、传输和观察回调失败会拒绝 Promise。命令 id 和原生结果保留在 `command/run`、`command/done` 事件中。需要按原文排队时，使用底层 `client.prompt(sessionId, blocks)` 并管理后续活动；运行时技能识别仍然适用。
+字符串和内容块输入始终返回 `RunResult`，包含 `sessionId`、`finalResponse`、`finishReason`、根会话事件和会话树通知。仅改变状态的命令返回原生结果文本；提交模型工作的命令等待对应活动并返回最终助手文本，未输出助手文本时返回空字符串。原生拒绝通过 `finishReason === "error"` 表达，路由、协议、传输和观察回调失败会拒绝 Promise。命令 id 和原生结果保留在 `command/run`、`command/done` 事件中。完成通知缺少匹配的命令生命周期事件时抛出 `SdkProtocolError`，不会返回不完整的结果。需要按原文排队时，使用底层 `client.prompt(sessionId, blocks)` 并管理后续活动；运行时技能识别仍然适用。
 
 每次调用在发送前建立订阅，并在结束前释放。`onNotification` 按传输顺序接收本次输入的会话树活动；区间可以包含其他重叠工作。内部完成回执由 SDK 消费。并发调用保留各自结果，因此模型运行期间仍能取得另一条命令的忙碌错误。超时或观察回调失败不回滚运行时工作，也不授权自动重试。
 

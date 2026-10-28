@@ -339,6 +339,8 @@ reader.on('line', (line) => {
           ? { commandId: 'command-1', result: { kind: 'success', text: '/compact' } }
           : JSON.parse(env.FAKE_COMMAND_RESULT)
         const completed = execution as { commandId?: string; result?: { kind?: string; text?: string } }
+        event(sessionIdOf(frame.params), 'command/run', { commandId: completed.commandId })
+        event(sessionIdOf(frame.params), 'command/done', { commandId: completed.commandId, ...completed.result })
         notify('session.query.completed', { sessionId: frame.params?.sessionId, commandId: completed.commandId,
           finalResponse: completed.result?.text ?? '', finishReason: completed.result?.kind === 'error' ? 'error' : 'completed' })
         respond({ kind: 'command', execution })

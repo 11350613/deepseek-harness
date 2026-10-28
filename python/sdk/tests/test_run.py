@@ -85,7 +85,14 @@ for line in sys.stdin:
             pending_commands.append((frame, serial))
         elif text in ("/compact", "/plan Describe this image."):
             command(frame, serial)
-        elif text == "silent-command":
+        elif text in ("missing-run", "missing-done", "missing-both", "unrelated-done", "invalid-done"):
+            if text not in ("missing-run", "missing-both"):
+                event(params["sessionId"], "command/run", {"commandId": "silent"})
+            if text == "invalid-done":
+                event(params["sessionId"], "command/done", None)
+            elif text not in ("missing-done", "missing-both"):
+                event(params["sessionId"], "command/done", {
+                    "commandId": "another-command" if text == "unrelated-done" else "silent", "kind": "success"})
             send({"method": "session.query.completed", "params": {"sessionId": params["sessionId"],
                 "commandId": "silent", "finalResponse": "", "finishReason": "completed"}})
             send({"id": frame["id"], "result": {"kind": "command", "execution": {
@@ -96,10 +103,15 @@ for line in sys.stdin:
             response = json.loads(os.environ["QUERY_RESPONSE"])
             execution = response.get("execution") if isinstance(response, dict) else None
             if isinstance(execution, dict) and isinstance(execution.get("result"), dict):
+                event(params["sessionId"], "command/run", {"commandId": execution.get("commandId")})
+                if os.environ.get("QUERY_LIFECYCLE") != "late-done":
+                    event(params["sessionId"], "command/done", {"commandId": execution.get("commandId"), **execution["result"]})
                 send({"method": "session.query.completed", "params": {"sessionId": params["sessionId"],
                     "commandId": execution.get("commandId"), "finalResponse": execution["result"].get("text", ""),
                     "finishReason": "error" if execution["result"].get("kind") == "error" else "completed",
                     **json.loads(os.environ.get("QUERY_COMPLETION", "{}"))}})
+                if os.environ.get("QUERY_LIFECYCLE") == "late-done":
+                    event(params["sessionId"], "command/done", {"commandId": execution.get("commandId"), **execution["result"]})
             send({"id": frame["id"], "result": response})
         elif text == "bad-route":
             send({"id": frame["id"], "result": {"kind": "unknown"}})
@@ -299,12 +311,29 @@ def test_concurrent_runs_keep_their_own_results(sdk: DeepSeekHarness) -> None:
     assert_released(sdk)
 
 
-def test_command_result_needs_no_notifications(sdk: DeepSeekHarness) -> None:
-    notices = []
-    result = sdk.start_session("main").run("silent-command", on_notification=notices.append)
-    assert isinstance(result, RunResult)
-    assert notices == []
+@pytest.mark.parametrize("text", ["missing-run", "missing-done", "missing-both", "unrelated-done", "invalid-done"])
+def test_command_result_rejects_incomplete_lifecycle(sdk: DeepSeekHarness, text: str) -> None:
+    session = sdk.start_session("main")
+    with pytest.raises(SdkProtocolError, match="lifecycle"):
+        session.run(text)
     assert_released(sdk)
+    assert session.run("after").final_response == "answer for after"
+    assert_released(sdk)
+
+
+def test_failure_completion_can_precede_handler_settlement(peer: Path, tmp_path: Path) -> None:
+    with DeepSeekHarness(
+        cwd=str(tmp_path), dsh_home=str(tmp_path / "home"), request_timeout_seconds=5,
+        _launch_args=(sys.executable, str(peer)),
+        env={"REQUEST_LOG": str(tmp_path / "requests.jsonl"), "QUERY_LIFECYCLE": "late-done",
+             "QUERY_RESPONSE": json.dumps({"kind": "command", "execution": {
+                 "commandId": "early-failure", "result": {"kind": "success"}}}),
+             "QUERY_COMPLETION": json.dumps({"finalResponse": "goal service unloaded", "finishReason": "error"})},
+    ) as sdk:
+        result = sdk.start_session("main").run("custom-response")
+        assert result.final_response == "goal service unloaded" and result.finish_reason == "error"
+        assert [event["type"] for event in result.events] == ["command/run", "command/done"]
+        assert_released(sdk)
 
 
 @pytest.mark.parametrize("text,error", [("rpc-error", JsonRpcError), ("bad-route", SdkProtocolError), ("bad-execution", SdkProtocolError)])

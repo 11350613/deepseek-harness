@@ -176,18 +176,58 @@ it('returns a busy command result while another run waits for model activity', a
   expect((await running).finalResponse).toBe('reply:hold')
 })
 
+it('keeps a plan run pending when another command completes on the same Session', async () => {
+  const harness = harnessWith()
+  const session = harness.session('main')
+  const admitted = Promise.withResolvers<undefined>()
+  let finished = false
+  const running = session.run('/plan hold', { onNotification(notification) {
+    if (notification.method === 'session.event'
+      && (notification.params.event as { type: string }).type === 'command/done') {
+      admitted.resolve(undefined)
+    }
+  } }).then((result) => { finished = true; return result })
+  try {
+    await admitted.promise
+    expect(await session.run('/compact')).toMatchObject({ finalResponse: 'busy', finishReason: 'error' })
+    expect(await harness.client.request('test/state')).toHaveProperty('waitingPrompts', 1)
+    expect(finished).toBe(false)
+  } finally {
+    await harness.client.request('test/release')
+  }
+  expect(await running).toMatchObject({ finalResponse: 'the generated plan', finishReason: 'completed' })
+})
+
 it.each(['/model', ' /compact extra '])('preserves unsupported command input as text: %s', async (text) => {
   expect((await harnessWith().session('main').run(text)).finalResponse).toBe(`reply:${text}`)
 })
 
-it('returns a command result without lifecycle notifications', async () => {
+it.each(['missing-run', 'missing-done', 'missing-both', 'unrelated-done', 'invalid-done'])('rejects an incomplete command lifecycle: %s', async (lifecycle) => {
   const execution = { commandId: 'command-no-events', result: { kind: 'success' } }
-  const notifications: HarnessNotification[] = []
-  const result = await harnessWith({ QUERY_RESULT: JSON.stringify({ kind: 'command', execution }) }).session('main').run('/compact', {
-    onNotification: (notification) => { notifications.push(notification) },
+  const harness = harnessWith({
+    QUERY_RESULT: JSON.stringify({ kind: 'command', execution }), QUERY_LIFECYCLE: lifecycle,
   })
-  expect(result).toEqual({ sessionId: 'main', finalResponse: '', finishReason: 'completed', events: [], notifications: [] })
-  expect(notifications).toEqual([])
+  const subscribe = harness.client.subscribeSessionTree.bind(harness.client)
+  const closes: ReturnType<typeof vi.fn>[] = []
+  vi.spyOn(harness.client, 'subscribeSessionTree').mockImplementation((id) => {
+    const subscription = subscribe(id)
+    closes.push(vi.spyOn(subscription, 'close'))
+    return subscription
+  })
+  await expect(harness.session('main').run('/compact')).rejects.toThrow(SdkProtocolError)
+  expect(closes[0]).toHaveBeenCalledOnce()
+  expect(await harness.client.request('test/state')).toHaveProperty('queries.length', 1)
+})
+
+it('retains failure completion when the native handler settles later but before its RPC response', async () => {
+  const harness = harnessWith({
+    QUERY_RESULT: JSON.stringify({ kind: 'command', execution: { commandId: 'early-failure', result: { kind: 'success' } } }),
+    QUERY_COMPLETION: JSON.stringify({ finalResponse: 'goal service unloaded', finishReason: 'error' }),
+    QUERY_LIFECYCLE: 'late-done',
+  })
+  const result = await harness.session('main').run('/goal task')
+  expect(result).toMatchObject({ finalResponse: 'goal service unloaded', finishReason: 'error' })
+  expect(result.events.map(event => event.type)).toEqual(['command/run', 'command/done'])
 })
 
 it.each(['ordinary', '/compact'])('releases its subscription after an observer rejects %s', async (text) => {

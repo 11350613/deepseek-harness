@@ -61,6 +61,7 @@ class _RunActivity:
         self.receipt_kind = receipt_kind
         self.receipt_id = receipt_id
         self.received = False
+        self.command_done = False
         self.events: list[JsonObject] = []
         self.notifications: list[Notification] = []
 
@@ -74,16 +75,22 @@ class _RunActivity:
             elif not _is_command_event(notification, self.session_id, self.receipt_id, "command/run"):
                 return False
             self.received = True
+        event = notification.payload.get("event") if (
+            notification.method == "session.event" and notification.payload.get("sessionId") == self.session_id
+        ) else None
+        if (self.receipt_kind == "command" and isinstance(event, dict) and event.get("type") == "command/done"
+                and isinstance(event.get("data"), dict) and event["data"].get("commandId") == self.receipt_id):
+            self.command_done = True
         self.notifications.append(notification)
         if on_notification is not None:
             on_notification(notification)
-        if notification.method == "session.event" and notification.payload.get("sessionId") == self.session_id:
-            event = notification.payload.get("event")
-            if isinstance(event, dict):
-                self.events.append(event)
+        if isinstance(event, dict):
+            self.events.append(event)
         return True
 
     def result(self, completed: JsonObject | None = None) -> RunResult:
+        if completed is not None and not self.command_done:
+            raise SdkProtocolError("Command completion is missing matching lifecycle events")
         return RunResult(
             session_id=self.session_id,
             final_response=completed["finalResponse"] if completed is not None else final_response(self.events),
@@ -245,6 +252,13 @@ class Session:
                         if (not isinstance(payload.get("finalResponse"), str)
                                 or not isinstance(payload.get("finishReason"), str) or not payload["finishReason"]):
                             raise SdkProtocolError("Invalid session.query.completed result")
+                        # Failure completion can precede handler settlement; its lifecycle precedes the RPC response.
+                        while not activity.command_done:
+                            try:
+                                queued = subscription.next(timeout_seconds=0)
+                            except TimeoutError:
+                                break
+                            activity.record(queued, on_notification)
                         return activity.result(payload)
                     activity.record(notification, on_notification)
             activity = _RunActivity(self.id, "prompt", response)

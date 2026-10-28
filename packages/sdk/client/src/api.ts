@@ -182,6 +182,7 @@ function resolveRunDelivery(requested: RunOptions['delivery']): 'queue' | 'steer
 
 /** Collect one input's root events and Session-tree notifications from its admission. */
 class RunActivity {
+  commandDone = false
   private received = false
   private readonly events: SessionEvent[] = []
   private readonly notifications: HarnessNotification[] = []
@@ -198,6 +199,8 @@ class RunActivity {
     }
     const event = notification.method === 'session.event' && notification.params.sessionId === this.sessionId
       ? validatedSessionEvent(notification.params.event) : undefined
+    if (event?.type === 'command/done' && 'commandId' in this.receipt
+      && isRecord(event.data) && event.data.commandId === this.receipt.commandId) this.commandDone = true
     this.notifications.push(notification)
     onNotification?.(notification)
     if (event !== undefined) this.events.push(event)
@@ -211,6 +214,9 @@ class RunActivity {
   }
 
   result(completed?: { finalResponse: string; finishReason: string }): RunResult {
+    if (completed !== undefined && !this.commandDone) {
+      throw new SdkProtocolError('Command completion is missing matching lifecycle events')
+    }
     const terminal = this.events.findLast(event => event.type === 'turn/end')
     return {
       sessionId: this.sessionId, finalResponse: completed?.finalResponse ?? finalResponse(this.events),
@@ -277,6 +283,12 @@ export class HarnessSession {
             if (params.commandId !== response.execution.commandId) continue
             if (typeof params.finalResponse !== 'string' || typeof params.finishReason !== 'string'
               || params.finishReason.length === 0) throw new SdkProtocolError('Invalid session.query.completed result')
+            // Failure completion can precede handler settlement; its lifecycle is queued before the RPC response.
+            while (!activity.commandDone) {
+              const queued = subscription.tryNext()
+              if (queued === undefined) break
+              activity.record(queued, options?.onNotification)
+            }
             return activity.result({ finalResponse: params.finalResponse, finishReason: params.finishReason })
           }
           activity.record(notification, options?.onNotification)
