@@ -29,7 +29,7 @@
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import { clearSidebarLayout, readSidebarLayout, writeSidebarLayout } from './persistence.ts'
 import type {
-  DockMode, DockZone, FloatRect, History, LayoutOp, LayoutState, Mint, PaneId, SplitId, TabId, TabRecord,
+  DockMode, DockZone, FloatRect, History, LayoutOp, LayoutState, Mint, PaneId, PlannedTab, SplitId, TabId, TabRecord,
 } from '@deepseek-ai/dsh-client-ui-dockkit'
 import {
   activeDockPaneId, createInitialState, dockPaneIds, EMPTY_HISTORY, findContentTab, findPaneContentTab, findTabPane, getPane,
@@ -37,6 +37,7 @@ import {
   planSetMode, planSettle, planSplitPane, planUnfloatPane, record, replay, stepBack, stepForward,
 } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { GUIDE_KIND, pageAddress, type SidebarRightSeed } from './contract/seed.ts'
+import type { SidebarRightDestination } from './contract/slots.ts'
 
 /** One session's docking surface: the layout, its sequence, and the id counter. */
 export interface SurfaceState {
@@ -93,6 +94,63 @@ export interface OpenContentIntent {
   readonly replaceTab?: TabId
   /** Resource tabs reveal an existing identity by default; `false` permits duplicates. Pages always deduplicate within the target pane. */
   readonly revealIfOpened?: boolean
+  /** Settle in this host instead, ignoring every placement field above; see `SidebarRightOpenResourceOptions.destination`. */
+  readonly destination?: SidebarRightDestination
+}
+
+/**
+ * First tab showing (kind, contentId) in one host: docked panes in visual
+ * order, or floating panels from the bottom of the stack.
+ * @param state - current layout.
+ * @param destination - the host searched.
+ * @param contentId - the content identity.
+ * @param kind - the claimed kind.
+ * @returns the tab, or `undefined` when that host shows no such content.
+ */
+export function findHostContentTab(
+  state: LayoutState, destination: SidebarRightDestination, contentId: string, kind: string,
+): TabId | undefined {
+  const panes = destination === 'sidebar' ? dockPaneIds(state) : state.floats
+  for (const paneId of panes) {
+    const found = findPaneContentTab(state, paneId, contentId, kind)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+/**
+ * Plan an open into an explicit host: reveal the copy already there, else move
+ * one copy from the other host, else open a new tab there. A move keeps the
+ * tab record, so its occurrence survives the commit.
+ * @param state - current layout.
+ * @param mint - id source for a new tab or floating pane.
+ * @param intent - the claimed content and its host.
+ * @param destination - the host.
+ * @returns the operations plus the tab they settle on.
+ */
+function planOpenIn(state: LayoutState, mint: Mint, intent: OpenContentIntent, destination: SidebarRightDestination): PlannedTab {
+  const { kind, contentId, title } = intent
+  const other = destination === 'sidebar' ? 'float' : 'sidebar'
+  const here = findHostContentTab(state, destination, contentId, kind)
+  const there = here === undefined ? findHostContentTab(state, other, contentId, kind) : undefined
+  if (destination === 'sidebar') {
+    const expand = planSetExpanded(state, true)
+    if (here !== undefined) return { ops: [...expand, { type: 'focusTab', tabId: here }], tabId: here }
+    const paneId = activeDockPaneId(state)
+    if (there !== undefined) return { ops: [...expand, ...planUnfloatPane(state, findTabPane(state, there).id, paneId)], tabId: there }
+    const opened = planOpenContent(state, mint, { kind, contentId, title, paneId, revealIfOpened: false })
+    return { ops: [...expand, ...opened.ops], tabId: opened.tabId }
+  }
+  if (here !== undefined) return { ops: [{ type: 'focusTab', tabId: here }], tabId: here }
+  if (there !== undefined) return { ops: planFloatTab(state, mint, there).ops, tabId: there }
+  // A new floating tab passes through the default docked pane inside this one
+  // entry, seated just after that pane's active tab so the pane's selection is
+  // what it was once the tab leaves; no state between the two is ever committed.
+  const paneId = activeDockPaneId(state)
+  const pane = getPane(state, paneId)
+  const index = pane.activeTabId === undefined ? 0 : pane.tabs.indexOf(pane.activeTabId) + 1
+  const opened = planOpenContent(state, mint, { kind, contentId, title, paneId, index, revealIfOpened: false })
+  return { ops: [...opened.ops, ...planFloatTab(state, mint, opened.tabId).ops], tabId: opened.tabId }
 }
 
 /** A mint that counts, so the surface can carry its position forward. */
@@ -308,6 +366,11 @@ export function createSidebarRightStore(
       // synchronously, because actions return nothing.
       openContent: (d, sessionId: string, intent, settled) => {
         d.bySession = seat(d, sessionId, s => advance(s, (state, mint) => {
+          if (intent.destination !== undefined) {
+            const planned = planOpenIn(state, mint, intent, intent.destination)
+            settled(planned.tabId)
+            return planned.ops
+          }
           const { kind, contentId, title } = intent
           // A `replaceTab` tab that has closed since names no place, as the controller reads it.
           const replace = intent.replaceTab !== undefined && state.tabs[intent.replaceTab] !== undefined ? intent.replaceTab : undefined

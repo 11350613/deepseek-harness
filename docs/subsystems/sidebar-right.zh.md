@@ -83,6 +83,7 @@ export function apply(ctx: Context): void {
 | `replaceTab` | 新内容取代这个 tab 的位置，并在同一步关闭它：停靠 tab 让出 pane 与条上位置，浮动 tab 让出浮窗，新 tab 沿用其 pane id 与矩形。揭示时该 tab 保持打开（[语义](../../packages/client/ui-sidebar-right/README.zh.md#ctxsidebarright)）。 |
 | `revealIfOpened` | 缺省 `true`：已显示同一 `(kind, address)` 的 tab 被聚焦并收到 `params`。`false` 则无论如何再开一个。 |
 | `preferNewPane` | 在普通格数预算与空间规则下优先新建停靠格；不能分栏时回退到目标格。与 `replaceTab` 一起使用时忽略。 |
+| `destination`（仅 `openResource`） | `'sidebar'` 或 `'float'`：落在活跃停靠格或新浮窗，忽略上面四个选项。该处已有副本时揭示它；否则把另一宿主中的副本连同 tab id 与正文状态移过去；否则新开 tab。`'float'` 不改变该列的展开状态（[语义](../../packages/client/ui-sidebar-right/README.zh.md#ctxsidebarright)）。 |
 | `kind`（仅 `openResource`） | 点名打开类型而不排候选；该 kind 的生效实现打开地址，它的 `canOpen` 仍生效。 |
 | `params` | 给正文的导航参数，作为 `navigation.params` 送达。`openResource` 按资源类型经声明合并表 `SidebarRightResourceParamsMap` 定型（文本预览声明 `{ line?: number }`）；`openTab<K>` 按 kind 经 `SidebarRightTabParamsMap` 定型，未声明的 kind 为 `undefined`；正文读到的是二者联合 `SidebarRightNavigationParams`。值按约定为 JSON 形状，运行时不校验。 |
 
@@ -106,7 +107,7 @@ Sidebar 声明四个扩展 slot；其文档 tab 另行声明下表中的 keyed �
 | `sidebar.right.tab.menu.item` | list，会话作用域 | 追加在 kit 自身布局动作之后的内容级动作。执行了动作的条目必须调用 owner 的 `dismiss()`。 |
 | `sidebar.right.tab.document` | 按文档实现的 `id` keyed，会话作用域 | 文档 tab 内选中的文件渲染器；父组件拥有共享加载与工具栏控件。 |
 
-正文、标题与引导页替换项接收框架注入的 `useTabInfo()`。它返回 `{ sidebar, panel, tab }`：`sidebar` 包含 `expanded` 与 `fullscreen`，`panel.id` 标识所属窗格，必填的 `panel.isFloating: boolean` 区分浮窗与停靠窗格。tab 移动时，两者通过 hook 更新，`tab.id` 保持不变。`tab` 还包含其他记录字段以及 `visible`、`navigation`、`signal` 和 `actions`。所有 tab 都要求 Session 位于前台。停靠正文还要求展开且选中；停靠标题要求展开；前台浮窗不随整栏收起。`signal` 在记录消失或插件卸载时中止，不因隐藏或切换 Session 而中止。`tab.actions` 提供绑定到标签所属 Session 的 `openResource`、`openTab` 与 `close`。打开操作返回 `void`，缺省落在当前所属停靠窗格，当前 tab 浮动时落在活动停靠窗格；`revealIfOpened` 缺省为 `true`，`replaceTab: true` 让新内容在同一历史项中替换本记录。菜单项保留普通的 `tab` 与 `dismiss` owner 参数。
+正文、标题与引导页替换项接收框架注入的 `useTabInfo()`。它返回 `{ sidebar, panel, tab }`：`sidebar` 包含 `expanded` 与 `fullscreen`，`panel.id` 标识所属窗格，必填的 `panel.isFloating: boolean` 区分浮窗与停靠窗格。tab 移动时，两者通过 hook 更新，`tab.id` 保持不变。`tab` 还包含其他记录字段以及 `visible`、`navigation`、`signal` 和 `actions`。所有 tab 都要求 Session 位于前台。停靠正文还要求展开且选中；停靠标题要求展开；前台浮窗不随整栏收起。`signal` 在记录消失或插件卸载时中止，不因隐藏或切换 Session 而中止。`tab.actions` 提供绑定到标签所属 Session 的 `openResource`、`openTab` 与 `close`。打开操作返回 `void`，缺省落在当前所属停靠窗格，当前 tab 浮动时落在活动停靠窗格；`revealIfOpened` 缺省为 `true`，`replaceTab: true` 让新内容在同一历史项中替换本记录；带 `destination` 的 `openResource` 既不传本 tab 所在窗格，也不传本记录。菜单项保留普通的 `tab` 与 `dismiss` owner 参数。
 
 `navigation.revision` 在每次导航到该 tab 时递增，`params` 不变也递增，正文可仅凭「又被导航了」行动；按地址打开的 tab 为 `1`，没有人按地址打开的记录——种入的引导、刷新或撤销恢复的 tab——为 `0`。Tab 域为每条打开的记录保有一个 occurrence：记录出现即在资源模型里钉住，因此切换 tab 卸载正文也不丢内容；记录消失即中止并丢弃；撤销恢复的记录是新的 occurrence（[Tab 域](../../packages/client/ui-sidebar-right/README.zh.md#the-tab-domain)）。
 

@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Locator, type Page } from 'playwright'
 import { expect, it, onTestFailed, onTestFinished } from 'vitest'
+import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import { launchWebScaffold, watchConsole } from './scaffold.ts'
 import { connectFreshWorkspace, saveFailureShot } from './support.ts'
 
@@ -41,17 +42,21 @@ async function resizeFloat(page: Page, panel: Locator, width: number, height: nu
   }).toBeLessThanOrEqual(1)
 }
 
-it('browses workspace files in tabs that share one pane tree', async () => {
+/** Boot the shipped Web composition into a settled Session whose workspace holds `src/{a,b,c}.txt`, `README.md`, and `focus.html`. */
+async function openWorkspace(
+  shot: string,
+  openInAppEnvironment?: LaunchEnvironmentSnapshot,
+): Promise<{ page: Page; input: Locator; errors: ReturnType<typeof watchConsole> }> {
   const scaffold = await launchWebScaffold({
     replayFixture: fileURLToPath(new URL('../../../snapshots/web/lifecycle-chrome/session.v3.jsonl', import.meta.url)),
-    paceMs: 5, compareReplaySession: false,
+    paceMs: 5, compareReplaySession: false, ...openInAppEnvironment === undefined ? {} : { openInAppEnvironment },
   })
   onTestFinished(() => scaffold.close())
   const browser = await chromium.launch()
   onTestFinished(() => browser.close())
   const page = await browser.newPage({ locale: 'en-US', viewport: { width: 1680, height: 1000 } })
   await page.addInitScript(() => { Object.defineProperty(navigator, 'platform', { value: 'Win32' }) })
-  onTestFailed(() => saveFailureShot(page, 'web-e2e-file-browser'))
+  onTestFailed(() => saveFailureShot(page, shot))
   const errors = watchConsole(page)
   await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
   await connectFreshWorkspace(page, scaffold.workspaceCwd, 'test workspace')
@@ -70,7 +75,11 @@ it('browses workspace files in tabs that share one pane tree', async () => {
   await writeFile(join(cwd, 'README.md'), '# Readme\n')
   await writeFile(join(cwd, 'focus.html'), '<!doctype html><button>Preview focus</button>')
   await page.getByText('LIGHTHOUSE', { exact: true }).waitFor()
+  return { page, input, errors }
+}
 
+it('browses workspace files in tabs that share one pane tree', async () => {
+  const { page, input, errors } = await openWorkspace('web-e2e-file-browser')
   await page.locator('[data-sidebar-right-expand]').click()
   const column = page.locator('[data-rightbar-col]')
   const layout = await page.addStyleTag({ content: '[data-sidebar-right-panel] { width: 960px !important; }' })
@@ -433,5 +442,75 @@ it('browses workspace files in tabs that share one pane tree', async () => {
   expect(await dockTabs.first().textContent()).toContain('b.txt')
   expect(await column.locator('[data-sidebar-right-guide-entry]').count()).toBe(0)
   expect((await column.boundingBox())?.width ?? 0).toBeGreaterThan(200)
+  expect(errors).toEqual({ warnings: [], pageErrors: [] })
+})
+
+it('moves a file between the docked column and a floating panel from the file menu, keeping its reading position', async () => {
+  // The file menu's open actions belong to Open In, which ordinary scenarios leave out; remote launch facts suppress native probes.
+  const { page, errors } = await openWorkspace('web-e2e-file-browser-destination',
+    createLaunchEnvironmentSnapshot([{ source: 'process', values: { SSH_CONNECTION: '10.0.0.2 55000 10.0.0.9 22' } }]))
+  const column = page.locator('[data-rightbar-col]')
+  const expand = page.locator('[data-sidebar-right-expand]')
+  const float = page.locator('[data-sidebar-right-session]:not([hidden]) [data-dockkit-float]')
+  const docked = (name: string) => column.locator('[data-dockkit-pane] [data-dockkit-tab]', { hasText: name })
+  const menu = page.locator('[data-context-menu][role="menu"]')
+  // The files page floats and the column collapses, so every later open starts from a floating source pane.
+  await expand.click()
+  await column.locator('[data-sidebar-right-guide-entry="files"]').click()
+  await column.locator('[data-files-page]').waitFor()
+  const surface = await page.locator('[data-dockkit-surface]').first().boundingBox()
+  if (surface === null) throw new Error('surface is not rendered')
+  await drag(page, column.locator('[data-dockkit-tab]', { hasText: 'Files' }), { x: surface.x - 240, y: surface.y + 120 })
+  await expect.poll(() => float.count()).toBe(1)
+  await column.locator('[data-sidebar-right-toggle]').click()
+  await expand.waitFor()
+  const pageFloat = float.filter({ has: page.locator('[data-files-page]') })
+  await pageFloat.getByRole('button', { name: 'src', exact: true }).click()
+  const row = pageFloat.getByRole('button', { name: 'a.txt', exact: true })
+  const choose = async (item: string): Promise<void> => {
+    await row.click({ button: 'right' })
+    await menu.waitFor()
+    await menu.getByRole('menuitem', { name: item, exact: true }).click()
+    await menu.waitFor({ state: 'detached' })
+  }
+  await row.click({ button: 'right' })
+  await menu.getByRole('menuitem', { name: 'Open in floating panel', exact: true }).waitFor()
+  expect(await menu.getByRole('menuitem', { name: 'Open in sidebar', exact: true }).count()).toBe(1)
+  await page.keyboard.press('Escape')
+  await menu.waitFor({ state: 'detached' })
+
+  // A file nothing shows opens in its own floating panel; the collapsed column stays collapsed.
+  await choose('Open in floating panel')
+  await expect.poll(() => float.count()).toBe(2)
+  const fileFloat = float.filter({ has: page.locator('[data-textpreview-path]', { hasText: 'a.txt' }) })
+  const floatBody = fileFloat.locator('[data-textpreview-state] [data-textpreview-body]')
+  await floatBody.waitFor()
+  expect(await expand.count()).toBe(1)
+  expect(await docked('a.txt').count()).toBe(0)
+  await expect.poll(() => floatBody.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true)
+  await floatBody.evaluate((node) => { node.scrollTop = 600 })
+  await expect.poll(() => floatBody.evaluate(node => node.scrollTop)).toBe(600)
+  // Asking again reveals that panel rather than adding one.
+  await choose('Open in floating panel')
+  expect(await float.count()).toBe(2)
+  expect(await fileFloat.count()).toBe(1)
+  expect(await expand.count()).toBe(1)
+
+  // The floating file moves into the expanded column, where the reader left off.
+  await choose('Open in sidebar')
+  await expect.poll(() => fileFloat.count()).toBe(0)
+  expect(await float.count()).toBe(1)
+  await expect.poll(() => expand.count()).toBe(0)
+  await expect.poll(() => docked('a.txt').count()).toBe(1)
+  const dockBody = column.locator('[data-dockkit-pane] [data-textpreview-state]:visible [data-textpreview-body]')
+  await expect.poll(() => dockBody.evaluate(node => node.scrollTop)).toBe(600)
+
+  // And back out into a floating panel, leaving the column open and its strip without the file.
+  await choose('Open in floating panel')
+  await expect.poll(() => fileFloat.count()).toBe(1)
+  expect(await float.count()).toBe(2)
+  await expect.poll(() => docked('a.txt').count()).toBe(0)
+  expect(await expand.count()).toBe(0)
+  await expect.poll(() => floatBody.evaluate(node => node.scrollTop)).toBe(600)
   expect(errors).toEqual({ warnings: [], pageErrors: [] })
 })

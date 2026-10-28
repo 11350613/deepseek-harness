@@ -42,8 +42,9 @@ import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SidebarRightNavigationParams, SidebarRightResourceParams, SidebarRightTabParamsFor } from './contract/params.ts'
 import { pageAddress } from './contract/seed.ts'
+import type { SidebarRightDestination } from './contract/slots.ts'
 import type { SidebarRightTabClaim, SidebarRightTabRegistry } from './tab-registry.ts'
-import { canCloseTab, type SidebarRightState, type SurfaceState } from './stores.ts'
+import { canCloseTab, findHostContentTab, type SidebarRightState, type SurfaceState } from './stores.ts'
 import type { createSidebarRightStore } from './stores.ts'
 import { TabDomain, type PinResource } from './tab-domain.ts'
 import { SidebarTabInventory } from './tab-inventory.ts'
@@ -176,6 +177,17 @@ export interface SidebarRightOpenResourceOptions extends SidebarRightPlacement {
   readonly kind?: string
   /** The resource's navigation parameters, typed by resource type; delivered as `navigation.params`. */
   readonly params?: SidebarRightResourceParams
+  /**
+   * Settle the resource in this host, matched by Session, claimed kind, and
+   * content id; `paneId`, `preferNewPane`, `replaceTab`, and `revealIfOpened`
+   * are then ignored and no tab closes. A copy already in the host is revealed;
+   * otherwise one copy from the other host moves there, keeping its tab id and
+   * occurrence; otherwise a new tab opens there. `'sidebar'` uses the default
+   * docked pane and expands the column; `'float'` uses a new floating panel and
+   * leaves the column as it is. Other copies stay open. Omitted, placement
+   * follows the fields above.
+   */
+  readonly destination?: SidebarRightDestination
 }
 
 /** How a caller wants a page type opened. */
@@ -215,10 +227,14 @@ export interface ISidebarRight {
    * `canOpen` accept the address and the best band wins; with it, that kind's
    * type in force opens the address (its `canOpen` still applies). An address
    * outside `dsh-resource://`, or one no type will open, is a wiring mistake,
-   * not a user error, so it throws. The column expands in the same step,
-   * because content the user cannot see is not opened.
+   * not a user error, so it throws. A docked tab expands the column in the
+   * same step, because content the user cannot see is not opened; an open
+   * that settles in a floating panel leaves the column as it is.
+   * `options.destination` selects the host explicitly and takes precedence
+   * over the placement fields; the whole open, including a move between hosts,
+   * is one recorded intent.
    * @param address - a `dsh-resource://<type>/…` address.
-   * @param options - placement, the opening type, and navigation parameters.
+   * @param options - placement or an explicit host, the opening type, and navigation parameters.
    */
   openResource(address: string, options?: SidebarRightOpenResourceOptions): void
   /**
@@ -428,7 +444,25 @@ export class SidebarRightController implements ISidebarRight {
     if (!address.startsWith(RESOURCE_SCHEME)) {
       throw new Error(`sidebarRight: no registered tab type claims "${address}"`)
     }
-    this.place(sessionId, actions, this.tabs.claim(address, options.kind), address, options, options.params)
+    const claim = this.tabs.claim(address, options.kind)
+    if (options.destination === undefined) this.place(sessionId, actions, claim, address, options, options.params)
+    else this.placeIn(sessionId, actions, claim, address, options.destination, options.params)
+  }
+
+  /** Settle a claimed resource in an explicit host: one store intent, no close handler, and a flash only for a reveal. */
+  private placeIn(
+    sessionId: SessionId,
+    actions: SurfaceActions,
+    claim: SidebarRightTabClaim,
+    address: string,
+    destination: SidebarRightDestination,
+    params: SidebarRightNavigationParams,
+  ): void {
+    const layout = this.adopted.get(sessionId)?.store.getSnapshot().bySession[sessionId]?.layout
+    const revealed = layout === undefined ? undefined : findHostContentTab(layout, destination, claim.contentId, claim.kind)
+    actions.openContent(sessionId, { kind: claim.kind, contentId: claim.contentId, title: claim.title, destination },
+      (tabId) => { this.tabDomain.navigate(sessionId, tabId, { address, params }) })
+    if (layout !== undefined && revealed !== undefined) this.flash(sessionId, findTabPane(layout, revealed).id)
   }
 
   /** Place a page type in one session at the address pages are recorded under; an unregistered kind throws. */
