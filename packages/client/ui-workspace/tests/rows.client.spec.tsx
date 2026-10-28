@@ -16,6 +16,7 @@ import {
 } from '../src/client/rows/Rows.tsx'
 import type { GroupNode, SearchResultNode, SessionNode } from '../src/client/tree.ts'
 import { en, zh } from '../src/client/locales.ts'
+import rowCss from '../src/client/rows/Rows.module.css'
 
 afterEach(cleanup)
 beforeEach(() => { vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(any-hover: hover)' })) })
@@ -1172,6 +1173,8 @@ describe('workspace browser rows', () => {
       expect(row.querySelector('[data-state="ongoing"]')).toBeNull()
       expect(row.textContent).toContain(label)
       expect(title.nextElementSibling?.textContent).toBe(compactLabel)
+      expect(rowCss.timestamp).toBeTypeOf('string')
+      expect(title.nextElementSibling?.firstElementChild?.classList.contains(rowCss.timestamp!)).toBe(false)
       expect(row.querySelector('[class*="time"]')?.getAttribute('aria-hidden')).toBe('true')
       expect(row.textContent).not.toContain('刚刚')
 
