@@ -574,6 +574,15 @@ it('moves focus to the rail toggle when the drawer opener unmounts', () => {
   }
 })
 
+it('moves focus from drawer search to the rail toggle before wide content unmounts', () => {
+  vi.useFakeTimers()
+  const h = mountShell({ drawer: true, content: <input aria-label="Search" /> })
+  screen.getByRole('textbox', { name: 'Search' }).focus()
+  h.rerender({ drawer: false, collapsed: true, width: 56 })
+  act(() => { vi.advanceTimersByTime(150) })
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open sidebar' }))
+})
+
 it.each(['dialog', 'outside'] as const)('preserves %s focus when a drawer becomes a rail without its opener', (destination) => {
   vi.useFakeTimers()
   const opener = document.createElement('button')

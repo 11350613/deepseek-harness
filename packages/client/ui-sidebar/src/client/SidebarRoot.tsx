@@ -193,8 +193,10 @@ export function SidebarRoot({
   const sidebarFocus = useRef<Element | null>(null)
   useModalLayer(column, drawer && !collapsed, toggleSidebar)
   useLayoutEffect(() => {
-    if (!drawer || !collapsed || sidebarFocus.current !== document.activeElement) return
-    const opener = column.current?.ownerDocument.querySelector<HTMLElement>('[data-sidebar-opener]')
+    if (!collapsed || sidebarFocus.current !== document.activeElement) return
+    const opener = drawer
+      ? column.current?.ownerDocument.querySelector<HTMLElement>('[data-sidebar-opener]')
+      : column.current?.querySelector<HTMLElement>('[data-sidebar-toggle]')
     if (opener != null && !isBehindModal(opener)) focusWithoutRing(opener, { preventScroll: true })
   }, [drawer, collapsed])
   const [pointerInside, setPointerInside] = useState(false)
@@ -254,6 +256,7 @@ export function SidebarRoot({
   const toggle = (
     <Tooltip label={toggleLabel} shortcutKeys={shortcut?.keys} delayMs={500} side={captionTooltipSide} portal={drawer}>
       <button
+        data-sidebar-toggle
         data-modal-autofocus={drawer || undefined}
         type="button"
         className={clsx(css.iconButton, css.toggle)}
