@@ -121,7 +121,12 @@ it('bounds pointer and keyboard resizing, retains hidden width, and stops cancel
       expect(width()).toBe(350)
     }
     view.rerender(<FileTreePane {...props} open={false} />)
+    containerWidth = 0
+    act(() => { measure([], new NativeObserver(() => {})) })
+    expect(width()).toBe(350)
+    containerWidth = 1000
     view.rerender(<FileTreePane {...props} open />)
+    act(() => { measure([], new NativeObserver(() => {})) })
     expect(width()).toBe(350)
     containerWidth = 600
     act(() => { measure([], new NativeObserver(() => {})) })
