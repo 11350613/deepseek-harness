@@ -2,7 +2,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { lstatSync, readFileSync, readlinkSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { canonicalReferenceText } from './verify-public-repository-links.ts'
 
@@ -12,6 +12,12 @@ const organizationUrl = new RegExp(`\\bgithub\\.com/${organization}(?![a-z0-9-])
 // The independent kit repository owns the engine source and documentation.
 const kitRepositoryUrl = new RegExp(`\\bgithub\\.com/${organization}/libreoffice-kit(?:\\.git)?(?=/|[^a-zA-Z0-9_.-]|$)`, 'g')
 const commitCandidate = /(?<![a-z0-9])[\da-f]{7,40}(?![a-z0-9])/gi
+// Whole TOML strings and comments take precedence over unquoted artifact byte counts.
+const uvLockToken = new RegExp([
+  String.raw`"""(?:\\[\s\S]|"(?!"")|[^"\\])*"{3,5}|'''[\s\S]*?'{3,5}`,
+  String.raw`"(?:\\[^\r\n]|[^"\\\r\n])*"|'[^'\r\n]*'|#[^\r\n]*`,
+  String.raw`(?<![\w.-])size[ \t]*=[ \t]*(\d+)(?=[ \t]*(?:[,}#\r\n]|$))`,
+].join('|'), 'g')
 const excludedPrefixes = ['vendor/', '.agents/notes/archived/']
 const gitOutputLimit = 64 * 1024 * 1024
 // One 41-byte line per object; 1.2 million objects produce about 49 MiB.
@@ -36,7 +42,8 @@ function isMaintained(file: string): boolean {
  * @param file - Repository-relative path used in diagnostics and exclusions.
  * @param source - File text or a symlink's stored target.
  * @param commits - Lowercase, unambiguous full or abbreviated commit identifiers.
- * @returns One finding per line and reference kind; digests and other Git object types are accepted.
+ * @returns One finding per line and reference kind; digests, other Git object types, and
+ * unquoted decimal `size` values in uv.lock are accepted. Strings and comments remain checked.
  */
 export function findRepositoryReferences(
   file: string,
@@ -45,7 +52,11 @@ export function findRepositoryReferences(
 ): RepositoryReference[] {
   if (!isMaintained(file)) return []
   const references: RepositoryReference[] = []
-  for (const [index, line] of source.split('\n').entries()) {
+  const referenceText = basename(file) === 'uv.lock'
+    ? source.replace(uvLockToken, (token: string, bytes: string | undefined) =>
+      bytes === undefined ? token : token.slice(0, -bytes.length) + ' '.repeat(bytes.length))
+    : source
+  for (const [index, line] of referenceText.split('\n').entries()) {
     if (organizationUrl.test(canonicalReferenceText(line).replace(kitRepositoryUrl, ''))) {
       references.push({ file, line: index + 1, kind: 'organization-url' })
     }

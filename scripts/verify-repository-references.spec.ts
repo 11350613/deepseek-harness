@@ -72,6 +72,52 @@ describe('unique object-name prefix search', () => {
 })
 
 describe('maintained repository reference policy', () => {
+  const numericCommit = String(6_344_383)
+
+  it.each(['uv.lock', 'python/sdk/uv.lock'])(
+    'accepts artifact byte counts in %s that match a numeric commit prefix', (file) => {
+      const source = [
+        `sdist = { url = "https://example.invalid/source.tar.gz", size = ${numericCommit} }`,
+        'wheels = [',
+        `    { url = "https://example.invalid/package.whl", size = ${numericCommit}, hash = "sha256:${'a'.repeat(64)}" },`,
+        ']',
+      ].join('\n')
+      expect(findRepositoryReferences(file, source, new Set([numericCommit]))).toEqual([])
+    },
+  )
+
+  it.each([
+    `source = { git = "https://example.invalid/repo?rev=${numericCommit}" }`,
+    `size = "${numericCommit}"`,
+    `size = '${numericCommit}'`,
+    `description = "size = ${numericCommit}"`,
+    `description = 'size = ${numericCommit}'`,
+    `description = "escaped \\" quote, size = ${numericCommit}"`,
+    `description = """\nsize = ${numericCommit}\n"""`,
+    `description = '''\nsize = ${numericCommit}\n'''`,
+    `# size = ${numericCommit}`,
+    `size = ${numericCommit} # commit ${numericCommit}`,
+    `artifact = { size = ${numericCommit}, rev = "${numericCommit}" }`,
+  ])('rejects numeric commit references in uv.lock strings and comments: %s', (source) => {
+    const line = source.startsWith('description = """') || source.startsWith("description = '''") ? 2 : 1
+    expect(findRepositoryReferences('python/sdk/uv.lock', source, new Set([numericCommit]))).toEqual([
+      { file: 'python/sdk/uv.lock', line, kind: 'commit-hash' },
+    ])
+  })
+
+  it('keeps checking other uv.lock fields, organization URLs, and other file types', () => {
+    const commits = new Set([numericCommit])
+    expect(findRepositoryReferences('uv.lock', `revision = ${numericCommit}`, commits)).toEqual([
+      { file: 'uv.lock', line: 1, kind: 'commit-hash' },
+    ])
+    expect(findRepositoryReferences('notes.md', `size = ${numericCommit}`, commits)).toEqual([
+      { file: 'notes.md', line: 1, kind: 'commit-hash' },
+    ])
+    expect(findRepositoryReferences('uv.lock', `artifact = { size = ${numericCommit}, url = "${organizationUrl}" }`, commits)).toEqual([
+      { file: 'uv.lock', line: 1, kind: 'organization-url' },
+    ])
+  })
+
   it('permits only the independent kit repository and its source URLs', () => {
     for (const suffix of ['', '.git', '/tree/main/packages/entry']) {
       expect(findRepositoryReferences('package.json', `${organizationUrl}/libreoffice-kit${suffix}`, new Set())).toEqual([])
