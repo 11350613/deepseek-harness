@@ -35,7 +35,7 @@
  */
 import { sidebarTargetFromElement, type SidebarRightTarget } from './focus.ts'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
-import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import { createSnapshotStore, type ObservableSnapshot, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { FloatRect, PaneId, TabId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { activeDockPaneId, canSplit, findContentTab, findPaneContentTab, dockPaneIds, findTabPane, getPane } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
@@ -153,7 +153,15 @@ export interface SidebarRightPlacement {
   readonly paneId?: PaneId
   /** Prefer a new pane for new content; use the target pane when splitting is unavailable. */
   readonly preferNewPane?: boolean
-  /** Take this tab's place — its pane and its strip slot — and close it in the same step. */
+  /**
+   * Land new content in this tab's place and close it in the same step: a
+   * docked tab lends its pane and strip slot; a floating tab is replaced in its
+   * panel, and the new tab keeps the panel's pane id, rectangle, and stacking
+   * order, takes focus, and leaves the column as it is. Content already open is
+   * revealed, and this tab stays open. Where new content lands, it takes
+   * precedence over `paneId` and `preferNewPane`. A tab that has closed since
+   * is ignored, so the open places as without it.
+   */
   readonly replaceTab?: TabId
   /**
    * Resource tabs reveal an existing (kind, contentId) by default; `false`
@@ -178,6 +186,12 @@ export interface SidebarRightOpenTabOptions<K extends string = string> extends S
 
 /** The scheme every resource address carries; anything else is not a resource this face opens. */
 const RESOURCE_SCHEME = 'dsh-resource://'
+
+/** A request to highlight the pane holding a revealed tab; `serial` changes on every request, so a repeat restarts the highlight. */
+export interface SidebarRightFlash {
+  readonly paneId: PaneId
+  readonly serial: number
+}
 
 /** Synchronous close/replacement hook; resource owners retain any background cleanup. */
 export type SidebarRightCloseHandler = (sessionId: SessionId, tab: TabRecord) => void
@@ -272,6 +286,7 @@ export class SidebarRightController implements ISidebarRight {
   private readonly adopted: ReadonlyMap<SessionId, Adoption>
   private readonly rooms: ReadonlyMap<SessionId, RoomRule>
   private readonly closeHandlers = new Map<string, SidebarRightCloseHandler>()
+  private readonly flashes = new Map<SessionId, SnapshotStore<SidebarRightFlash | undefined>>()
 
   /**
    * Register resource cleanup before explicit removal. Failure preserves the tab.
@@ -439,16 +454,18 @@ export class SidebarRightController implements ISidebarRight {
     params: SidebarRightNavigationParams,
   ): void {
     const surface = this.adopted.get(sessionId)?.store.getSnapshot().bySession[sessionId]
-    const targetPane = surface === undefined ? undefined : placement.paneId ?? activeDockPaneId(surface.layout)
-    const target = targetPane === undefined ? undefined : surface?.layout.nodes[targetPane]
+    const layout = surface?.layout
+    const replaced = placement.replaceTab === undefined ? undefined : layout?.tabs[placement.replaceTab]
+    const targetPane = layout === undefined ? undefined : placement.paneId ?? activeDockPaneId(layout)
+    const target = targetPane === undefined ? undefined : layout?.nodes[targetPane]
     const preferNewPane = placement.preferNewPane === true
-      && placement.replaceTab === undefined
-      && surface !== undefined
+      && replaced === undefined
+      && layout !== undefined
       && target?.kind === 'pane'
       && target.host === 'dock'
       && target.tabs.length > 0
-      && canSplit(surface.layout)
-      && dockPaneIds(surface.layout).length < 2
+      && canSplit(layout)
+      && dockPaneIds(layout).length < 2
       && this.mounted.getSnapshot() === sessionId
       && this.canSplitPane(sessionId, target.id)
     const commit = (): void => { actions.openContent(sessionId, {
@@ -457,18 +474,47 @@ export class SidebarRightController implements ISidebarRight {
       title: claim.title,
       ...placement.paneId === undefined ? {} : { paneId: placement.paneId },
       ...preferNewPane ? { preferNewPane: true } : {},
-      ...placement.replaceTab === undefined ? {} : { replaceTab: placement.replaceTab },
+      ...replaced === undefined ? {} : { replaceTab: replaced.id },
       ...placement.revealIfOpened === undefined ? {} : { revealIfOpened: placement.revealIfOpened },
     }, (tabId) => { this.tabDomain.navigate(sessionId, tabId, { address, params }) }) }
-    const layout = surface?.layout
-    const replaced = placement.replaceTab === undefined ? undefined : layout?.tabs[placement.replaceTab]
-    const replacementPane = replaced === undefined || layout === undefined ? undefined : findTabPane(layout, replaced.id)
-    const revealed = layout === undefined ? undefined
+    // A page is unique per pane: the replaced tab's pane, docked or floating, else the landing pane.
+    const pagePane = layout === undefined ? undefined
+      : replaced === undefined ? targetPane : findTabPane(layout, replaced.id).id
+    const revealed = layout === undefined || pagePane === undefined ? undefined
       : claim.contentId === pageAddress(claim.kind)
-        ? findPaneContentTab(layout, replacementPane?.host === 'dock' ? replacementPane.id : placement.paneId ?? activeDockPaneId(layout), claim.contentId, claim.kind)
+        ? findPaneContentTab(layout, pagePane, claim.contentId, claim.kind)
         : placement.revealIfOpened === false ? undefined : findContentTab(layout, claim.contentId, claim.kind)
-    if (replaced === undefined || replaced.id === revealed) { commit(); return }
-    this.removeAfterCleanup(sessionId, replaced, commit)
+    // Only new content takes the replaced tab's place; a reveal keeps it open.
+    if (replaced === undefined || revealed !== undefined) commit()
+    else this.removeAfterCleanup(sessionId, replaced, commit)
+    // A reveal focuses the tab where it is.
+    if (layout !== undefined && revealed !== undefined) this.flash(sessionId, findTabPane(layout, revealed).id)
+  }
+
+  /**
+   * The flash requests of one Session's seat: each open that reveals an
+   * existing tab names the pane holding it, with a serial that changes on
+   * every request.
+   * @param sessionId - the Session whose seat draws the highlight.
+   * @returns the Session's stable source.
+   */
+  flashOf(sessionId: SessionId): ObservableSnapshot<SidebarRightFlash | undefined> {
+    return this.flashSource(sessionId)
+  }
+
+  private flashSource(sessionId: SessionId): SnapshotStore<SidebarRightFlash | undefined> {
+    let source = this.flashes.get(sessionId)
+    if (source === undefined) {
+      source = createSnapshotStore<SidebarRightFlash | undefined>(undefined)
+      this.flashes.set(sessionId, source)
+    }
+    return source
+  }
+
+  /** Ask a Session's seat to highlight the pane holding a revealed tab. */
+  private flash(sessionId: SessionId, paneId: PaneId): void {
+    const source = this.flashSource(sessionId)
+    source.set({ paneId, serial: (source.getSnapshot()?.serial ?? 0) + 1 })
   }
 
   /**
@@ -572,11 +618,15 @@ export class SidebarRightController implements ISidebarRight {
       if (target.host === 'float' && tab?.kind === kind && this.tabs.get(kind)?.multiple !== true) {
         actions.setExpanded(sessionId, true)
         this.focus(tab.id)
+        this.flash(sessionId, target.paneId)
       } else {
+        const guide = tab?.kind === 'guide' ? tab : undefined
         this.openTab(kind, {
           ...target.host === 'dock' ? { paneId: target.paneId } : {},
-          ...tab?.kind === 'guide' ? { replaceTab: tab.id } : {},
+          ...guide === undefined ? {} : { replaceTab: guide.id },
         })
+        // A reveal leaves the replaced guide open; it closes once it has led somewhere.
+        if (guide !== undefined) this.closeIn(sessionId, guide.id)
       }
       return this.mountedSurface()?.layout.activePaneId
     })

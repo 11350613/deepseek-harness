@@ -197,3 +197,45 @@
   min-width: 0;
   overflow: hidden;
 }
+
+/*
+ * An open that reveals an existing tab outlines the pane holding it, docked or
+ * floating, once (`flash.ts`). The marker alternates between two values with
+ * their own keyframes, so a repeated reveal restarts the outline; the marker
+ * goes when the animation ends. Reduced motion holds the outline steady for the
+ * same duration instead of fading it.
+ */
+.panel :global([data-dockkit-pane][data-sidebar-right-flash]),
+.panel :global([data-dockkit-float][data-sidebar-right-flash]) {
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  animation-duration: calc(var(--ds-transition-duration-slow) * 2);
+  animation-timing-function: var(--ds-ease-in-out);
+}
+
+.panel :global([data-dockkit-pane][data-sidebar-right-flash='odd']),
+.panel :global([data-dockkit-float][data-sidebar-right-flash='odd']) {
+  animation-name: flashOdd;
+}
+
+.panel :global([data-dockkit-pane][data-sidebar-right-flash='even']),
+.panel :global([data-dockkit-float][data-sidebar-right-flash='even']) {
+  animation-name: flashEven;
+}
+
+@keyframes flashOdd {
+  from { outline-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color); }
+  to { outline-color: transparent; }
+}
+
+@keyframes flashEven {
+  from { outline-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color); }
+  to { outline-color: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel :global([data-dockkit-pane][data-sidebar-right-flash]),
+  .panel :global([data-dockkit-float][data-sidebar-right-flash]) {
+    animation-timing-function: step-end;
+  }
+}

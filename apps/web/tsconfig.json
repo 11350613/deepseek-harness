@@ -89,6 +89,8 @@
     "tests/details-session-lifecycle.e2e.ts",
     "tests/sessionless-header.e2e.ts",
     "tests/document-preview.e2e.ts",
+    "tests/file-browser.e2e.ts",
+    "tests/file-browser-composition.e2e.ts",
     "tests/excel-opc.e2e.ts",
     "tests/office-fixture.ts",
     "tests/sidebar-browser.e2e.ts",

@@ -128,7 +128,14 @@ export interface SidebarRightTabPlacement {
   readonly preferNewPane?: boolean
   /** Resource tabs reveal existing content by default; `false` permits duplicates. Pages always deduplicate within the target pane. */
   readonly revealIfOpened?: boolean
-  /** `true` opens in this tab's place — its pane and strip slot — and closes this tab in the same step. */
+  /**
+   * `true` lands new content in this tab's place and closes this tab: a docked
+   * tab lends its pane and strip slot; a floating tab is replaced in its panel,
+   * and the new tab keeps the panel's pane id, rectangle, and stacking order,
+   * takes focus, and leaves the column as it is. Content already open is
+   * revealed as any open reveals it, and this tab stays open. Where new
+   * content lands, it takes precedence over `paneId` and `preferNewPane`.
+   */
   readonly replaceTab?: boolean
 }
 
@@ -169,7 +176,11 @@ export interface SidebarRightTabInfo {
     /** Presentation selected by manual mode or viewport width; preserved while collapsed. */
     readonly fullscreen: boolean
   }
-  readonly panel: { readonly id: PaneId }
+  readonly panel: {
+    readonly id: PaneId
+    /** Whether this pane is hosted in a floating panel rather than the docked sidebar. */
+    readonly isFloating: boolean
+  }
   readonly tab: TabRecord & {
     /** Effective refresh binding for this page's controls. */
     readonly refreshShortcut?: ShortcutCatalogEntry | undefined

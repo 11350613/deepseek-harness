@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-alpha.2/sidebar-replace-tab-reveal/guide.md
+/:
+  en: 9d626fa79af6233c
+  zh: 93ad3d450194a50a
+/right-sidebar-replacement-and-floating-tab-context:
+  en: fcde71c39caf0ae9
+  zh: de08a68bb5bbcc28
+/right-sidebar-replacement-and-floating-tab-context/change:
+  en: 1e0f5d66fb530042
+  zh: a56b088dc143eec5
+/right-sidebar-replacement-and-floating-tab-context/migration:
+  en: 16f1d1551c01b75d
+  zh: 600b300471f409a1
