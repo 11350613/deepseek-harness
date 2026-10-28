@@ -33,9 +33,11 @@ function workflow(file: string): Workflow {
 // Missing context properties use the Actions empty-string value.
 function evaluate(expression: string, context: Record<string, string | boolean>): unknown {
   const source = expression.trim().replace(/^\$\{\{|\}\}$/g, '')
-    .replace(/\b(?:github|vars|runner)(?:\.[a-zA-Z_][a-zA-Z_0-9]*)+/g,
+    .replace(/\b(?:github|vars|runner|inputs)(?:\.[a-zA-Z_][a-zA-Z_0-9-]*)+/g,
       key => JSON.stringify(context[key] ?? ''))
-  return runInNewContext(source, { fromJSON: JSON.parse }, { timeout: 1000 })
+  return runInNewContext(source, {
+    fromJSON: JSON.parse, startsWith: (value: string, prefix: string) => value.startsWith(prefix),
+  }, { timeout: 1000 })
 }
 
 function assertSharedPersistentStore(run: string | undefined): void {
@@ -163,15 +165,28 @@ for (const [file, jobIds] of [['release.yml', ['dependencies', 'pack']], ['relea
   })
 }
 
-it.each(['release-publish.yml', 'release-vendor-publish.yml'])('keeps %s manual with hosted npm jobs and an explicit signed-helper producer', (file) => {
-  const publish = workflow(file)
+it('keeps vendor publication manual and entirely hosted', () => {
+  const publish = workflow('release-vendor-publish.yml')
+  expect(Object.keys(publish.on)).toEqual(['workflow_dispatch'])
+  for (const job of Object.values(publish.jobs)) expect(job['runs-on']).toBe(hosted)
+})
+it('keeps DSH publication manual with hosted npm jobs and an explicit signed-helper producer', () => {
+  const publish = workflow('release-publish.yml')
   expect(Object.keys(publish.on)).toEqual(['workflow_dispatch'])
   for (const [name, job] of Object.entries(publish.jobs)) {
-    if (file === 'release-publish.yml' && name === 'cua-helper') {
+    if (name === 'cua-helper') {
       expect(job).toEqual({
-        if: "startsWith(github.ref, 'refs/tags/dsh-v')", uses: './.github/workflows/cua-helper-package.yml',
+        if: "startsWith(github.ref, 'refs/tags/dsh-v') || inputs.skip-tag-check", uses: './.github/workflows/cua-helper-package.yml',
         with: { source_ref: '${{ github.ref }}', preset: 'production' },
       })
     } else expect(job['runs-on']).toBe(hosted)
   }
+})
+it.each([
+  ['refs/tags/dsh-v0.2.1-rc.4', false, true],
+  ['refs/heads/master', false, false],
+  ['refs/heads/master', true, true],
+] as const)('selects the helper producer for ref %s with skip-tag-check=%s', (ref, skip, expected) => {
+  const expression = workflow('release-publish.yml').jobs['cua-helper']!.if!
+  expect(evaluate(expression, { 'github.ref': ref, 'inputs.skip-tag-check': skip })).toBe(expected)
 })

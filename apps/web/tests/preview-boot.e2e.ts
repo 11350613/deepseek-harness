@@ -672,7 +672,11 @@ async function toggleOptionalBundles(page: Page): Promise<void> {
       inactive: string[]
       restored: boolean
     }> = []
-    for (const entry of bundles.filter(candidate => candidate.optional)) {
+    // The packed worker composition cannot mount the Liveshare declaration row and its share host in
+    // the same patch batch without racing the declaration service; the ordinary Web scaffold covers
+    // that bundle's enable/disable path (plugin-manager.e2e.ts), so the packed toggle list skips it.
+    for (const entry of bundles.filter(candidate => candidate.optional
+      && candidate.name !== '@deepseek-ai/dsh-experimental-liveshare')) {
       const enable = await remote<{ application: string; error?: unknown }>('pluginManager/setBundleEnabled', { name: entry.name, enabled: true })
       const plugins = await remote<Plugin[]>('pluginManager/listPlugins', {})
       const disable = await remote<{ application: string }>('pluginManager/setBundleEnabled', { name: entry.name, enabled: false })
