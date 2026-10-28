@@ -120,6 +120,13 @@ it('hands a custom page the shared configuration form of its entry', () => {
 })
 
 describe('packageView', () => {
+  it('carries the current inventory failure into a component row', () => {
+    const plugins = PLUGINS.map(plugin => plugin.entryId === ROW_ENTRY
+      ? { ...plugin, fiberPhase: 'failed' as const, diagnostic: 'native preparation unavailable' } : plugin)
+    expect(packageView(BUNDLE, plugins).rows[0]?.diagnostic).toBe('native preparation unavailable')
+    expect(packageView(BUNDLE, PLUGINS).rows[0]?.diagnostic).toBeUndefined()
+  })
+
   it('joins a bundle with the entries its rows run as', () => {
     expect(packageView(BUNDLE, PLUGINS)).toEqual({
       name: 'dsh-better-sidebar', version: '0.16.0', description: 'A sidebar.', source: 'dsh-better-sidebar@^0.16.0',
@@ -1911,6 +1918,23 @@ const CATALOG: BundleInfo = {
   enabled: false, removable: false, updatable: false, rows: [], overrides: [],
   installTarget: { spec: '@deepseek-ai/dsh-subagent-codex@2.0.0', version: '2.0.0' },
 }
+
+it.each(['registry', 'source'] as const)('installs a typed default-hidden Official name using its %s target', async (mode) => {
+  const name = '@deepseek-ai/dsh-cua-bundle'
+  const spec = mode === 'source' ? 'link:/workspace/cua-bundle' : `${name}@2.0.0`
+  const entry = { ...CATALOG, name, listedByDefault: false, installTarget: { spec, version: '2.0.0' } }
+  const { controller, plugins, face, state } = bench({ listBundles: vi.fn().mockResolvedValue(ok([entry])) })
+  await controller.load()
+  face.openInstall()
+  face.editInstallSpec(name)
+  face.runInstall()
+  await vi.waitFor(() => { expect(plugins.installBundle).toHaveBeenCalledOnce() })
+  expect(plugins.inspect).not.toHaveBeenCalled()
+  expect(state().install.subject?.selection).toBeUndefined()
+  expect(plugins.installBundle).toHaveBeenCalledWith(spec, {
+    enabled: false, ...mode === 'registry' ? { saveExact: true } : {}, requestId: state().install.requestId, registry: null,
+  })
+})
 
 it('installs an absent Official entry directly at the host target and enables it through the normal installer', async () => {
   const { controller, plugins, face, state } = bench({ listBundles: vi.fn().mockResolvedValue(ok([CATALOG])) })

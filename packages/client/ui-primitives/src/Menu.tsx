@@ -51,6 +51,8 @@ export interface MenuItemButtonProps {
   shortcut?: MenuItem['shortcut']
   /** Leading icon (figma .Menu_cell gap 8). */
   icon?: ReactNode
+  /** Whether this row identifies the currently displayed page or view. */
+  current?: boolean
   /** Whether the row cannot be activated. */
   disabled?: boolean
   /** Destructive row: error-colored text/icon and danger hover fill. */
@@ -75,6 +77,7 @@ export interface MenuItemButtonProps {
  * @param props.children - visible row label.
  * @param props.shortcut - effective key labels and accessible combination.
  * @param props.icon - optional leading icon.
+ * @param props.current - whether the row identifies the currently displayed page or view.
  * @param props.disabled - whether the row cannot be activated.
  * @param props.danger - whether to use the destructive row colors.
  * @param props.separatorBefore - whether this row starts a new group (hairline above it).
@@ -82,7 +85,7 @@ export interface MenuItemButtonProps {
  * @returns one menu-item row.
  */
 export function MenuItemButton({
-  children, shortcut, icon, disabled = false, danger = false, separatorBefore = false, onSelect,
+  children, shortcut, icon, current, disabled = false, danger = false, separatorBefore = false, onSelect,
 }: MenuItemButtonProps) {
   return (
     <div className={css.itemWrap}>
@@ -93,6 +96,7 @@ export function MenuItemButton({
         className={clsx(css.item, danger && css.danger)}
         disabled={disabled}
         aria-keyshortcuts={shortcut?.aria}
+        aria-current={current === true ? 'page' : undefined}
         onClick={onSelect}
       >
         {icon !== undefined && <span className={css.itemIcon}>{icon}</span>}
@@ -236,6 +240,8 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
   openRef.current = open
   const [openSubmenuId, setOpenSubmenuId] = useState<string | null>(null)
   const [fixedPos, setFixedPos] = useState<CSSProperties | null>(null)
+  const close = useRef(onClose)
+  close.current = onClose
   const { arm: armClose, cancel: cancelClose } = usePointerGrace(onClose)
 
   // Portal mode: fixed-position the list from the anchor rect before paint;
@@ -246,6 +252,10 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
   useLayoutEffect(() => {
     if (!open || !portal) { setFixedPos(null); return }
     const place = () => {
+      if (rootRef.current?.closest('[inert], [hidden]') != null) {
+        close.current()
+        return
+      }
       let r: DOMRect | null
       if (getAnchorRect !== undefined) {
         r = getAnchorRect()
@@ -255,6 +265,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
       }
       if (r === null) return
       const MARGIN = 12
+      const GAP = 4
       const vw = window.innerWidth
       const vh = window.innerHeight
       const listEl = listRef.current
@@ -268,18 +279,18 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
       let x: number
       let y: number
       if (side === 'right') {
-        x = r.right + 4
+        x = r.right + GAP
         y = r.top
       } else if (align === 'start') {
         x = r.left
-        y = side === 'bottom' ? r.bottom + 4 : r.top - lh - 4
+        y = side === 'bottom' ? r.bottom + GAP : r.top - lh - GAP
       } else {
         x = r.right - lw
-        y = side === 'bottom' ? r.bottom + 4 : r.top - lh - 4
+        y = side === 'bottom' ? r.bottom + GAP : r.top - lh - GAP
       }
 
       if (lw > 0) x = Math.min(Math.max(x, MARGIN), vw - lw - MARGIN)
-      if (lh > 0) y = Math.min(Math.max(y, overlayTopMargin(MARGIN)), vh - lh - MARGIN)
+      if (lh > 0) y = Math.min(Math.max(y, overlayTopMargin(MARGIN, r, GAP)), vh - lh - MARGIN)
 
       setFixedPos(current => current?.left === x && current.top === y ? current : { left: x, top: y })
     }

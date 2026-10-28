@@ -94,6 +94,8 @@ export interface PackageRow {
   readonly enabled: boolean
   /** The entry's fiber phase, null without a live fiber. */
   readonly phase: PluginInfo['fiberPhase']
+  /** Current startup failure projected by the Host inventory. */
+  readonly diagnostic?: string
   /** Why the Host refuses to switch the row, when it does. */
   readonly readOnlyReason?: ReadOnlyReason
 }
@@ -113,7 +115,7 @@ export interface PackageView {
   readonly meta?: PluginLocalizedMeta
   /** Whether the profile declares this dependency; availability separately describes its readable files. */
   readonly installed: boolean
-  /** GUI listing before explicit selection or profile installation; omission means true. */
+  /** Default GUI visibility after package and Host checks; selected or profile-installed bundles remain manageable. */
   readonly listedByDefault?: boolean
   /** Present for a profile dependency the installation does not also supply: the spec `pnpm add` accepts. */
   readonly source?: string
@@ -127,7 +129,7 @@ export interface PackageView {
   readonly enabled: boolean
   /** Why the Host refuses to switch the bundle off or remove it, when it does. */
   readonly readOnlyReason?: ReadOnlyReason
-  /** Why the Host cannot read the bundle, when it cannot. */
+  /** Why the Host cannot read or enable the bundle. */
   readonly error?: ManagementError
   readonly rows: readonly PackageRow[]
 }
@@ -137,7 +139,7 @@ export type InstallSubject = Extract<PluginSpecInspection, { status: 'accepted' 
   readonly spec: string
   /** The installation already provides this bundle; only explicit enablement remains. */
   readonly bundled?: true
-  /** Present for a catalog install or update: desired selection after installation. */
+  /** Explicit selection for a catalog toggle or update; typed installation offers enablement afterward. */
   readonly selection?: boolean
   /** Save an exact dependency version through the generic installer. */
   readonly saveExact?: boolean
@@ -547,6 +549,7 @@ export function packageView(bundle: BundleInfo, plugins: readonly PluginInfo[]):
       moduleName: row.moduleName,
       enabled: live?.enabled ?? false,
       phase: live?.fiberPhase ?? null,
+      ...live?.diagnostic === undefined ? {} : { diagnostic: live.diagnostic },
       ...row.meta === undefined ? {} : { meta: row.meta },
       ...row.entryId === undefined ? {} : { entryId: row.entryId },
       ...live?.readOnlyReason === undefined ? {} : { readOnlyReason: live.readOnlyReason },
@@ -1161,12 +1164,21 @@ export class PluginManagerController {
     const install = state.install
     const spec = install.spec.trim()
     if (install.phase === 'checking' || isInstallPending(install.phase) || spec === '') return
+    const listed = state.packages.find(pkg => pkg.name === spec)
+    let catalogSubject = install.subject?.selection === undefined || install.subject.spec !== spec ? undefined : install.subject
+    if (listed?.availability === 'missing' && listed.installTarget !== undefined
+      && listed.error === undefined && catalogSubject === undefined) {
+      const target = listed.installTarget
+      const local = target.spec.startsWith('link:')
+      catalogSubject = {
+        status: 'accepted', kind: local ? 'path' : 'registry', name: listed.name, version: target.version, bundle: true,
+        spec: target.spec, registry: null, ...local ? {} : { saveExact: true },
+      }
+    }
     if (this.ctx.get('productAnalytics')?.enabled) {
       this.analyticsAttempt = { input: sanitizeInstallInput(spec), started: Date.now() }
       this.ctx.get('productAnalytics')?.track('plugin_install_click', { input_value: sanitizeInstallInput(spec) })
     }
-    const listed = state.packages.find(pkg => pkg.name === spec)
-    const catalogSubject = install.subject?.selection === undefined || install.subject.spec !== spec ? undefined : install.subject
     if (listed?.availability === 'installation' && listed.optional && listed.listedByDefault === false
       && !listed.enabled && listed.error === undefined && listed.readOnlyReason === undefined) {
       this.abortInspect()

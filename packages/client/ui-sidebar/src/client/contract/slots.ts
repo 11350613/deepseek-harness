@@ -95,6 +95,8 @@ export interface SidebarPanelActionEntry {
   readonly label: string
   /** False while the launcher is unpinned from the sidebar. */
   readonly pinned: boolean
+  /** Whether this panel is selected, independently of its pin state. */
+  readonly active?: boolean
 }
 
 /** Owner share of the panel list's More menu rows. */
@@ -123,7 +125,7 @@ export interface SidebarPanelActionsOwnerProps {
 export interface SidebarSectionOwnerProps {
   /** Shell fold-state output: wide renders the full browser, rail the icon column. */
   wide: boolean
-  /** Rail icons request expansion; the browser rides the wide flip for focus. */
+  /** Ensure the sidebar is visible; safe to call while already expanded. */
   expandSidebar: () => void
 }
 
@@ -169,7 +171,7 @@ export type SidebarRootInjected = {
   hooks: {
     panels: ObservableSnapshot<readonly SidebarPanelMetadata[]>
     shortcuts: ObservableSnapshot<readonly ShortcutCatalogEntry[]>
-    /** Ids of unpinned panel launchers, persisted across reloads. */
+    /** Ids of unpinned panel launchers held in memory until plugin reload. */
     entryPins: ObservableSnapshot<readonly string[]>
     /** Whether `sidebar.panellist.actions` has registrations. */
     entryActions: ObservableSnapshot<boolean>
