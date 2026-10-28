@@ -638,7 +638,10 @@ export class ForgePanelController extends TypertRemoteService {
       }),
       refOf: url => ctx.forge.changeRequestFromUrl(url),
       watch: (ref, listener) => ctx.forge.watch(ref, listener),
-      open: async () => (await storage.open(changeRequestStatesDomain)).table('states'),
+      open: async () => {
+        const domain = await storage.open(changeRequestStatesDomain)
+        return { table: domain.table('states'), close: () => domain.close() }
+      },
       report: (error) => { ctx.logger.warn(`forge-panel: storing a change request state failed: ${String(error)}`) },
     })
     return this.states
