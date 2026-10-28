@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { assertNever, type JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { WatchToolResult } from './watch-tool-result.ts'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -143,6 +143,12 @@ interface TableRecord {
   turnEnd: boolean
   collapsedSummary?: string
   collapsedSummaryKind?: 'turn' | 'assistant' | 'tool'
+}
+
+const COLLAPSED_SUMMARY_LABEL_KEY: Record<NonNullable<TableRecord['collapsedSummaryKind']>, TrajectoryKey> = {
+  turn: 'request.collapsedTurn',
+  assistant: 'request.collapsedAssistant',
+  tool: 'request.collapsedTool',
 }
 
 interface VirtualRowStructure {
@@ -681,7 +687,7 @@ function assistantToolCalls(
   return calls
 }
 
-function summarizeAssistantTools(
+function summarizeCalls(
   records: readonly TableRecord[],
   t: TrajectoryTranslate,
 ): string {
@@ -729,7 +735,7 @@ function collapseCallRecords(
       groupStart: false,
       turnStart: false,
       turnEnd: last?.turnEnd ?? false,
-      collapsedSummary: summarizeAssistantTools(calls, t),
+      collapsedSummary: summarizeCalls(calls, t),
       collapsedSummaryKind: kind,
     })
     i += calls.length
@@ -2468,13 +2474,19 @@ export function TrajectoryTable({
     if (target !== undefined) openRecordSummary(target)
   }
 
-  const expandSummary = (record: TableRecord) => {
-    if (record.collapsedSummaryKind === 'turn' && record.turn !== null) {
-      onToggleTurn(record.turn)
-    } else if (record.collapsedSummaryKind === 'tool') {
-      onToggleTool(trajectoryRecordId(record.cell))
-    } else {
-      onToggleAssistant(trajectoryRecordId(record.cell))
+  const expandSummary = (record: TableRecord, kind: NonNullable<TableRecord['collapsedSummaryKind']>) => {
+    switch (kind) {
+      case 'turn':
+        if (record.turn !== null) onToggleTurn(record.turn)
+        return
+      case 'tool':
+        onToggleTool(trajectoryRecordId(record.cell))
+        return
+      case 'assistant':
+        onToggleAssistant(trajectoryRecordId(record.cell))
+        return
+      default:
+        assertNever(kind)
     }
   }
 
@@ -2725,7 +2737,8 @@ export function TrajectoryTable({
                 t={t}
               >
                 {({ displayText, listDisplayText, resultText, toolCallOnly, toolCallText }) => {
-                  const isCollapsedSummary = record.collapsedSummary !== undefined
+                  const summaryKind = record.collapsedSummaryKind
+                  const isCollapsedSummary = summaryKind !== undefined
                   const isRequestOnly = record.cell.requestOnly === true
                   const isInitialSystem = record.cell.kind === 'system'
                 && record.cell.index === allRecords[0]?.cell.index
@@ -2763,11 +2776,7 @@ export function TrajectoryTable({
                       aria-rowindex={position + 1 + historyRowOffset}
                       aria-label={isCollapsedSummary
                         ? t('request.collapsedSummary', {
-                          kind: t(record.collapsedSummaryKind === 'turn'
-                            ? 'request.collapsedTurn'
-                            : record.collapsedSummaryKind === 'tool'
-                              ? 'request.collapsedTool'
-                              : 'request.collapsedAssistant'),
+                          kind: t(COLLAPSED_SUMMARY_LABEL_KEY[summaryKind]),
                           summary: record.collapsedSummary,
                         })
                         : isRequestOnly
@@ -2799,7 +2808,7 @@ export function TrajectoryTable({
                       onClick={isRequestOnly || singleToolNotice
                         ? undefined
                         : isCollapsedSummary
-                          ? () => { expandSummary(record) }
+                          ? () => { expandSummary(record, summaryKind) }
                           : () => { selectRecord(record.cell.index) }}
                       onDoubleClick={(event) => {
                         if (isCollapsedSummary || isRequestOnly || singleToolNotice) return
@@ -2830,7 +2839,7 @@ export function TrajectoryTable({
                         if (event.key !== 'Enter' && event.key !== ' ') return
                         event.preventDefault()
                         if (isCollapsedSummary) {
-                          expandSummary(record)
+                          expandSummary(record, summaryKind)
                           return
                         }
                         selectRecord(record.cell.index)
