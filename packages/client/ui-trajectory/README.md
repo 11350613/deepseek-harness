@@ -29,7 +29,7 @@ Open the Trajectory tab in the conversation's view ring to inspect agent activit
 
 ### Inspecting records
 
-The toolbar folds turns, calls, and subcalls independently. Subcalls fold into a summary beneath their parent tool; click the summary or press Enter or Space to expand it. Search includes folded subcalls, and cross-view inspection expands the requested call.
+The toolbar folds turns, calls, and subcalls independently. Subcalls fold into a summary beneath their parent tool; click the summary or press Enter or Space to expand it. Search includes folded subcalls, and cross-view inspection expands the requested call. Toolbar controls and search wrap onto additional lines when the pane is narrow.
 
 Calls are identified by their recorded tool name. For `run_code`, the row shows the program description and the inspector opens numbered, highlighted source. The Code tab provides wrapping, a `{}` toggle for the original JSON arguments, and exact source copying, including trailing newlines. Copying the original arguments retains their recorded JSON whitespace. Each newly opened code view takes the last wrapping choice; changing it leaves other open views as they are. Output preserves the recorded text, using a tree for complete JSON objects or arrays. Highlighting uses only an unambiguous TypeScript or Python hint in the recorded tool schema; missing or conflicting hints leave plain source.
 
