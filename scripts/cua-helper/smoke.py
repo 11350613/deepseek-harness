@@ -11,6 +11,32 @@ import tempfile
 import time
 
 
+def report_output(stdout, stderr):
+    """Render captured bytes for diagnostics without changing protocol input."""
+    for label, output in [("stdout", stdout), ("stderr", stderr)]:
+        if output:
+            text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else output
+            print(f"CUA smoke command {label}:\n{text}", file=sys.stderr, flush=True)
+
+
+def run_checked(command, timeout):
+    """Return captured bytes and preserve native diagnostics on failure or timeout."""
+    try:
+        return subprocess.run(command, check=True, capture_output=True, timeout=timeout)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        report_output(error.stdout, error.stderr)
+        raise
+
+
+def parse_startup_reply(result):
+    """Retain both output streams when a successful command returns an unreadable reply."""
+    try:
+        return json.loads(result.stdout.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        report_output(result.stdout, result.stderr)
+        raise
+
+
 def wait_for_exit(pid, seconds):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -29,10 +55,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="cua-smoke-", dir="/tmp") as directory:
         os.chmod(directory, 0o700)
         try:
-            started = subprocess.run([str(executable), "--ensure-shared", "--runtime-key", key,
-                                      "--runtime-directory", directory, "--startup-timeout-ms", "15000"],
-                                     check=True, capture_output=True, text=True, timeout=25)
-            ready = json.loads(started.stdout)
+            started = run_checked([str(executable), "--ensure-shared", "--runtime-key", key,
+                                   "--runtime-directory", directory, "--startup-timeout-ms", "15000"], 25)
+            ready = parse_startup_reply(started)
             assert ready["runtimeKey"] == key and ready["type"] == "ready", ready
             pid = ready["pid"]
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
@@ -74,8 +99,8 @@ def main():
                         break
                 else:
                     raise RuntimeError("failed helper did not exit during cleanup")
-            subprocess.run(["/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
-                            "-u", str(executable.parents[2])], check=True, capture_output=True, timeout=10)
+            run_checked(["/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+                         "-u", str(executable.parents[2])], 10)
 
 
 if __name__ == "__main__":
