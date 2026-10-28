@@ -39,7 +39,7 @@ export interface CuaConfig {
     /** Unbranded digest at the profile configuration boundary; admitted by the Config schema. */
     id: string
   }>
-  /** Absolute native helper override; omission prepares the package-owned executable. */
+  /** Absolute executable inside the signed macOS helper .app; omission prepares the package-owned application. */
   helperPath?: string
   /** Maximum time in milliseconds for native component preparation. */
   buildTimeoutMs: number
@@ -82,7 +82,7 @@ export const CuaConfig = Schema.object({
   agentPreset: Schema.union([Schema.string().min(1), Schema.const(false)]).default('ptc'),
   allowedApps: Schema.array(Schema.object({
     id: Schema.string().pattern(/^[a-f0-9]{64}$/).required(),
-    name: Schema.string().required(), executablePath: Schema.string().min(1).required(),
+    name: Schema.string().required(), executablePath: Schema.string().min(1),
   })).default([]),
   helperPath: Schema.string(),
   buildTimeoutMs: Schema.number().step(1).min(1).max(2 ** 31 - 1).default(300_000),
