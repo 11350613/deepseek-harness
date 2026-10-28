@@ -7,6 +7,12 @@ import { classifyInstallFailure } from './install-failure.ts'
 import type { ParsedInstallSpec } from './install-spec.ts'
 import type { PackageResult } from './types.ts'
 
+/** A failed check, with the exact Git command line whose output it captured. */
+export interface GithubConnectionFailure extends PackageResult {
+  /** The `git` command line the check ran: `git -c credential.helper= ls-remote -- <repository> HEAD`. */
+  readonly argv: readonly string[]
+}
+
 /** Deadline, diagnostics and cancellation for one read-only GitHub check. */
 export interface GithubConnectionOptions {
   timeoutMs: number
@@ -23,11 +29,12 @@ export interface GithubConnectionOptions {
  * @param spec The parsed installation address; npm packages, local paths and other hosts are not checked.
  * @param dir The profile directory where installation runs.
  * @param options The connection deadline, output bound and operation cancellation.
- * @returns A failed check with bounded output and a complete log at logPath, or undefined for a reachable repository or an unhandled spec.
+ * @returns A failed check carrying its command line and bounded output, with a complete log at logPath, or undefined for a
+ * reachable repository or an unhandled spec.
  */
 export async function checkGithubConnection(
   spec: ParsedInstallSpec, dir: string, options: GithubConnectionOptions,
-): Promise<PackageResult | undefined> {
+): Promise<GithubConnectionFailure | undefined> {
   if (spec.kind !== 'git') return undefined
   const host = spec.host.toLowerCase().replace(/:.*$/, '')
   if (host !== 'github.com' && !host.endsWith('.github.com')) return undefined
@@ -40,8 +47,10 @@ export async function checkGithubConnection(
   const logDir = await mkdtemp(join(logRoot, 'github-connection-'))
   const logPath = join(logDir, 'git.log')
   const log = await open(logPath, 'ax+', 0o600)
+  const argv = ['git', '-c', 'credential.helper=', 'ls-remote', '--', repository, 'HEAD'] as const
+  const [command, ...args] = argv
   try {
-    const result = await execa('git', ['-c', 'credential.helper=', 'ls-remote', '--', repository, 'HEAD'], {
+    const result = await execa(command, args, {
       cwd: dir,
       env: {
         ...scrubbedParentEnv(), ...options.env, LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0',
@@ -59,8 +68,9 @@ export async function checkGithubConnection(
     await log.read(bytes, 0, bytes.length, size - bytes.length)
     const output = bytes.toString('utf8')
     return {
-      exitCode: result.exitCode ?? (result.code === 'ENOENT' ? 127 : 1), output, truncated: size > options.outputBytes, logPath,
+      argv, exitCode: result.exitCode ?? (result.code === 'ENOENT' ? 127 : 1), output, truncated: size > options.outputBytes, logPath,
       kind: classifyInstallFailure({ log: output, timedOut: result.timedOut }),
+      ...result.timedOut ? { timedOut: true } : {},
     }
   } finally {
     await log.close()
