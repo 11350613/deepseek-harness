@@ -344,6 +344,7 @@
     display: inline-flex;
   }
 
+  /* Only update timestamps disappear; pending-interaction labels remain visible. */
   .sessionRow .timestamp,
   .sessionRow:has(.pinnedAction) .pinIndicator,
   .sessionRow .rowQuickActions > :global([data-slot]) > :not(.pinnedAction),
@@ -352,6 +353,7 @@
   }
 
   .sessionRow .pinnedAction {
+    /* Keep More aligned across rows. Tab order remains More, then Unpin. */
     order: -1;
   }
 }

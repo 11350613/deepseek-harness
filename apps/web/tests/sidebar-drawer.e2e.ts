@@ -280,9 +280,9 @@ it('overlays the conversation and closes after navigation without losing its sid
         label.selectNodeContents(tab)
         return label.getBoundingClientRect().left - tab.closest('header')!.getBoundingClientRect().left
       })
-      expect(await tabInset()).toBe(20)
-      // Native platform markers are immutable after boot. Restore each CSS probe before observers run.
-      expect(await chatTab.evaluate((tab) => {
+      expect(await tabInset()).toBeCloseTo(20, 1)
+      // Restore CSS-probe markers in the same synchronous task, before rendering.
+      const desktopInsets = await chatTab.evaluate((tab) => {
         const root = document.documentElement
         try {
           return ['darwin', 'win32'].map((platform) => {
@@ -294,10 +294,11 @@ it('overlays the conversation and closes after navigation without losing its sid
         } finally {
           delete root.dataset.platform
         }
-      })).toEqual([28, 28])
+      })
+      for (const inset of desktopInsets) expect(inset).toBeCloseTo(28, 1)
       await page.setViewportSize({ width: 768, height: 844 })
       await frame.waitFor({ state: 'detached' })
-      expect(await tabInset()).toBe(28)
+      expect(await tabInset()).toBeCloseTo(28, 1)
       await page.setViewportSize({ width: 390, height: 844 })
       await frame.waitFor()
       await opener.click()
@@ -315,7 +316,10 @@ it('overlays the conversation and closes after navigation without losing its sid
       const unpin = selectedRow.getByRole('button', { name: 'Unpin session', exact: true })
       await expect.poll(() => selectedRow.getByLabel('Pinned', { exact: true }).count()).toBe(1)
       expect(await unpin.isVisible()).toBe(true)
-      expect(await selectedRow.locator('[class*="time"]').isVisible()).toBe(false)
+      const timestamp = selectedRow.getByText(/^(?:now|\d+min)$/, { exact: true })
+      expect(await timestamp.count()).toBe(1)
+      expect(await timestamp.textContent()).toMatch(/^(?:now|\d+min)$/)
+      expect(await timestamp.isVisible()).toBe(false)
       const unpinBox = (await unpin.boundingBox())!
       const moreBox = (await more.boundingBox())!
       const folderMoreBox = (await workspaceButtons.nth(0).boundingBox())!
@@ -338,8 +342,8 @@ it('overlays the conversation and closes after navigation without losing its sid
       await pluginPanel.waitFor()
       for (const width of [390, 767, 768]) {
         await page.setViewportSize({ width, height: 844 })
-        expect(await pluginPanel.evaluate(el => getComputedStyle(el).paddingLeft))
-          .toBe(width < 768 ? '20px' : '30.72px')
+        expect(await pluginPanel.evaluate(el => Number.parseFloat(getComputedStyle(el).paddingLeft)))
+          .toBeCloseTo(width < 768 ? 20 : width * 0.04, 1)
       }
       await page.setViewportSize({ width: 390, height: 844 })
       await frame.waitFor()
@@ -350,8 +354,8 @@ it('overlays the conversation and closes after navigation without losing its sid
       await tasksContent.waitFor()
       for (const width of [390, 767, 768]) {
         await page.setViewportSize({ width, height: 844 })
-        expect(await tasksContent.evaluate(el => getComputedStyle(el).paddingLeft))
-          .toBe(width < 768 ? '20px' : '30.72px')
+        expect(await tasksContent.evaluate(el => Number.parseFloat(getComputedStyle(el).paddingLeft)))
+          .toBeCloseTo(width < 768 ? 20 : width * 0.04, 1)
       }
       await page.setViewportSize({ width: 390, height: 844 })
       await frame.waitFor()

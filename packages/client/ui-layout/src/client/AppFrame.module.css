@@ -291,6 +291,7 @@
 }
 
 :global(html:not([data-platform])) .frame[data-sidebar-drawer] {
+  /* 12px seat offset + 28px opener + 8px gap; Desktop keeps room for two controls. */
   --dsh-frame-leading-clearance: 48px;
 }
 

@@ -47,7 +47,7 @@ Choose **Add workspace** and select a directory to register it and open a Sessio
 
 Hierarchy uses registered canonical paths only. It does not scan for projects or resolve symlink aliases. Nesting does not change Session working directories, logs, or Workspace membership. Deleting a parent Workspace leaves its child Workspaces registered and places them under their next registered ancestor, or at the root.
 
-On devices without hover, Workspace rows keep their menu and New Session controls visible, and archived search results keep the Unarchive control visible.
+On devices without hover, expanded Workspace rows keep their menu and New Session controls visible, and archived search results keep the Unarchive control visible.
 
 ### Search
 
@@ -57,7 +57,7 @@ Collapsed search is one header action beside the view and add actions: activatin
 
 ### Managing sessions
 
-Session row actions appear on hover for devices that support hovering. On devices without hover, every non-blank Session keeps More visible alongside its trailing time and static pin marker. Quick-action buttons stay hidden there; the built-in archive and pin actions remain available through More. Workspace row actions appear only while that Workspace is expanded, leaving collapsed folders focused on navigation. An open row menu keeps its action strip visible on either device type.
+Session row actions appear on hover for devices that support hovering. Without hover, non-blank Sessions keep More visible alongside trailing status icons and pending-interaction labels; update times have no display entry. Pinned rows show Unpin before More with the same spacing as Workspace actions; rows without unpin permission retain the static pin marker. Pin and archive remain available in More. Workspace row actions appear only while expanded. An open row menu keeps its action strip visible on either device type.
 
 The final built-in item in a Session row's "..." menu is Copy Session ID. It closes the menu and copies the complete ID directly, without opening a dialog. Clipboard success or failure appears in the global toast; a failed copy can be retried from the menu. Copying does not retain the Session, load its history, or call the Host.
 
@@ -106,8 +106,6 @@ The browser entry declares three root-scoped `list` child seats on each Session 
 The leading seat occupies the status cell only while the row's primary status is idle and leaves archived rows blank. The trailing seat accepts non-interactive icons in ascending `order`, after the time label and before the pin marker. Blank rows omit the trailing seat; an empty seat adds no spacing. The hover seat mounts only while the row's hover card is open.
 
 On hover-capable devices, hovering a Session row, giving keyboard focus to the row or its actions, or opening its menu replaces the time, trailing icons, and pin marker with action buttons. A pointer click does not keep the buttons visible after the pointer leaves. Built-in Session and Workspace row action buttons use 24px click targets with compensated margins that retain their compact layout footprint and icon positions.
-
-Hoverless devices keep trailing status icons and the More trigger visible but hide the update time; pending-interaction labels remain visible. Pinned rows show an Unpin button before More, with the same spacing as Workspace actions. Rows without permission to unpin retain the static pin marker. Pin and archive remain available in the menu.
 
 Session rows accept Tab focus and open with unmodified Enter or Space; Tab also reaches their action buttons, while modified keys remain available to global shortcuts.
 

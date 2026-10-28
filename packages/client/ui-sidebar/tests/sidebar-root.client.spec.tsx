@@ -37,6 +37,17 @@ type AttentionSnapshot = Parameters<Parameters<SidebarRootComponentProps['useSes
 const noAttention: AttentionSnapshot = new Map()
 const useSessionStatus: SidebarRootComponentProps['useSessionStatus'] = selector => selector(noAttention)
 
+function makeHeaderProps(): HeaderLeadingControlsProps {
+  return {
+    useSessions: neverHook, useSessionStatus, useSessionRetainInfo: neverHook,
+    usePanelInfo, useResource, useWorkspaces: neverHook, ...allowAllAccess,
+    usePanels: selector => selector([]), useShortcuts: selector => selector([]),
+    useEntryPins: selector => selector([]), useEntryActions: selector => selector(false),
+    selectPanel: vi.fn(), setPinned: vi.fn(), toggleSidebar: vi.fn(),
+    startSession: vi.fn(), trackEntryClick: vi.fn(), t,
+  }
+}
+
 function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts = [], content }: {
   collapsed?: boolean
   width?: number
@@ -415,7 +426,9 @@ it('wires the shell.leading controls to the shared sidebar actions', () => {
   const startSession = vi.fn()
   const trackEntryClick = vi.fn<HeaderLeadingControlsProps['trackEntryClick']>()
   // This occupant only consumes its actions, the global access Hook, and locale, not Session hooks.
-  const props = { toggleSidebar, startSession, trackEntryClick, t, useRemoteAccess: allowAllAccess.useRemoteAccess, useShortcuts: select => select([{ id: 'sidebar.left.toggle' as ShortcutCommandId, label: 'Toggle sidebar', aliases: [], binding: null, modified: false, conflicts: [], issue: null, keys: ['⌘', 'B'], aria: 'Meta+B' }]) } as HeaderLeadingControlsProps
+  const props: HeaderLeadingControlsProps = { ...makeHeaderProps(), toggleSidebar, startSession, trackEntryClick,
+    useShortcuts: select => select([{ id: 'sidebar.left.toggle' as ShortcutCommandId, label: 'Toggle sidebar', aliases: [], binding: null, modified: false, conflicts: [], issue: null, keys: ['⌘', 'B'], aria: 'Meta+B' }]),
+  }
   render(<HeaderLeadingControls {...props} />)
   fireEvent.click(screen.getByRole('button', { name: en['toggle.open'] }))
   expect(toggleSidebar).toHaveBeenCalledOnce()
@@ -435,10 +448,7 @@ it('wires the shell.leading controls to the shared sidebar actions', () => {
 
 it.each([undefined, 'darwin', 'win32'] as const)('shows the collapsed-header New Session control only on Desktop (%s)', (platform) => {
   if (platform !== undefined) document.documentElement.dataset.platform = platform
-  const props = {
-    toggleSidebar: vi.fn(), startSession: vi.fn(), trackEntryClick: vi.fn(), t,
-    useRemoteAccess: allowAllAccess.useRemoteAccess, useShortcuts: select => select([]),
-  } as HeaderLeadingControlsProps
+  const props = makeHeaderProps()
   render(<HeaderLeadingControls {...props} />)
   expect(screen.getByRole('button', { name: en['toggle.open'] })).toBeTruthy()
   expect(screen.queryByRole('button', { name: en['session.new.label'] }) !== null).toBe(platform !== undefined)
