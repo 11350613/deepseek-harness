@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-alpha.2/sdk-run-commands/guide.md
 /:
-  en: 66fb7f6d320077f7
-  zh: 5972bcc5548dcdeb
+  en: 695ee5740865d684
+  zh: 83cb4df5ecf20a99
 /sdk-run-accepts-native-commands:
   en: 54f8a31426f4758c
   zh: 283820d3f187092e
 /sdk-run-accepts-native-commands/change:
-  en: 4ded2e89cef962d2
-  zh: 097e25c63d81bc15
+  en: 478742169aa04c50
+  zh: 3324d99f4206d1fc
 /sdk-run-accepts-native-commands/migration:
-  en: 302378fd8aeb24c5
-  zh: 854a98cf76e83323
+  en: 484261a946a13012
+  zh: bab28bbde44fbc61

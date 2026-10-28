@@ -8,17 +8,10 @@ import os
 import subprocess
 import sys
 import threading
-from contextlib import closing
 from pathlib import Path
 
-from pydantic import BaseModel
-
-from deepseek_harness import RunCommandResult, DeepSeekHarness, Notification, UserQuestionRequest
+from deepseek_harness import DeepSeekHarness, Notification, UserQuestionRequest
 from deepseek_harness.api import final_response
-
-
-class WaitResult(BaseModel):
-    """The empty session/wait result."""
 
 
 class _PlanReviews:
@@ -156,7 +149,7 @@ def display(notification: Notification, session_id: str) -> None:
 
 
 def main() -> None:
-    """Keep the runtime and question handler alive after the plan command completes."""
+    """Keep the runtime and question handler alive until the plan activity finishes."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dsh-home", required=True, type=Path)
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
@@ -171,17 +164,9 @@ def main() -> None:
         env={"DSH_PERMISSION_MODE": "workspace-write"},
     ) as harness:
         session = harness.start_session()
-        with closing(harness.client.subscribe_session_notifications(session.id)) as notifications:
-            execution = session.run(f"/plan {args.task}")
-            if not isinstance(execution, RunCommandResult):
-                raise RuntimeError("The SDK profile did not execute the requested command")
-            print(execution.result.text, flush=True)
-            if execution.result.kind == "error":
-                raise RuntimeError(execution.result.text)
-            harness.client.request(
-                "session/wait", {"sessionId": session.id}, response_model=WaitResult,
-                on_notification=lambda notice: display(notice, session.id), notification_subscription=notifications,
-            )
+        result = session.run(f"/plan {args.task}", on_notification=lambda notice: display(notice, session.id))
+        if result.finish_reason != "completed":
+            raise RuntimeError(f"Plan activity ended with {result.finish_reason}: {result.final_response}")
 
 
 if __name__ == "__main__":

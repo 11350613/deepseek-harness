@@ -338,6 +338,9 @@ reader.on('line', (line) => {
         const execution: unknown = env.FAKE_COMMAND_RESULT === undefined
           ? { commandId: 'command-1', result: { kind: 'success', text: '/compact' } }
           : JSON.parse(env.FAKE_COMMAND_RESULT)
+        const completed = execution as { commandId?: string; result?: { kind?: string; text?: string } }
+        notify('session.query.completed', { sessionId: frame.params?.sessionId, commandId: completed.commandId,
+          finalResponse: completed.result?.text ?? '', finishReason: completed.result?.kind === 'error' ? 'error' : 'completed' })
         respond({ kind: 'command', execution })
         return
       }

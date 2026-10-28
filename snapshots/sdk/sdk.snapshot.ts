@@ -57,7 +57,6 @@ import {
 } from '@deepseek-ai/dsh-session-snapshot'
 import {
   DeepSeekHarness,
-  type CommandExecution,
   type HarnessNotification,
   type NotificationSubscription,
   type RunResult,
@@ -656,22 +655,38 @@ async function waitForRootEvent(
 function collectCommandNotifications(
   subscription: NotificationSubscription,
   sessionId: string,
-  execution: CommandExecution,
+  result: RunResult,
   notifications: HarnessNotification[],
   observe: (notification: HarnessNotification) => void,
 ): void {
+  const run = result.events.find(event => event.type === 'command/run')
+  if (run === undefined) throw new Error('Command RunResult has no command/run event')
+  const commandId = run.data.commandId
+  const done = result.events.find(event => event.type === 'command/done' && event.data.commandId === commandId)
+  if (done === undefined || done.type !== 'command/done') throw new Error('Command RunResult has no command/done event')
+  expect(result.finishReason).not.toBeNull()
+  if (done.data.kind === 'error') {
+    expect(result.finishReason).toBe('error')
+    expect(result.finalResponse).toBe(done.data.text)
+  } else {
+    const assistant = result.events.findLast(event => event.type === 'assistant/message')
+    if (assistant !== undefined) {
+      expect(result.finalResponse).toBe(assistant.data.message.content
+        .flatMap(block => block.type === 'text' ? [block.text] : []).join(''))
+    }
+  }
   let started = false
   for (let notification = subscription.tryNext(); notification !== undefined; notification = subscription.tryNext()) {
     observe(notification)
     const event = notification.params.sessionId === sessionId ? notificationEvent(notification) : undefined
     const data = event?.data as JsonObject | undefined
-    if (event?.type === 'command/run' && data?.commandId === execution.commandId) started = true
+    if (event?.type === 'command/run' && data?.commandId === commandId) started = true
     if (!started) continue
     notifications.push(notification)
-    if (event?.type !== 'command/done' || data?.commandId !== execution.commandId) continue
-    expect(execution.result.kind).toBe(data.kind)
-    expect(execution.result.text).toBe(data.text)
-    if (execution.result.kind === 'success') expect(execution.result.sourceEventSeq).toBe(data.sourceEventSeq)
+    if (event?.type !== 'command/done' || data?.commandId !== commandId) continue
+    expect(done.data.kind).toBe(data.kind)
+    expect(done.data.text).toBe(data.text)
+    expect(done.data.sourceEventSeq).toBe(data.sourceEventSeq)
     return
   }
   throw new Error('SDK command response arrived without its preceding command lifecycle notifications')
@@ -883,8 +898,21 @@ async function runScenario(scenario: CorpusScenario): Promise<{
             })) ?? [],
             { type: 'text', text: action.line },
           ] : action.line)
-          if (!('commandId' in execution)) throw new Error('SDK command input returned prompt activity')
           expect(execution.sessionId).toBe(sessionId)
+          if (scenario.name === 'plan-review' && action === actions.find(item => item.kind === 'command')) {
+            expect(execution).toMatchObject({ finalResponse: 'SDK_PLAN_APPROVED', finishReason: 'completed' })
+            expect(execution.events.filter(event => event.type === 'turn/end'))
+              .toMatchObject([{ data: { turn: 2, reason: { kind: 'completed' } } }])
+          }
+          if (scenario.name === 'goal-rounds') {
+            expect(execution).toMatchObject({ finalResponse: 'SDK_GOAL_DONE', finishReason: 'completed' })
+            expect(execution.events.filter(event => event.type === 'goal/change').map(event => event.data.operation))
+              .toEqual(['create', 'complete'])
+            expect(execution.events.filter(event => event.type === 'turn/end')).toMatchObject([
+              { data: { turn: 2, reason: { kind: 'completed' } } },
+              { data: { turn: 3, reason: { kind: 'completed' } } },
+            ])
+          }
           collectCommandNotifications(subscription, sessionId, execution, notifications, observe)
           continue
         }
@@ -923,7 +951,6 @@ async function runScenario(scenario: CorpusScenario): Promise<{
               observe(message)
             },
           })
-          if ('commandId' in outcome) throw new Error('SDK prompt input returned a command result')
           result = outcome
         } else {
           const outcome = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
@@ -932,7 +959,6 @@ async function runScenario(scenario: CorpusScenario): Promise<{
               observe(notification)
             },
           })
-          if ('commandId' in outcome) throw new Error('SDK prompt input returned a command result')
           result = outcome
         }
         results.push(result)

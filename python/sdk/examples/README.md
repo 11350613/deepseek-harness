@@ -40,7 +40,7 @@ python python/sdk/examples/compact.py \
   --workspace /absolute/path/to/disposable-workspace
 ```
 
-The script prints command ids and outcomes separately from model responses. A failed turn or command stops the example. See [Run text and commands](../README.md#run-text-and-commands) for completion and error behavior; `minimal.py` uses the same `run()` entry, with capabilities supplied by its selected profile.
+The script prints `RunResult.final_response` for prompts and commands. An unsuccessful `finish_reason` stops the example. See [Run text and commands](../README.md#run-text-and-commands) for completion and error behavior; `minimal.py` uses the same `run()` entry, with capabilities supplied by its selected profile.
 
 <a id="change-session-permissions"></a>
 ## Change Session permissions
@@ -59,7 +59,7 @@ The command changes the Session's policy while the printed launch setting remain
 <a id="review-a-plan"></a>
 ## Review a plan
 
-The [plan example](plan.py) sends `/plan <task>` through `run()` and keeps the Session notification subscription and question handler alive after command completion. Enter `a` to approve, `k` to give feedback, or `d` to dismiss; cancellation or EOF before an answer dismisses the review. Approval allows implementation from a later model step, so choose an isolated workspace.
+The [plan example](plan.py) sends `/plan <task>` through `run()` and keeps the Session notification subscription and question handler alive within that call until plan activity finishes. Enter `a` to approve, `k` to give feedback, or `d` to dismiss; cancellation or EOF before an answer dismisses the review. Approval allows implementation from a later model step, so choose an isolated workspace.
 
 ```sh
 python python/sdk/examples/plan.py \
@@ -68,7 +68,7 @@ python python/sdk/examples/plan.py \
   "Plan the requested change and present it for review."
 ```
 
-The native plan is carried in `exit_plan_mode`, not written to a workspace document. Permissions remain workspace-write. Dismissal leaves plan mode active and ends the current turn. The example waits through `session/wait` and rejects truncated or failed root turns; its question callback is independent of the protocol reader. Ctrl+C stops the example even while it is waiting for input.
+The native plan is carried in `exit_plan_mode`, not written to a workspace document. Permissions remain workspace-write. Dismissal leaves plan mode active and ends the current turn. The example waits through `run()` and rejects truncated or failed root turns; its question callback is independent of the protocol reader. Ctrl+C stops the example even while it is waiting for input.
 
 Piped answers use the parent process's stdin encoding and leave later lines for subsequent questions. UTF-16 and UTF-32 input requires an explicit little-endian or big-endian encoding. Truncated characters at EOF are reported as input errors.
 
@@ -84,7 +84,7 @@ python python/sdk/examples/goal.py \
   "Calculate 17 * 19, verify the result, and complete the goal without changing files."
 ```
 
-`--timeout-seconds` requires a finite positive value and bounds the initial command wait and subsequent observation (300 seconds by default). A timeout reports failure and closes the runtime; it does not mark the goal complete. The persisted goal can be inspected after restoration and explicitly resumed. `session/wait` alone is insufficient because automatic rounds have idle gaps.
+`--timeout-seconds` requires a finite positive value and bounds the initial command wait and subsequent observation (300 seconds by default). A timeout reports failure and closes the runtime; it does not mark the goal complete. The persisted goal can be inspected after restoration and explicitly resumed. `run()` includes the automatic rounds and final reply.
 
 ## Add plugins
 

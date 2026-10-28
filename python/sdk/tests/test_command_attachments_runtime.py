@@ -12,7 +12,7 @@ import pytest
 from deepseek_harness import CommandExecution, RunResult
 from deepseek_harness.errors import JsonRpcError
 from test_commands_runtime import (
-    _Completion, _SESSION_ID, _WAIT_SECONDS, _command_pair, _of_type,
+    _Completion, _SESSION_ID, _WAIT_SECONDS, _command_pair, _native_result, _of_type,
     _read_events, _request_texts, _runtime, _wait_activity,
 )
 from test_goal_runtime import _command, _until
@@ -66,8 +66,8 @@ def test_plan_image_reaches_the_model_and_persists_as_a_reference(
     with _runtime(tmp_path, [_Completion("IMAGE_PLAN_READY")], model=_IMAGE_MODEL) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
         execution = runtime.call(session.run, content)
-        assert isinstance(execution, CommandExecution)
-        assert execution.result.kind == "success", execution.result.text
+        assert isinstance(execution, RunResult)
+        assert execution.finish_reason == "completed" and execution.final_response == "IMAGE_PLAN_READY"
         _wait_activity(runtime, session)
         [request] = runtime.model.captured()
         _assert_request_images(request, picture)
@@ -95,8 +95,9 @@ def test_plan_off_compact_and_permission_reject_images_without_applying_the_comm
         executions = []
         for line in ["/plan off", "/compact", "/permission danger-full-access"]:
             execution = runtime.call(session.run, [{"type": "text", "text": line}, picture])
-            assert isinstance(execution, CommandExecution)
-            assert execution.result.kind == "error"
+            assert isinstance(execution, RunResult)
+            assert execution.finish_reason == "error"
+            execution = _native_result(execution)
             assert "attachment" in execution.result.text.lower()
             executions.append((line.split()[0][1:], execution))
         assert "Plan mode off" in _command(runtime, session, "/plan off").result.text
@@ -121,10 +122,10 @@ def test_goal_create_and_edit_images_reach_following_requests_as_durable_referen
     second = _Completion("REVISED_GOAL_IMAGE", blocked=True)
     with _runtime(tmp_path, [first, second], model=_IMAGE_MODEL) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
-        created = runtime.call(session.run, [original, {"type": "text", "text": "/goal Inspect the original picture."}])
+        created = runtime.call(runtime.harness.client._query, session.id, [original, {"type": "text", "text": "/goal Inspect the original picture."}], "queue")
         assert isinstance(created, CommandExecution) and created.result.kind == "success"
         assert first.entered.wait(_WAIT_SECONDS), runtime.model.failures
-        edited = runtime.call(session.run, [revised, {"type": "text", "text": "/goal edit Inspect the revised picture."}])
+        edited = runtime.call(runtime.harness.client._query, session.id, [revised, {"type": "text", "text": "/goal edit Inspect the revised picture."}], "queue")
         assert isinstance(edited, CommandExecution) and edited.result.kind == "success"
         _command(runtime, session, "/goal clear")
         assert not first.release.is_set()
@@ -152,6 +153,35 @@ def test_goal_create_and_edit_images_reach_following_requests_as_durable_referen
         }]
 
 
+def test_cleared_goal_waits_for_its_image_input_queued_during_compaction(tmp_path: Path) -> None:
+    picture = _image()
+    summary = _Completion("Retain the earlier task.", blocked=True)
+    reply = _Completion("REFERENCE_INPUT_REPLY", blocked=True)
+    with _runtime(tmp_path, [_Completion("EARLIER_REPLY"), summary, reply], model=_IMAGE_MODEL) as runtime:
+        session = runtime.harness.start_session(_SESSION_ID)
+        runtime.call(session.run, "Retain this earlier task. " * 256)
+        compacting = runtime.workers.submit(session.run, "/compact")
+        assert summary.entered.wait(_WAIT_SECONDS), runtime.model.failures
+        with runtime.harness.client.subscribe_session_notifications(session.id) as notices:
+            running = runtime.workers.submit(session.run, [
+                {"type": "text", "text": "/goal Inspect the reference."}, picture,
+            ])
+            _until(notices, "goal/change", "create")
+            cleared = session.run("/goal clear")
+            assert cleared.finish_reason == "completed" and cleared.final_response == "Goal cleared."
+            summary.release.set()
+            assert compacting.result(timeout=_WAIT_SECONDS).finish_reason == "completed"
+            assert reply.entered.wait(_WAIT_SECONDS), runtime.model.failures
+            assert not running.done()
+            _assert_request_images(runtime.model.captured()[-1], picture)
+            reply.release.set()
+            result = running.result(timeout=_WAIT_SECONDS)
+            assert result.finish_reason == "aborted" and result.final_response == "REFERENCE_INPUT_REPLY"
+    events = _read_events(runtime.logs)
+    _command_pair(events, result, "goal")
+    assert [event["data"]["operation"] for event in _of_type(events, "goal/change")] == ["create", "clear"]
+
+
 def test_goal_controls_with_images_leave_the_active_request_and_goal_unchanged(tmp_path: Path) -> None:
     first = _Completion("CURRENT_GOAL_REQUEST_FINISHED", blocked=True)
     with _runtime(tmp_path, [first], model=_IMAGE_MODEL) as runtime:
@@ -162,7 +192,8 @@ def test_goal_controls_with_images_leave_the_active_request_and_goal_unchanged(t
             rejected = []
             for line in ["/goal", "/goal pause", "/goal resume", "/goal clear", "/goal edit", "/goal Duplicate goal"]:
                 execution = runtime.call(session.run, [{"type": "text", "text": line}, _image()])
-                assert isinstance(execution, CommandExecution) and execution.result.kind == "error"
+                assert isinstance(execution, RunResult) and execution.finish_reason == "error"
+                execution = _native_result(execution)
                 rejected.append(execution)
             assert "Status: active" in _command(runtime, session, "/goal").result.text
             assert not first.release.is_set() and len(runtime.model.captured()) == 1
@@ -238,7 +269,8 @@ def test_invalid_image_batch_cannot_enter_plan_mode_or_deliver_a_partial_prompt(
             ])
         assert "command" in str(ambiguous.value).lower()
         rejected = runtime.call(session.run, [{"type": "text", "text": "/plan Inspect the pictures."}, *images])
-        assert isinstance(rejected, CommandExecution) and rejected.result.kind == "error"
+        assert isinstance(rejected, RunResult) and rejected.finish_reason == "error"
+        rejected = _native_result(rejected)
         assert "base64" in rejected.result.text
         with pytest.raises(JsonRpcError, match="base64"):
             runtime.call(session.run, [*images, {"type": "text", "text": "Inspect the pictures."}])

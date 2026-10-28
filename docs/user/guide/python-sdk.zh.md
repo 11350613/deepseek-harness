@@ -98,7 +98,7 @@ python python/sdk/examples/minimal.py `
 ```python
 from pathlib import Path
 
-from deepseek_harness import DeepSeekHarness, RunResult
+from deepseek_harness import DeepSeekHarness
 
 workspace = Path("/absolute/path/to/disposable-workspace").resolve()
 dsh_home = Path("/absolute/path/to/example-dsh-home").resolve()
@@ -115,7 +115,7 @@ with DeepSeekHarness(
         session_id="example-001",
     )
 
-print(result.final_response if isinstance(result, RunResult) else result.result.text)
+print(result.final_response)
 ```
 
 SDK 会延迟启动内置的 `dsh --profile sdk-minimal` 进程，并复用到上下文管理器退出。Profile、其持久 patch、home patch 与任何有序 `patches` tuple 共同组成应用配置。不存在独立 Python 运行时 bin 或完整配置选项。

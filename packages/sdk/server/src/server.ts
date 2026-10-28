@@ -6,7 +6,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { resolve } from 'node:path'
+import { QueryActivity } from './query-activity.ts'
 import { SdkUserQuestionBridge } from './user-questions.ts'
 import { queryCommand } from './query-input.ts'
 import { queryCommandImages, queryContent } from './query-content.ts'
@@ -104,6 +106,9 @@ export class HarnessSdkJsonRpcServer {
   private readonly sessions = new Map<string, SessionRecord>()
   private readonly sessionCreations = new Map<string, Promise<SessionRecord>>()
   private readonly commandTasks = new Set<Promise<CommandExecution | undefined>>()
+  private readonly queryInvocation = new AsyncLocalStorage<QueryActivity>()
+  private readonly queryActivities = new Set<QueryActivity>()
+  private readonly goalLifetime: { dispose(): Promise<void> }
   private readonly disposers: (() => void)[] = []
   private shutdownTask: Promise<Record<string, never>> | undefined
   private shuttingDown = false
@@ -120,6 +125,11 @@ export class HarnessSdkJsonRpcServer {
     private readonly transport: JsonRpcTransportPeer,
     private readonly options: HarnessSdkJsonRpcServerOptions = {},
   ) {
+    this.goalLifetime = ctx.inject(['goals'], (goalCtx) => {
+      goalCtx.effect(() => () => {
+        for (const activity of this.queryActivities) activity.goalUnavailable()
+      })
+    })
     this.disposers.push(ctx.on('approval/request', async (request, next) => {
       if (!this.approvalRequests || !this.ownsAgent(request.agent)) return next()
       const params: ApprovalRequestParams = {
@@ -289,7 +299,7 @@ export class HarnessSdkJsonRpcServer {
   /**
    * Dispatch text as a Desktop-style input; native commands own Session state changes.
    * @param params - ordered content blocks, receiving Session and ordinary-prompt delivery.
-   * @returns an enqueue receipt for text or the supported native command's result.
+   * @returns a prompt receipt or native command acknowledgment; command activity completes by notification.
    * @throws on runtime failure; a recognized command failure never falls back to a prompt.
    */
   async query(params: SessionQueryParams): Promise<SessionQueryResult> {
@@ -305,7 +315,19 @@ export class HarnessSdkJsonRpcServer {
         const line = queryCommand(text.text, commands.list(rec.handle.agent))
         if (line !== undefined) {
           const images = queryCommandImages(params.contentBlocks, text)
-          return { kind: 'command', execution: await this.runCommand({ sessionId: params.sessionId, line }, images) }
+          const activity: QueryActivity = new QueryActivity(this.ctx, rec.handle.agent, this.transport,
+            () => this.queryInvocation.getStore() === activity, this.lifetime.signal,
+            (current) => { this.queryActivities.delete(current) })
+          this.queryActivities.add(activity)
+          try {
+            const execution = await this.queryInvocation.run(activity,
+              () => this.runCommand({ sessionId: params.sessionId, line }, images))
+            activity.accept(execution)
+            return { kind: 'command', execution }
+          } catch (error) {
+            activity.close()
+            throw error
+          }
         }
       }
     }
@@ -482,6 +504,7 @@ export class HarnessSdkJsonRpcServer {
     const pendingCreations = [...this.sessionCreations.values()]
     await Promise.allSettled(pendingCreations)
     await Promise.allSettled([...this.commandTasks])
+    this.queryInvocation.disable()
     this.sessionCreations.clear()
     this.scheduledSessions.clear()
     const records = [...this.sessions.values()]
@@ -500,6 +523,7 @@ export class HarnessSdkJsonRpcServer {
       failures.push(error)
     }
     const teardownResults = await Promise.allSettled([
+      this.goalLifetime.dispose(),
       ...records.map(rec => Promise.resolve().then(() => rec.handle.dispose())),
       ...(this.llmFiber === undefined ? [] : [Promise.resolve().then(() => this.llmFiber?.dispose())]),
     ])

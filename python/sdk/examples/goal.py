@@ -6,17 +6,11 @@ from __future__ import annotations
 import argparse
 import math
 import os
-import time
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
-from pydantic import BaseModel
-
-from deepseek_harness import RunCommandResult, DeepSeekHarness, Notification
+from deepseek_harness import DeepSeekHarness, Notification
 from deepseek_harness.api import final_response
-
-
-class WaitResult(BaseModel):
-    """The empty session/wait result."""
 
 
 def display(notification: Notification) -> dict | None:
@@ -49,43 +43,22 @@ def main() -> None:
     with DeepSeekHarness(
         dsh_home=str(args.dsh_home.resolve()), cwd=str(args.workspace.resolve()),
         profile="sdk", model=args.model, env={"DSH_PERMISSION_MODE": "workspace-write"},
-        request_timeout_seconds=args.timeout_seconds,
     ) as harness:
         session = harness.start_session()
-        with harness.client.subscribe_notifications(lambda notice: notice.payload.get("sessionId") == session.id) as notifications:
-            deadline = time.monotonic() + args.timeout_seconds
-
-            def remaining_seconds() -> float:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError("Goal observation timed out")
-                return remaining
-
-            def observe(notification: Notification) -> dict | None:
-                remaining_seconds()
-                event = display(notification)
-                remaining_seconds()
-                return event
-
-            execution = session.run(f"/goal {args.objective}")
-            if not isinstance(execution, RunCommandResult):
-                raise RuntimeError("The SDK profile did not execute the requested command")
-            print(execution.result.text, flush=True)
-            if execution.result.kind == "error":
-                raise RuntimeError(execution.result.text)
-            while True:
-                event = observe(notifications.next(timeout_seconds=remaining_seconds()))
-                if event is not None and event["type"] == "goal/change" and event["data"]["operation"] in {
-                    "complete", "block", "pause", "clear",
-                }:
-                    break
-            # A terminal goal event can precede the model's closing reply.
-            harness.client.request(
-                "session/wait", {"sessionId": session.id}, response_model=WaitResult,
-                timeout_seconds=remaining_seconds(),
-                on_notification=observe, notification_subscription=notifications,
+        with ThreadPoolExecutor(max_workers=1) as worker:
+            running = worker.submit(
+                session.run, f"/goal {args.objective}",
+                on_notification=lambda notice: display(notice) if notice.payload.get("sessionId") == session.id else None,
             )
-            remaining_seconds()
+            try:
+                result = running.result(timeout=args.timeout_seconds)
+            except FutureTimeoutError as error:
+                raise TimeoutError("Goal observation timed out") from error
+            finally:
+                if not running.done():
+                    harness.close()
+        if result.finish_reason != "completed":
+            raise RuntimeError(f"Goal activity ended with {result.finish_reason}: {result.final_response}")
 
 
 if __name__ == "__main__":

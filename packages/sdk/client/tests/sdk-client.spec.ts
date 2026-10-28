@@ -20,8 +20,6 @@ import {
   SdkProtocolError,
   TransportClosedError,
   type HarnessNotification,
-  type CommandExecution,
-  type RunResult,
   type SdkPromptContentBlock,
 } from '../src/index.ts'
 import { createProcessDeepSeekHarness, finalResponse } from '../src/api.ts'
@@ -65,11 +63,6 @@ async function tempDir(prefix: string): Promise<string> {
   return dir
 }
 
-function promptActivity(result: RunResult | CommandExecution): RunResult {
-  if ('commandId' in result) throw new Error('expected ordinary prompt activity')
-  return result
-}
-
 describe('DeepSeekHarness', () => {
   it('queues literal slash text and images through the low-level prompt method', async () => {
     const harness = harnessWith()
@@ -90,7 +83,7 @@ describe('DeepSeekHarness', () => {
     expect(await harness.client.executeCommand(session.id, ' /compact ')).toEqual({
       commandId: 'command-1', result: { kind: 'success', text: ' /compact ' },
     })
-    expect(await session.run('/compact')).toMatchObject({ commandId: 'command-1', result: { kind: 'success' } })
+    expect(await session.run('/compact')).toMatchObject({ finalResponse: '/compact', finishReason: 'completed' })
   })
 
   it.each([
@@ -133,7 +126,7 @@ describe('DeepSeekHarness', () => {
     const harness = harnessWith()
     const session = await harness.resumeSession('saved-session')
     expect(session.id).toBe('saved-session')
-    expect(promptActivity(await session.run([{ type: 'text', text: 'continue' }])).sessionId).toBe('saved-session')
+    expect((await session.run([{ type: 'text', text: 'continue' }])).sessionId).toBe('saved-session')
   })
 
   it('propagates resume failures', async () => {
@@ -203,7 +196,7 @@ describe('DeepSeekHarness', () => {
       async * [Symbol.asyncIterator]() {},
     }))
 
-    const result = promptActivity(await new HarnessSession(harness, 'owned').run([{ type: 'text', text: 'go' }]))
+    const result = await new HarnessSession(harness, 'owned').run([{ type: 'text', text: 'go' }])
 
     expect(result.notifications.map(notification => notification.method))
       .toEqual(['session.event', 'session.status'])
@@ -292,7 +285,7 @@ describe('DeepSeekHarness', () => {
       async * [Symbol.asyncIterator]() {},
     }))
 
-    const result = promptActivity(await new HarnessSession(harness, 'owned').run([{ type: 'text', text: 'go' }]))
+    const result = await new HarnessSession(harness, 'owned').run([{ type: 'text', text: 'go' }])
 
     expect(result.events).toEqual([receipt, nativeResult, ptcStart, ptcResult])
     expect(result.events.find(event => event.type === 'tool/ptc-dispatch')?.data.meta)
@@ -306,7 +299,7 @@ describe('DeepSeekHarness', () => {
 
   it('runs a turn end to end and reuses the runtime across sessions', async () => {
     const harness = harnessWith({ FAKE_TEXT: 'turn answer' })
-    const first = promptActivity(await harness.run([{ type: 'text', text: 'say hi' }]))
+    const first = await harness.run([{ type: 'text', text: 'say hi' }])
     expect(first.finalResponse).toBe('turn answer')
     expect(first.events.map(event => event.type)).toEqual([
       'agent/inbox/spliced', 'turn/start', 'assistant/message', 'turn/end',
@@ -324,7 +317,7 @@ describe('DeepSeekHarness', () => {
     ])
 
     // Same subprocess, second session: ids differ, protocol state is reusable.
-    const second = promptActivity(await harness.run([{ type: 'text', text: 'again' }]))
+    const second = await harness.run([{ type: 'text', text: 'again' }])
     expect(second.sessionId).not.toBe(first.sessionId)
     await harness.close()
   })
@@ -332,10 +325,10 @@ describe('DeepSeekHarness', () => {
   it('keeps events root-scoped while streaming notifications for the session tree', async () => {
     const harness = harnessWith({ FAKE_SUBAGENT: '1' })
     const seen: HarnessNotification[] = []
-    const result = promptActivity(await harness.run([{ type: 'text', text: 'delegate' }], {
+    const result = await harness.run([{ type: 'text', text: 'delegate' }], {
       sessionId: 'parent-1',
       onNotification: (n) => { seen.push(n) },
-    }))
+    })
 
     // The child session's events arrive through subagent.started lineage.
     expect(seen.map(n => n.method)).toContain('subagent.started')
@@ -464,7 +457,7 @@ describe('DeepSeekHarness', () => {
     // First start: the scripted runtime fails the handshake and is reaped.
     await expect(harness.start()).rejects.toThrow('scripted first-boot failure')
     // Retry spawns a NEW subprocess through a fresh client (close is permanent).
-    const result = promptActivity(await harness.run([{ type: 'text', text: 'again' }]))
+    const result = await harness.run([{ type: 'text', text: 'again' }])
     expect(harness.client).not.toBe(firstClient)
     expect(result.finalResponse).toBe('second boot answer')
     await harness.close()
@@ -482,7 +475,7 @@ describe('DeepSeekHarness', () => {
     {
       await using harness = createProcessDeepSeekHarness(fakeLaunch())
       captured = harness
-      const result = promptActivity(await harness.run([{ type: 'text', text: 'scoped' }]))
+      const result = await harness.run([{ type: 'text', text: 'scoped' }])
       expect(result.finalResponse).toBe('hello from fake runtime')
     }
     // After scope exit the runtime is closed: reuse fails loudly.
@@ -788,7 +781,7 @@ describe('wire payload validation', () => {
 
   it('accepts the complete hook cancellation cause', async () => {
     const harness = harnessWith({ FAKE_REASON_KIND: 'aborted', FAKE_ABORT_REASON_KIND: 'hook' })
-    const result = promptActivity(await harness.run([{ type: 'text', text: 'hook-abort' }]))
+    const result = await harness.run([{ type: 'text', text: 'hook-abort' }])
     const end = result.events.findLast(event => event.type === 'turn/end')
     expect(end?.data.reason).toEqual({ kind: 'aborted', reason: { kind: 'hook', reason: 'scripted hook abort' } })
   })
@@ -851,7 +844,7 @@ describe('server-to-client SDK requests', () => {
 describe('SDK cancellation reason projection', () => {
   it.each(['user', 'parent', 'disposed', 'legacy'])('retains the %s cancellation cause', async (kind) => {
     const harness = harnessWith({ FAKE_REASON_KIND: 'aborted', FAKE_ABORT_REASON_KIND: kind })
-    const result = promptActivity(await harness.run([{ type: 'text', text: 'cancelled' }]))
+    const result = await harness.run([{ type: 'text', text: 'cancelled' }])
     expect(result.events.findLast(event => event.type === 'turn/end')?.data.reason)
       .toEqual({ kind: 'aborted', reason: { kind } })
   })

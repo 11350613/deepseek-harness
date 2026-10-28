@@ -53,6 +53,7 @@ Both wire ends share one method set: client-to-server requests, opt-in server-to
 | server→client | `user-question.cancelled` | `SdkUserQuestionCancelled` |
 | server→client | `session.event` | `SessionEventNotification` (every session in the runtime, unfiltered) |
 | server→client | `session.status` | `SessionStatusNotification` (whole-agent `running`/`idle` transition) |
+| server→client | `session.query.completed` | `{ sessionId, commandId, finalResponse, finishReason }` |
 | server→client | `subagent.started` | `SubagentStartedNotification` |
 | server→client | `subagent.finished` | `SubagentFinishedNotification` (in-process runs only) |
 
@@ -64,7 +65,7 @@ Both wire ends share one method set: client-to-server requests, opt-in server-to
 
 `session/command` accepts `{ sessionId, line }` after initialization and delegates the [supported builtin definitions through their ASCII registered names or canonical English aliases](../server/README.md#command-input) to the native registry. Chinese aliases use `session/query`. A non-blank preset is required; bare `/permission` is rejected. It returns `CommandExecution` after the handler settles, including an unknown preset or other business failure as `result.kind: "error"`. Unavailable or unsupported commands and malformed requests reject with a JSON-RPC error. There is no prompt fallback or attachment input; use `session/query` to submit commands with encoded images. No inbox receipt or ordinary turn is required. `session/prompt` queues content blocks without native slash-command routing; runtime skill recognition still applies.
 
-Command lifecycle notifications precede their response on the same stream for both `session/command` and the command result of `session/query`. Forwarders must preserve this order.
+Command lifecycle notifications precede the native handler response for both `session/command` and `session/query`. A command query additionally ends high-level observation with `session.query.completed` for the same `commandId`, after model activity it starts; goal creation and resume include goal termination and closing activity. State-only commands need no model turn, and their completion notification can precede the response. SDKs consume this receipt internally and return `RunResult`; forwarders must preserve order. Shutdown cancels unfinished observation.
 
 `session/resume` accepts a non-empty persisted `{ sessionId }` and returns `{}` after restoring that exact session. It requires initialization and the original persistence store, sends no new input, and rejects missing, unreadable, incompatible, or occupied sessions without creating a replacement. Historical events remain in the stored log; notifications report newly committed events.
 

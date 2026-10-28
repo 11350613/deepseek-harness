@@ -5,7 +5,7 @@ import { createProcessDeepSeekHarness } from '../src/api.ts'
 import * as sdk from '../src/index.ts'
 import { JsonRpcResponseError, RequestTimeoutError, SdkProtocolError, TransportClosedError } from '../src/index.ts'
 import type { SdkEncodedImageBlock, SdkPromptContentBlock } from '../src/index.ts'
-import type { RunCommandResult, HarnessNotification, RunResult } from '../src/types.ts'
+import type { HarnessNotification, RunResult } from '../src/types.ts'
 
 function harnessWith(environment: Record<string, string> = {}, requestTimeoutMs?: number) {
   const harness = createProcessDeepSeekHarness({
@@ -20,11 +20,6 @@ function harnessWith(environment: Record<string, string> = {}, requestTimeoutMs?
   return harness
 }
 
-function activity(result: RunResult | RunCommandResult): RunResult {
-  if ('commandId' in result) throw new Error('expected ordinary prompt activity')
-  return result
-}
-
 const images: [SdkEncodedImageBlock, SdkEncodedImageBlock] = [
   { type: 'image', data: 'aW1hZ2U=', mimeType: 'image/png', name: 'diagram.png' },
   { type: 'image', data: 'c2Vjb25k', mimeType: 'image/jpeg' },
@@ -34,6 +29,8 @@ it('exposes run while keeping its routing request helper internal', () => {
   expect(sdk.HarnessClient.prototype).not.toHaveProperty('query')
   expect(sdk).not.toHaveProperty('queryInput')
   expectTypeOf<sdk.HarnessClient>().not.toHaveProperty('query')
+  expect(sdk).not.toHaveProperty('RunCommandResult')
+  expectTypeOf<Awaited<ReturnType<sdk.HarnessSession['run']>>>().toEqualTypeOf<RunResult>()
 })
 
 it('returns generated Session identities that can receive subsequent input', async () => {
@@ -43,7 +40,7 @@ it('returns generated Session identities that can receive subsequent input', asy
   expect(first.sessionId).toEqual(expect.any(String))
   expect(first.sessionId).not.toBe('')
   expect(second.sessionId).not.toBe(first.sessionId)
-  const continued = activity(await harness.run('continue', { sessionId: first.sessionId }))
+  const continued = await harness.run('continue', { sessionId: first.sessionId })
   expect(continued.sessionId).toBe(first.sessionId)
   expect(continued.finalResponse).toBe('reply:continue')
   expect(await harness.client.request('test/state')).toHaveProperty('queries', [
@@ -60,16 +57,17 @@ it.each(['session', 'harness'])('runs a native command through the %s entry with
   const result = entry === 'session'
     ? await harness.session('main').run('/compact', { onNotification })
     : await harness.run('/compact', { sessionId: 'main', onNotification })
-  expect(result).toEqual({ sessionId: 'main', commandId: 'command-1', result: { kind: 'success', text: 'compacted', sourceEventSeq: 0 } })
-  expect(notifications.map(notification => (notification.params.event as { type: string }).type))
+  expect(result).toMatchObject({ sessionId: 'main', finalResponse: 'compacted', finishReason: 'completed' })
+  expect(notifications.filter(notification => notification.method === 'session.event')
+    .map(notification => (notification.params.event as { type: string }).type))
     .toEqual(['command/run', 'command/done'])
 })
 
 it('preserves prompt text and observes its receipt-to-idle activity', async () => {
   const notifications: HarnessNotification[] = []
-  const result = activity(await harnessWith().session('main').run(' first\n', {
+  const result = await harnessWith().session('main').run(' first\n', {
     onNotification: (notification) => { notifications.push(notification) },
-  }))
+  })
   expect(result.finalResponse).toBe('reply: first\n')
   expect(result.notifications).toEqual(notifications)
   expect(result.events.some(event => event.type === 'assistant/message' && event.data.message.content.some(block =>
@@ -83,7 +81,7 @@ it.each(['session', 'harness'])('forwards native command content blocks through 
   const result = entry === 'session'
     ? await harness.session('images').run(contentBlocks)
     : await harness.run(contentBlocks, { sessionId: 'images' })
-  expect(result).toEqual({ ...execution, sessionId: 'images' })
+  expect(result).toMatchObject({ sessionId: 'images', finalResponse: '', finishReason: 'completed' })
   expect(await harness.client.request('test/state')).toHaveProperty('queries', [
     { sessionId: 'images', contentBlocks, delivery: 'queue' },
   ])
@@ -100,7 +98,7 @@ it.each([
   const result = entry === 'session'
     ? await harness.session('images').run(contentBlocks, { delivery })
     : await harness.run(contentBlocks, { sessionId: 'images', delivery })
-  expect(activity(result).finalResponse).toBe(`reply:${text ?? ''}`)
+  expect(result.finalResponse).toBe(`reply:${text ?? ''}`)
   expect(await harness.client.request('test/state')).toHaveProperty('queries', [
     { sessionId: 'images', contentBlocks, delivery },
   ])
@@ -112,8 +110,8 @@ it('normalizes text and preserves block order through run', async () => {
   const contentBlocks: SdkPromptContentBlock[] = [
     images[0], { type: 'text', text: 'inspect ' }, images[1], { type: 'text', text: 'both' },
   ]
-  expect(activity(await harness.run(' inspect\n', { sessionId: 'images', delivery: 'steer' })).finalResponse).toBe('reply: inspect\n')
-  expect(activity(await harness.run(contentBlocks, { sessionId: 'images' })).finalResponse).toBe('reply:inspect \nboth')
+  expect((await harness.run(' inspect\n', { sessionId: 'images', delivery: 'steer' })).finalResponse).toBe('reply: inspect\n')
+  expect((await harness.run(contentBlocks, { sessionId: 'images' })).finalResponse).toBe('reply:inspect \nboth')
   expect(await harness.client.executeCommand('images', ' /plan inspect ')).toEqual({
     commandId: 'strict-command-1', result: { kind: 'success' },
   })
@@ -128,9 +126,8 @@ it('normalizes text and preserves block order through run', async () => {
 it('returns native command results for text-only blocks', async () => {
   const harness = harnessWith()
   const contentBlocks: SdkPromptContentBlock[] = [{ type: 'text', text: '/compact' }]
-  expect(await harness.session('blocks').run(contentBlocks)).toEqual({
-    sessionId: 'blocks',
-    commandId: 'command-1', result: { kind: 'success', text: 'compacted', sourceEventSeq: 0 },
+  expect(await harness.session('blocks').run(contentBlocks)).toMatchObject({
+    sessionId: 'blocks', finalResponse: 'compacted', finishReason: 'completed',
   })
   expect(await harness.client.request('test/state')).toHaveProperty('queries', [
     { sessionId: 'blocks', contentBlocks, delivery: 'queue' },
@@ -141,19 +138,19 @@ it('retains a rejected command outcome without retrying its content as a prompt'
   const execution = { commandId: 'rejected-command', result: { kind: 'error', text: 'command rejected images' } }
   const harness = harnessWith({ QUERY_RESULT: JSON.stringify({ kind: 'command', execution }) })
   expect(await harness.session('images').run([{ type: 'text', text: '/plan off' }, ...images]))
-    .toEqual({ ...execution, sessionId: 'images' })
+    .toMatchObject({ sessionId: 'images', finalResponse: 'command rejected images', finishReason: 'error' })
   expect(await harness.client.request('test/state')).toHaveProperty('methods', ['initialize', 'session/query', 'test/state'])
 })
 
 it('steers ordinary text when delivery requests the next step', async () => {
-  const result = activity(await harnessWith().session('main').run('next', { delivery: 'steer' }))
+  const result = await harnessWith().session('main').run('next', { delivery: 'steer' })
   expect(result.notifications[0]).toMatchObject({ params: { event: {
     type: 'agent/inbox/spliced', data: { target: 'next-step' },
   } } })
 })
 
 it('keeps root result events separate from descendant notifications', async () => {
-  const result = activity(await harnessWith().session('main').run('with-child'))
+  const result = await harnessWith().session('main').run('with-child')
   expect(result.finalResponse).toBe('reply:with-child')
   expect(result.notifications.some(notification => notification.params.sessionId === 'child')).toBe(true)
   expect(result.notifications.some(notification => notification.params.sessionId === 'unrelated')).toBe(false)
@@ -163,7 +160,7 @@ it('keeps root result events separate from descendant notifications', async () =
 it('retains independent results for concurrent calls on one Session', async () => {
   const session = harnessWith().session('main')
   const results = await Promise.all([session.run('first'), session.run('second')])
-  expect(results.map(result => activity(result).finalResponse)).toEqual(['reply:first', 'reply:second'])
+  expect(results.map(result => result.finalResponse)).toEqual(['reply:first', 'reply:second'])
 })
 
 it('returns a busy command result while another run waits for model activity', async () => {
@@ -174,13 +171,13 @@ it('returns a busy command result while another run waits for model activity', a
     if (notification.method === 'session.status' && notification.params.status === 'running') entered.resolve(undefined)
   } })
   await entered.promise
-  expect(await session.run('/compact')).toEqual({ sessionId: 'main', commandId: 'command-2', result: { kind: 'error', text: 'busy' } })
+  expect(await session.run('/compact')).toMatchObject({ sessionId: 'main', finalResponse: 'busy', finishReason: 'error' })
   await harness.client.request('test/release')
-  expect(activity(await running).finalResponse).toBe('reply:hold')
+  expect((await running).finalResponse).toBe('reply:hold')
 })
 
 it.each(['/model', ' /compact extra '])('preserves unsupported command input as text: %s', async (text) => {
-  expect(activity(await harnessWith().session('main').run(text)).finalResponse).toBe(`reply:${text}`)
+  expect((await harnessWith().session('main').run(text)).finalResponse).toBe(`reply:${text}`)
 })
 
 it('returns a command result without lifecycle notifications', async () => {
@@ -189,7 +186,7 @@ it('returns a command result without lifecycle notifications', async () => {
   const result = await harnessWith({ QUERY_RESULT: JSON.stringify({ kind: 'command', execution }) }).session('main').run('/compact', {
     onNotification: (notification) => { notifications.push(notification) },
   })
-  expect(result).toEqual({ ...execution, sessionId: 'main' })
+  expect(result).toEqual({ sessionId: 'main', finalResponse: '', finishReason: 'completed', events: [], notifications: [] })
   expect(notifications).toEqual([])
 })
 
@@ -205,7 +202,7 @@ it.each(['ordinary', '/compact'])('releases its subscription after an observer r
   await expect(harness.session('main').run(text, { onNotification() { throw new Error('observer failed') } }))
     .rejects.toThrow('observer failed')
   expect(closes[0]).toHaveBeenCalled()
-  expect(activity(await harness.session('main').run('after')).finalResponse).toBe('reply:after')
+  expect((await harness.session('main').run('after')).finalResponse).toBe('reply:after')
 })
 
 it('propagates routing rejection without retrying as a prompt', async () => {
@@ -238,8 +235,37 @@ it('reports runtime loss from run', async () => {
 })
 
 it('steers text content blocks when delivery requests the next step', async () => {
-  const result = activity(await harnessWith().session('main').run([{ type: 'text', text: 'next' }], { delivery: 'steer' }))
+  const result = await harnessWith().session('main').run([{ type: 'text', text: 'next' }], { delivery: 'steer' })
   expect(result.notifications[0]).toMatchObject({ params: { event: {
     type: 'agent/inbox/spliced', data: { target: 'next-step' },
   } } })
+})
+
+it('keeps run pending after the plan command until its model output arrives', async () => {
+  const harness = harnessWith()
+  const admitted = Promise.withResolvers<undefined>()
+  const running = harness.session('plan').run('/plan hold', { onNotification(notice) {
+    const event = notice.params.event as { type?: string } | undefined
+    if (event?.type === 'command/done') admitted.resolve(undefined)
+  } })
+  let returned = false
+  void running.then(() => { returned = true })
+  await admitted.promise
+  expect(returned).toBe(false)
+  await harness.client.request('test/release')
+  expect(await running).toMatchObject({ sessionId: 'plan', finalResponse: 'the generated plan', finishReason: 'completed' })
+})
+
+it.each([{ commandId: null }, { finalResponse: 1 }, { finishReason: null }, { finishReason: '' }])(
+  'rejects malformed command completion: %j', async (completion) => {
+    const harness = harnessWith({
+      QUERY_RESULT: JSON.stringify({ kind: 'command', execution: { commandId: 'c', result: { kind: 'success' } } }),
+      QUERY_COMPLETION: JSON.stringify(completion),
+    })
+    await expect(harness.session('plan').run('/plan')).rejects.toThrow(SdkProtocolError)
+  },
+)
+
+it('reports transport loss after the command has acknowledged its model work', async () => {
+  await expect(harnessWith().session('plan').run('/plan disconnect')).rejects.toThrow(TransportClosedError)
 })

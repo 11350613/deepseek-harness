@@ -70,22 +70,18 @@ export interface DeepSeekHarnessOptions extends HarnessClientOptions {
   approvalRequests?: boolean
 }
 
-/** One owned session activity interval, from enqueue receipt through idle. */
+/** Result of one SDK input, including the model activity or native operation it owns. */
 export interface RunResult {
   /** The session the activity ran on. */
   sessionId: string
-  /** Concatenated text of the interval's last assistant message (empty when none). */
+  /** Final assistant text (empty when absent), native state-only result text, or a failure diagnostic. */
   finalResponse: string
+  /** Model turn ending or native operation outcome; null when no terminal reason was recorded. */
+  finishReason: string | null
   /** Every `session.event` payload for the root session, in wire order. */
   events: SessionEvent[]
   /** Every notification for the root session and discovered descendants, in wire order. */
   notifications: HarnessNotification[]
-}
-
-/** A high-level run's native command outcome and its receiving Session. */
-export interface RunCommandResult extends CommandExecution {
-  /** Session to use for subsequent input, observation, or persisted restoration. */
-  sessionId: string
 }
 
 /** Re-exported content-block alias so SDK callers need no extra import. */

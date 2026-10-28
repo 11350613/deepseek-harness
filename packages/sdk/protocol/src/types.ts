@@ -116,6 +116,7 @@ export interface SessionQueryParams {
 /**
  * A prompt's enqueue receipt or a settled native command; neither means all Session work ended.
  * Command lifecycle notifications precede the command response on the same stream.
+ * High-level command activity ends with its correlated session.query.completed notification.
  */
 export type SessionQueryResult =
   | ({ kind: 'prompt' } & SessionPromptResult)
@@ -204,6 +205,13 @@ export interface HarnessSdkNotificationMap {
   'user-question.cancelled': SdkUserQuestionCancelled
   'session.event': SessionEventNotification
   'session.status': SessionStatusNotification
+  /** Completion of a command query, including model activity and automatic goal rounds it starts. */
+  'session.query.completed': {
+    sessionId: SessionId
+    commandId: CommandExecution['commandId']
+    finalResponse: string
+    finishReason: string
+  }
   'subagent.started': SubagentStartedNotification
   'subagent.finished': SubagentFinishedNotification
 }

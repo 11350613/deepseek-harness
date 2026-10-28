@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import runpy
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -17,8 +17,8 @@ from deepseek_harness import DeepSeekHarness
 _EXAMPLE = Path(__file__).resolve().parents[1] / "examples/goal.py"
 
 
-@pytest.mark.parametrize("pending", ["command", "goal-event", "wrapup", "complete", "goal-queue", "wrapup-queue"])
-def test_goal_example_bounds_pending_work_and_reaps_runtime(
+@pytest.mark.parametrize("pending", ["command", "activity", "complete", "error", "interrupt"])
+def test_goal_example_bounds_the_whole_run_and_reaps_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], pending: str,
 ) -> None:
     peer = tmp_path / "goal-peer.py"
@@ -41,26 +41,25 @@ for line in sys.stdin:
         send({"id": frame["id"], "result": {"serverInfo": {"name": "goal-example-peer"}}})
     elif method == "session/query":
         assert frame["params"]["contentBlocks"] == [{"type": "text", "text": "/goal Finish this task"}]
-        session = frame["params"]["sessionId"]
         if pending == "command":
             continue
-        if pending in ("wrapup", "complete", "wrapup-queue"):
+        session = frame["params"]["sessionId"]
+        for kind in ("command/run", "command/done"):
             send({"method": "session.event", "params": {"sessionId": session, "event": {
-                "type": "goal/change", "data": {"operation": "complete"}}}})
-        elif pending == "goal-queue":
-            for operation in ("create", "edit"):
-                send({"method": "session.event", "params": {"sessionId": session, "event": {
-                    "type": "goal/change", "data": {"operation": operation}}}})
+                "type": kind, "data": {"commandId": "goal-command"}}}})
         send({"id": frame["id"], "result": {"kind": "command", "execution": {
             "commandId": "goal-command", "result": {"kind": "success", "text": "Goal set"}}}})
-    elif method == "session/wait":
-        if pending == "wrapup":
+        if pending in ("activity", "interrupt"):
             continue
-        for _ in range(2 if pending == "wrapup-queue" else 1):
+        if pending == "complete":
+            send({"method": "session.event", "params": {"sessionId": session, "event": {
+                "type": "goal/change", "data": {"operation": "complete"}}}})
             send({"method": "session.event", "params": {"sessionId": session, "event": {
                 "type": "assistant/message", "data": {"message": {
                     "content": [{"type": "text", "text": "Closing reply"}]}}}}})
-        send({"id": frame["id"], "result": {}})
+        send({"method": "session.query.completed", "params": {"sessionId": session,
+            "commandId": "goal-command", "finalResponse": "Closing reply" if pending == "complete" else "Goal stopped",
+            "finishReason": "completed" if pending == "complete" else "error"}})
     elif method == "shutdown":
         send({"id": frame["id"], "result": {}})
         break
@@ -79,49 +78,47 @@ for line in sys.stdin:
         return harness
 
     monkeypatch.setitem(example["main"].__globals__, "DeepSeekHarness", configured_harness)
-    queued = pending in {"goal-queue", "wrapup-queue"}
-    displayed = []
-    if queued:
-        clock = [0.0]
+    if pending == "interrupt":
+        entered = threading.Event()
         display = example["display"]
-
-        def advance_after_display(notification):
-            event = display(notification)
-            if event is not None:
-                displayed.append(event["type"])
-                if pending == "goal-queue" or event["type"] == "assistant/message":
-                    clock[0] = 11.0
-            return event
-
-        # Advance only the example clock while the real transport retains its own timeout.
-        monkeypatch.setitem(example["main"].__globals__, "time", SimpleNamespace(monotonic=lambda: clock[0]))
-        monkeypatch.setitem(example["main"].__globals__, "display", advance_after_display)
-    timeout = "10" if pending == "complete" or queued else "1"
+        def observe(notice):
+            if notice.method == "session.event" and notice.payload["event"]["type"] == "command/done":
+                entered.set()
+            return display(notice)
+        class InterruptedExecutor(ThreadPoolExecutor):
+            def submit(self, *args, **kwargs):
+                future = super().submit(*args, **kwargs)
+                def interrupt(timeout=None):
+                    assert entered.wait(10), "command must be observed before interrupting its wait"
+                    raise KeyboardInterrupt
+                monkeypatch.setattr(future, "result", interrupt)
+                return future
+        monkeypatch.setitem(example["main"].__globals__, "display", observe)
+        monkeypatch.setitem(example["main"].__globals__, "ThreadPoolExecutor", InterruptedExecutor)
+    timeout = "1" if pending in {"command", "activity"} else "10"
     monkeypatch.setattr(sys, "argv", [str(_EXAMPLE), "--dsh-home", str(tmp_path / "home"),
                                      "--workspace", str(tmp_path), "--timeout-seconds", timeout, "Finish this task"])
-    # The outer bound also releases an implementation that forgets its own deadline.
     with ThreadPoolExecutor(max_workers=1) as workers:
         execution = workers.submit(example["main"])
         try:
-            if pending == "complete":
-                execution.result(timeout=30)
-            else:
-                expected = {"command": "session/query timed out", "goal-event": "SDK notification",
-                            "wrapup": "session/wait timed out", "goal-queue": "Goal observation timed out",
-                            "wrapup-queue": "Goal observation timed out"}[pending]
-                with pytest.raises(TimeoutError, match=expected):
+            if pending in {"command", "activity"}:
+                with pytest.raises(TimeoutError, match="Goal observation timed out"):
                     execution.result(timeout=30)
+            elif pending == "interrupt":
+                with pytest.raises(KeyboardInterrupt):
+                    execution.result(timeout=30)
+            elif pending == "error":
+                with pytest.raises(RuntimeError, match="Goal stopped"):
+                    execution.result(timeout=30)
+            else:
+                execution.result(timeout=30)
         finally:
             for harness in harnesses:
                 harness.close()
     [harness] = harnesses
     assert harness.client._proc is None
     frames = [json.loads(line) for line in observed.read_text(encoding="utf-8").splitlines()]
-    methods = [frame["method"] for frame in frames]
-    assert methods == ["initialize", "session/query",
-                       *(["session/wait"] if pending in {"wrapup", "complete", "wrapup-queue"} else []), "shutdown"]
-    if queued:
-        assert displayed == (["goal/change"] if pending == "goal-queue" else ["goal/change", "assistant/message"])
+    assert [frame["method"] for frame in frames] == ["initialize", "session/query", "shutdown"]
     if pending == "complete":
         output = capsys.readouterr().out
         assert "Goal: complete" in output

@@ -42,7 +42,17 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       process.exit(13)
     }
     if (process.env.QUERY_RESULT !== undefined) {
-      respond(JSON.parse(process.env.QUERY_RESULT))
+      const response = JSON.parse(process.env.QUERY_RESULT) as {
+        kind?: string
+        execution?: { commandId: string; result?: { kind: string; text?: string } }
+      } | null
+      if (response?.kind === 'command' && response.execution?.result !== undefined) {
+        notify('session.query.completed', { sessionId, commandId: response.execution.commandId,
+          finalResponse: response.execution.result.text ?? '',
+          finishReason: response.execution.result.kind === 'error' ? 'error' : 'completed',
+          ...JSON.parse(process.env.QUERY_COMPLETION ?? '{}') as object })
+      }
+      respond(response)
       return
     }
     if (text === process.env.QUERY_ERROR_TEXT) {
@@ -58,6 +68,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       const finish = (): void => {
         commandFinishes.delete(sessionId)
         event(sessionId, 'command/done', { commandId, ...result })
+        notify('session.query.completed', { sessionId, commandId, finalResponse: result.text,
+          finishReason: result.kind === 'error' ? 'error' : 'completed' })
         respond({ kind: 'command', execution: { commandId, result } })
       }
       if (process.env.QUERY_HOLD_COMMAND !== undefined && !promptFinishes.has(sessionId)) {
@@ -65,6 +77,22 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       } else {
         finish()
       }
+      return
+    }
+    if (text === '/plan hold' || text === '/plan disconnect') {
+      const commandId = `command-${queries.length}`
+      event(sessionId, 'command/run', { commandId, name: 'plan' })
+      event(sessionId, 'agent/inbox/spliced', { inserted: [{ id: `input-${queries.length}` }] })
+      event(sessionId, 'command/done', { commandId, kind: 'success', text: 'plan enabled' })
+      respond({ kind: 'command', execution: { commandId, result: { kind: 'success', text: 'plan enabled' } } })
+      if (text === '/plan disconnect') process.exit(13)
+      promptFinishes.set(sessionId, () => {
+        promptFinishes.delete(sessionId)
+        event(sessionId, 'assistant/message', { message: { content: [{ type: 'text', text: 'the generated plan' }] } })
+        event(sessionId, 'turn/end', { reason: { kind: 'completed' } })
+        notify('session.status', { sessionId, status: 'idle' })
+        notify('session.query.completed', { sessionId, commandId, finalResponse: 'the generated plan', finishReason: 'completed' })
+      })
       return
     }
     const messageId = `input-${queries.length}`

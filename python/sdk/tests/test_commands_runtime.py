@@ -302,7 +302,20 @@ def _of_type(events: list[dict], name: str) -> list[dict]:
     return [event for event in events if event["type"] == name]
 
 
-def _command_pair(events: list[dict], execution: CommandExecution, name: str = "compact") -> None:
+def _native_result(result: RunResult) -> CommandExecution:
+    """Read the native outcome retained in a high-level result's command lifecycle events."""
+    started = next(event for event in result.events if event["type"] == "command/run")
+    identity = started["data"]["commandId"]
+    done = next(event["data"] for event in result.events
+                if event["type"] == "command/done" and event["data"]["commandId"] == identity)
+    return CommandExecution.model_validate({"commandId": identity, "result": {
+        key: value for key, value in done.items() if key in ("kind", "text", "sourceEventSeq")
+    }})
+
+
+def _command_pair(events: list[dict], execution: CommandExecution | RunResult, name: str = "compact") -> None:
+    if isinstance(execution, RunResult):
+        execution = _native_result(execution)
     runs = [event for event in _of_type(events, "command/run")
             if event["data"]["commandId"] == execution.command_id]
     done = [event for event in _of_type(events, "command/done")
@@ -348,7 +361,8 @@ def test_compact_without_history_returns_without_a_model_turn(tmp_path: Path) ->
             raise
         finally:
             observer.close()
-        assert isinstance(execution, CommandExecution)
+        assert isinstance(execution, RunResult)
+        execution = _native_result(execution)
         assert done["commandId"] == execution.command_id
         assert execution.result.kind == "success"
         assert execution.result.source_event_seq is None
@@ -370,7 +384,8 @@ def test_compact_rejects_busy_agent_before_the_model_is_released(tmp_path: Path)
         assert response.entered.wait(_WAIT_SECONDS), runtime.model.failures
         assert not running.done() and not response.release.is_set()
         execution = runtime.call(session.run, "/compact", delivery="queue")
-        assert isinstance(execution, CommandExecution)
+        assert isinstance(execution, RunResult)
+        execution = _native_result(execution)
         assert execution.result.kind == "error"
         assert not response.release.is_set()
         assert not running.done()
@@ -405,7 +420,8 @@ def run_compaction_scenario(tmp_path: Path, *, capture_patch: Path | None = None
         assert not compacting.done(), "command returned before its summary request completed"
         summary_response.release.set()
         execution = compacting.result(timeout=_WAIT_SECONDS)
-        assert isinstance(execution, CommandExecution)
+        assert isinstance(execution, RunResult)
+        execution = _native_result(execution)
         assert execution.result.kind == "success"
         assert execution.result.source_event_seq is not None
 
@@ -526,8 +542,8 @@ def _permission_facts(events: list[dict]) -> list[dict]:
 
 def _permission_command(runtime: _Runtime, session: Session, preset: str) -> CommandExecution:
     result = runtime.call(session.run, f"/permission {preset}")
-    assert isinstance(result, CommandExecution)
-    return result
+    assert isinstance(result, RunResult)
+    return _native_result(result)
 
 
 def test_permission_changes_only_the_selected_session_and_retains_prompt_semantics(tmp_path: Path) -> None:

@@ -49,10 +49,10 @@ await using harness = new DeepSeekHarness({
   maxTokens: 49_152,
 })
 const result = await harness.run('say hi')
-console.log('finalResponse' in result ? result.finalResponse : result.result)
+console.log(result.finalResponse)
 ```
 
-子进程在首次使用时惰性启动，并在多次 `run()` 调用之间持续归实例所有；请调用 `close()`（或使用 `await using`），子进程才总能被回收。`start()` 会记忆化有界的 `initialize` 握手，其中包含工作区 cwd、提供方／模型路由、可选且由适配器持有的 `reasoningEffort`，以及可选的正整数 `maxTokens` 输出上限。服务器会在接受提示词前校验该确切路由；省略推理强度时保留模型自身的默认值。`initializeTimeoutMs` 默认 10 秒，诊断会写明所选 profile 并附带保留的 stderr 尾部。`run(input, { sessionId?, onNotification?, delivery? })` 接受文本或 `SdkPromptContentBlock[]`；内联栅格图像块携带规范 base64 与 `mimeType`，并在运行时内变成持久附件。对于普通输入，该调用拥有一个活动区间：它将提示词排入队列，等待其消息 id 出现在持久入队回执中，然后持续收集到整个 agent 下一次进入 `idle`。该路径返回 `RunResult { sessionId, finalResponse, events, notifications }`，其中 `finalResponse` 是该区间内根会话最后提交的助手文本——并非因果上归属于该提示词的响应，因为 steering（中途引导）、注入的上下文和其他排队工作都可能在 idle 前参与其中。`session(id?)` 打开具名或全新的会话句柄。握手失败且清理成功时，实例会换入全新客户端，使后续调用用新进程重试，直到终结性的 `close()`；如果初始化和清理均失败，`start()` 会返回保留两个原因的有序 `AggregateError`，并继续保留失败的客户端，避免在原进程退出尚未得到证明时启动另一个进程。`maxTokens` 限制每个根 agent 请求的输出量，并由进程内后代继承；压缩（compaction）插件单独持有摘要上限。
+子进程在首次使用时惰性启动，并在多次 `run()` 调用之间持续归实例所有；请调用 `close()`（或使用 `await using`），子进程才总能被回收。`start()` 会记忆化有界的 `initialize` 握手，其中包含工作区 cwd、提供方／模型路由、可选且由适配器持有的 `reasoningEffort`，以及可选的正整数 `maxTokens` 输出上限。服务器会在接受提示词前校验该确切路由；省略推理强度时保留模型自身的默认值。`initializeTimeoutMs` 默认 10 秒，诊断会写明所选 profile 并附带保留的 stderr 尾部。`run(input, { sessionId?, onNotification?, delivery? })` 接受文本或 `SdkPromptContentBlock[]`；内联栅格图像块携带规范 base64 与 `mimeType`，并在运行时内变成持久附件。对于普通输入，该调用拥有一个活动区间：它将提示词排入队列，等待其消息 id 出现在持久入队回执中，然后持续收集到整个 agent 下一次进入 `idle`。该路径返回 `RunResult { sessionId, finalResponse, finishReason, events, notifications }`，其中 `finalResponse` 是该区间内根会话最后提交的助手文本——并非因果上归属于该提示词的响应，因为 steering（中途引导）、注入的上下文和其他排队工作都可能在 idle 前参与其中。`session(id?)` 打开具名或全新的会话句柄。握手失败且清理成功时，实例会换入全新客户端，使后续调用用新进程重试，直到终结性的 `close()`；如果初始化和清理均失败，`start()` 会返回保留两个原因的有序 `AggregateError`，并继续保留失败的客户端，避免在原进程退出尚未得到证明时启动另一个进程。`maxTokens` 限制每个根 agent 请求的输出量，并由进程内后代继承；压缩（compaction）插件单独持有摘要上限。
 
 ### 运行文本与原生命令
 
@@ -66,27 +66,26 @@ import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
 await using harness = new DeepSeekHarness({ profile: 'sdk', dshHome: '/absolute/path/to/dsh-home' })
 const session = harness.session()
 const result = await session.run('/compact')
-if ('commandId' in result) console.log(result.result)
-else console.log(result.finalResponse)
+console.log(result.finalResponse)
 ```
 
-字符串和内容块输入被识别为命令时都返回 `RunCommandResult`，普通提示词活动返回 `RunResult`。两种结果都包含 `sessionId`，包括 `harness.run()` 创建新 Session 的情况。`RunCommandResult` 在原生 `CommandExecution` 上增加该 Session 标识。命令完成不需要 turn 或 idle 通知。业务拒绝仍为 `result.kind === "error"`；路由、协议、传输和观察回调失败会拒绝 Promise。命令保留 `commandId` 及可选摘要 `sourceEventSeq`，不会选取助手回复作为结果。要绕过原生命令路由，使用低层 `client.prompt(sessionId, blocks)` 并自行管理后续订阅与等待；运行时 skill（技能）识别仍然适用。
+字符串和内容块输入始终返回 `RunResult`，包含 `sessionId`、`finalResponse`、`finishReason`、根会话事件和会话树通知。仅改变状态的命令返回原生结果文本；提交模型工作的命令等待对应活动并返回最终助手文本，未输出助手文本时返回空字符串。原生拒绝通过 `finishReason === "error"` 表达，路由、协议、传输和观察回调失败会拒绝 Promise。命令 id 和原生结果保留在 `command/run`、`command/done` 事件中。需要按原文排队时，使用底层 `client.prompt(sessionId, blocks)` 并管理后续活动；运行时技能识别仍然适用。
 
-每次调用都拥有自己的订阅，在发送前安装，在调用完成前释放。`onNotification` 按线上的顺序观察普通输入从入队回执到 idle 的活动。命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知；该区间可能包含重叠工作的通知。并发调用保留各自结果，所以运行中的模型轮次可以与命令的原生 busy 结果并存。超时或观察回调失败不回滚运行时工作，也不授权自动重试；命令完成不会结束独立的模型活动。
+每次调用在发送前建立订阅，并在结束前释放。`onNotification` 按传输顺序接收本次输入的会话树活动；区间可以包含其他重叠工作。内部完成回执由 SDK 消费。并发调用保留各自结果，因此模型运行期间仍能取得另一条命令的忙碌错误。超时或观察回调失败不回滚运行时工作，也不授权自动重试。
 
 启动选项提供初始值。权限命令只修改目标 Session；后续输入与恢复保留该状态，其他 Session 保留自己的状态，新 Session 使用配置默认值。命令不修改选项对象或已保存的用户默认值。运行中的审批策略变化可以注入通知并触发下一步骤。原生转换与恢复行为见[权限 preset](../../interaction/permission-presets/README.zh.md)。
 
-`run('/plan')` 进入计划模式；`/plan off` 退出；`/plan <message>` 进入并 steer 正文。调用返回 `RunCommandResult` 时，模型工作和审阅仍可能继续。需要 `RunResult` 时，先进入，再运行普通文本。组合输入应在 `run()` 前订阅，并通过 `client.request('session/wait', { sessionId })` 等待；保持问答处理器存活直到工作结束。计划状态不修改权限。
+`run('/plan')` 进入计划模式；`/plan off` 退出；`/plan <message>` 进入并通过 steer 提交正文。`run()` 等待提交的模型活动、原生审阅及获批后的执行，无需调用者另行订阅或等待。通过用户问题处理器回答计划审阅；`exit_plan_mode` 的计划正文位于问题的 `detail`。计划模式不改变权限。通过 `run()` 创建或恢复目标时，会跨越自动轮次等待，直到目标停止及最后回复结束；暂停或清除返回 `aborted`，目标阻塞或失去激活状态报告失败。
 
 ### 用 HarnessClient 做低层控制
 
 `client.executeCommand(sessionId, line)` 接受受支持内置定义的 ASCII 注册名或英文规范别名，不回退为提示词，也不接受附件；permission preset 必须非空，返回原生 `CommandExecution`。中文别名使用 `run()`。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在命令调用前订阅。请求超时仅放弃本地等待，运行时工作仍可继续。
 
-原生目标创建和恢复可在命令调用返回后启动自动轮次。发送前应订阅；先观察终态 `goal/change` 操作，再用 `session/wait` 等待收尾回复。轮次之间的 idle 不代表目标完成。暂停、清除、恢复和权限行为见[服务端语义](../server/README.zh.md)。
+使用 `client.executeCommand()` 时，目标创建和恢复可在调用返回后启动自动轮次。发送前应订阅；先观察终态 `goal/change` 操作，再用 `session/wait` 等待收尾回复。轮次之间的 idle 不代表目标完成。暂停、清除、恢复和权限行为见[服务端语义](../server/README.zh.md)。
 
 `HarnessClient` 是运行 API 之下的协议客户端：显式 `start()`、`initialize()`、`prompt()`、`request()` 与 `close()`，外加通知订阅。`prompt()` 在运行时接受排队消息后立即返回该消息的 id，绝不等待 agent 活动。`subscribe(filter?)` 返回 `NotificationSubscription`（可等待的 `next()`、非阻塞 `tryNext()`、异步迭代）；`subscribeSessionTree(id)` 把范围限定到一个会话及从 `subagent.started` 血缘边发现的后代——运行时对上下文内每个会话都发通知，范围限定在客户端完成，与 Python SDK 完全一致。
 
-拥有完整任务的消费者可以先订阅，再调用 `prompt()`，随后调用 `request('session/wait', { sessionId })`，并通过 `tryNext()` 取完已排队的通知。这会等待受管理后代及其触发的根 Agent 摘要轮次；`HarnessSession.run()` 仍以首次空闲作为活动区间终点。`validatedSessionEvent()` 在事件进入输出折叠前，校验事件封装及 SDK 读取方使用的 assistant／turn 字段。
+拥有完整任务的消费者可以先订阅，再调用 `prompt()`，随后调用 `request('session/wait', { sessionId })`，并通过 `tryNext()` 取完已排队的通知。这会等待受管理后代及其触发的根 Agent 摘要轮次；`HarnessSession.run()` 对普通提示词仍以首次空闲作为活动区间终点。`validatedSessionEvent()` 在事件进入输出折叠前，校验事件封装及 SDK 读取方使用的 assistant／turn 字段。
 
 本客户端为每种失败模式导出类型化错误：`JsonRpcResponseError`（协议错误响应，保留 code 与 data）、`RequestTimeoutError`（配置的时限已到）、`SdkProtocolError`（响应超出文档化协议）、`TransportClosedError`（运行时已消失——消息携带退出码与有界 stderr 尾部）。`close()` 先请求协议 `shutdown`（受 `shutdownTimeoutMs` 约束，默认 1000 毫秒），然后走 stdin-EOF → SIGTERM → SIGKILL 阶梯直到进程退出；幂等，已关闭的客户端拒绝复用。`HarnessClientOptions.env` 给定时整体替换子进程环境（`undefined` 原样继承父进程环境）；凭据策略归调用方——`dsh-subprocess` 的 `scrubbedParentEnv` 是面向隔离启动的共享擦除基底。
 
@@ -118,7 +117,7 @@ else console.log(result.finalResponse)
 | [`src/api.ts`](src/api.ts) | `DeepSeekHarness` + `HarnessSession`：统一输入路由、自有活动区间与命令结果 |
 | [`src/client.ts`](src/client.ts) | `HarnessClient`：spawn、握手、请求、订阅扇出、类型化错误 |
 | [`src/dispose.ts`](src/dispose.ts) | 私有关闭阶梯：stdin EOF → SIGTERM → SIGKILL 直到真正退出 |
-| [`src/types.ts`](src/types.ts) | 启动与超时选项、通知、`RunResult` 与 `RunCommandResult` |
+| [`src/types.ts`](src/types.ts) | 启动与超时选项、通知、`RunResult` |
 | [`src/index.ts`](src/index.ts) | 消费方接口：两层客户端与面向调用方的类型 |
 
 ### 自有活动流程

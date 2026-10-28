@@ -15,6 +15,7 @@ TEST_FILES = (
     "test_commands_runtime.py",
     "test_command_attachments_runtime.py",
     "test_goal_runtime.py",
+    "test_goal_result_text_runtime.py",
     "test_plan_runtime.py",
     "test_plan_example.py",
     "test_plan_input.py",

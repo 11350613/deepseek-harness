@@ -1,6 +1,6 @@
 ---
 kind: upgrade-guide
-description: "SDK run routes native commands by definition identity and returns prompt activity or command results."
+description: "SDK run recognizes native commands and returns RunResult after its input completes."
 ---
 
 # SDK run accepts native commands
@@ -9,17 +9,16 @@ English | [中文](guide.zh.md)
 
 ## Change
 
-Python `DeepSeekHarness.run()` and `Session.run()`, and their TypeScript equivalents, keep the existing public `run()` entry for strings and content-block arrays and route both as prompts or commands. Ordinary input returns `RunResult`; supported commands return `RunCommandResult`. Commands are identified by their official definition IDs and execute under their current registered names. English and Chinese aliases follow renamed definitions; an unrelated exact-name replacement remains ordinary input. See the [supported command rules](../../../../packages/sdk/server/README.md#command-input).
+Python and TypeScript `run()` accept strings and content-block arrays through the existing entry and always return `RunResult`. Supported native commands are recognized by their definition identities and effective registered names. English and Chinese aliases follow renamed definitions; unrelated exact-name replacements remain ordinary input. See the [supported command rules](../../../../packages/sdk/server/README.md#command-input).
 
-Arrays no longer bypass native routing: `run([{"type": "text", "text": "/compact"}])` executes compaction. Commands with encoded raster images follow native attachment rules; `/plan off` with an image returns a command error without changing plan state. Command completion does not mean subsequent planning, review, or goal rounds have finished. Handler refusals remain command results; routing and transport failures raise or reject.
+`final_response` / `finalResponse` contains the final assistant text, or an empty string when the activity emits none. State-only commands return the native handler's result text. `finish_reason` / `finishReason` reports the terminal outcome. Every result retains its Session id, root events and Session-tree notifications. State-only commands finish without waiting for a model turn; `/plan <task>` waits for its admitted activity, including native review and any approved continuation. Goal creation and resume wait across automatic rounds until the goal stops and its closing activity ends. Low-level strict command calls still return `CommandExecution` after the native handler settles.
 
-`run("")`, `run([])`, and inputs containing only blank text now fail before Session creation or prompt enqueue. Image-only input remains accepted. Strict command identity checks use the initialized receiving Agent's catalog. Identity rejection retains that Session without executing a handler or submitting a prompt.
+Content-block arrays no longer bypass native routing. A recognized command requires one text block and optional encoded raster images; native handlers enforce image admission. `/plan off` with an image fails without changing plan state. Empty arrays and blank-only input reject before Session creation; image-only input remains accepted. Identity rejection by the strict endpoint retains its initialized Session without executing a handler or submitting a prompt.
 
 ## Migration
 
-1. Filter empty or blank input before `run()`. Check the returned type before reading `final_response` in Python or `finalResponse` in TypeScript: use `isinstance(result, RunResult)` or `'finalResponse' in result`. Both results carry `session_id`/`sessionId`, including for an automatically created Session. `RunCommandResult` also retains the native `CommandExecution` fields, including `command_id`/`commandId` and `result.kind`.
-2. For literal queued input, use Python `client.session_prompt(session_id, blocks)` or TypeScript `client.prompt(sessionId, blocks)`. Subscribe first and manage notifications and `session/wait`; these methods return receipts, not `RunResult`. Enqueue acceptance does not guarantee the model accepts empty input. Runtime skill recognition still applies.
-3. For images, select an image-capable model and use the existing `run([text_block, image_block])` form. Encoded images contain `type: "image"`, base64 `data`, and `mimeType`. A matched command requires one complete text block and only encoded images beside it; extra text or other attachments reject without prompt fallback. Images may precede the text block.
-4. Custom `session/query` clients send `{ sessionId, contentBlocks, delivery }`; delivery is `queue` or `steer` for ordinary prompts. `session/command` keeps `{ sessionId, line }` and accepts ASCII registered names or canonical English aliases of supported definitions. Chinese aliases use `run()`/`session/query`; a matching name alone does not establish builtin identity.
-5. Python malformed command responses from `run()` and `session_command()` raise `SdkProtocolError`, retaining the validation error as their cause. Generic `request(response_model=...)` keeps its caller-selected model validation behavior.
-6. Keep `on_notification`/`onNotification` for activity. Both command entry points send lifecycle notifications before their response; forwarding transports must preserve this order. Follow the server's command-completion rules for subsequent model work.
+1. Keep the existing `result.final_response` / `result.finalResponse` access for prompts and commands. Inspect `finish_reason` / `finishReason` for failure; command ids and native outcomes remain in `command/run` and `command/done` events. Save the result's Session id to continue or restore it.
+2. Keep the user-question callback alive for plan review. State-changing command failures appear in `RunResult`; routing, malformed protocol data and transport failures still raise or reject. A timeout or observer failure does not roll back runtime work.
+3. For literal queued input, use Python `client.session_prompt(session_id, blocks)` or TypeScript `client.prompt(sessionId, blocks)`, and manage its subsequent activity. Runtime skill recognition still applies.
+4. Custom `session/query` clients send `{ sessionId, contentBlocks, delivery }`. Command responses acknowledge the native handler; the matching `session.query.completed` notification carries the final input outcome. Preserve notification order and subscribe before sending. `session/command` retains its strict, attachment-free behavior.
+5. Filter empty input before calling `run()`. Use an image-capable model and the existing `run([text_block, image_block])` form for images. Python malformed native command responses raise `SdkProtocolError`, preserving their validation cause; generic caller-selected response models retain their validation behavior.

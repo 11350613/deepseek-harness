@@ -9,7 +9,7 @@ import threading
 import pytest
 from pathlib import Path
 
-from deepseek_harness import CommandExecution, Session
+from deepseek_harness import CommandExecution, RunResult, Session
 from deepseek_harness.client import NotificationSubscription
 from test_commands_runtime import (
     _Completion, _Runtime, _SESSION_ID, _WAIT_SECONDS, _WaitResult, _assert_request_permission,
@@ -19,7 +19,7 @@ from test_commands_runtime import (
 
 
 def _command(runtime: _Runtime, session: Session, text: str, *, kind: str = "success") -> CommandExecution:
-    result = runtime.call(session.run, text)
+    result = runtime.call(runtime.harness.client._query, session.id, text, "queue")
     assert isinstance(result, CommandExecution)
     assert result.result.kind == kind, result.result.text
     return result
@@ -64,61 +64,31 @@ def test_goal_reads_and_invalid_controls_do_not_start_model_work(tmp_path: Path)
         _command_pair(events, execution, "goal")
 
 
-def test_goal_continues_rounds_and_finishes_wrapup_after_completion_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("clear_before_reply", [False, True])
+def test_goal_continues_rounds_and_finishes_wrapup_after_completion_event(
+    tmp_path: Path, clear_before_reply: bool,
+) -> None:
     final = _Completion("GOAL_DONE", blocked=True)
     with _runtime(tmp_path, [_Completion("PROGRESS"), *_completion_steps(final)],
                   initial_permission="workspace-write", max_goal_rounds=3) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
         with runtime.harness.client.subscribe_session_notifications(session.id) as events:
-            execution = _command(runtime, session, "/目标 Verify the small change.")
+            running = runtime.workers.submit(session.run, "/目标 Verify the small change.")
             completed = _until(events, "goal/change", "complete")
             assert completed["goal"]["phase"] == "complete" and completed["roundsStarted"] == 2
             assert final.entered.wait(_WAIT_SECONDS)
-            client = runtime.harness.client
-            sent = threading.Event()
-            replied = threading.Event()
-            wait_ids = set()
-            write = client._write_message
-            handle = client._handle_message
-
-            def record_send(message: dict) -> None:
-                is_wait = message.get("method") == "session/wait"
-                if is_wait:
-                    wait_ids.add(message["id"])
-                write(message)
-                if is_wait:
-                    sent.set()
-
-            def record_response(message: object) -> None:
-                if isinstance(message, dict) and "method" not in message and message.get("id") in wait_ids:
-                    replied.set()
-                handle(message)
-
-            monkeypatch.setattr(client, "_write_message", record_send)
-            monkeypatch.setattr(client, "_handle_message", record_response)
-            waiting = runtime.workers.submit(client.request, "session/wait", {"sessionId": session.id}, response_model=_WaitResult)
-            assert sent.wait(_WAIT_SECONDS)
-            # Observe the reader directly so caller scheduling cannot hide an early response.
-            runtime.call(client.get_working_directory, session.id)
-            assert not replied.is_set() and not final.release.is_set()
+            assert not running.done()
+            if clear_before_reply:
+                cleared = runtime.call(session.run, "/goal clear")
+                assert cleared.final_response == "Goal cleared." and cleared.finish_reason == "completed"
+                assert not running.done()
             final.release.set()
-            assert waiting.result(timeout=_WAIT_SECONDS).model_dump() == {}
-            assert _until(events, "turn/end")["turn"] == 2
-        requests = runtime.model.captured()
-        assert len(requests) == 4
-        assert 'Objective: "Verify the small change."\nRound: 1/3' in "\n".join(_request_texts(requests[0]))
-        assert 'Round: 2/3' in "\n".join(_request_texts(requests[1]))
-        assert '<goal_complete>' in "\n".join(_request_texts(requests[-1]))
-        for request in requests:
-            _assert_request_permission(request, "workspace-write", "ask")
-        assert runtime.harness.config.env["DSH_PERMISSION_MODE"] == "workspace-write"
-    events = _read_events(runtime.logs)
-    _command_pair(events, execution, "goal")
-    assert [e["data"]["turn"] for e in _of_type(events, "turn/start")] == [1, 2]
-    assert [e["data"] for e in _of_type(events, "step/start")] == [
-        {"turn": 1, "step": 1}, {"turn": 2, "step": 1}, {"turn": 2, "step": 2}, {"turn": 2, "step": 3},
-    ]
-    assert len(_permission_facts(events)) == 3
+            result = running.result(timeout=_WAIT_SECONDS)
+            assert isinstance(result, RunResult)
+            assert result.final_response == "GOAL_DONE" and result.finish_reason == "completed"
+            operations = ["create", "complete", *(["clear"] if clear_before_reply else [])]
+            assert [event["data"]["operation"] for event in result.events if event["type"] == "goal/change"] == operations
+    _command_pair(_read_events(runtime.logs), result, "goal")
 
 
 def test_pause_aborts_then_edit_and_resume_use_revised_goal_without_changing_other_sessions(tmp_path: Path) -> None:

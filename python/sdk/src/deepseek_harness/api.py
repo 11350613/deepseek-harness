@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from .client import HarnessClient, HarnessConfig, UserQuestionHandler
-from .errors import SdkProtocolError, TransportClosedError
+from .errors import SdkProtocolError
 from .models import CommandExecution, JsonObject, Notification
 
 
@@ -43,32 +43,35 @@ class DeepSeekHarnessConfig:
 
 @dataclass(slots=True)
 class RunResult:
+    """Completed input with result text, outcome, root events and Session-tree notifications."""
+
     session_id: str
     final_response: str
+    """Final assistant text (empty when absent), native state-only result text, or a failure diagnostic."""
     finish_reason: str | None
     events: list[JsonObject]
     notifications: list[Notification]
 
 
-class RunCommandResult(CommandExecution):
-    """Settled native command result with the Session id for continued interaction."""
+class _RunActivity:
+    """Collect one input's root events and Session-tree notifications from its admission."""
 
-    session_id: str
-
-
-class _PromptActivity:
-    """Collect an ordinary prompt's notifications from its inbox receipt through idle."""
-
-    def __init__(self, session_id: str, message_id: str) -> None:
+    def __init__(self, session_id: str, receipt_kind: Literal["prompt", "command"], receipt_id: str) -> None:
         self.session_id = session_id
-        self.message_id = message_id
+        self.receipt_kind = receipt_kind
+        self.receipt_id = receipt_id
         self.received = False
         self.events: list[JsonObject] = []
         self.notifications: list[Notification] = []
 
     def record(self, notification: Notification, on_notification: Callable[[Notification], None] | None = None) -> bool:
+        if notification.method == "session.query.completed":
+            return False
         if not self.received:
-            if not _is_inbox_receipt(notification, self.session_id, self.message_id):
+            if self.receipt_kind == "prompt":
+                if not _is_inbox_receipt(notification, self.session_id, self.receipt_id):
+                    return False
+            elif not _is_command_event(notification, self.session_id, self.receipt_id, "command/run"):
                 return False
             self.received = True
         self.notifications.append(notification)
@@ -80,10 +83,12 @@ class _PromptActivity:
                 self.events.append(event)
         return True
 
-    def result(self) -> RunResult:
+    def result(self, completed: JsonObject | None = None) -> RunResult:
         return RunResult(
-            session_id=self.session_id, final_response=final_response(self.events),
-            finish_reason=finish_reason(self.events), events=self.events, notifications=self.notifications,
+            session_id=self.session_id,
+            final_response=completed["finalResponse"] if completed is not None else final_response(self.events),
+            finish_reason=completed["finishReason"] if completed is not None else finish_reason(self.events),
+            events=self.events, notifications=self.notifications,
         )
 
 
@@ -180,8 +185,8 @@ class DeepSeekHarness:
         session_id: str | None = None,
         on_notification: Callable[[Notification], None] | None = None,
         delivery: Literal["queue", "steer"] = "queue",
-    ) -> RunResult | RunCommandResult:
-        """Run input on a fresh or named Session, returning its id with either result kind."""
+    ) -> RunResult:
+        """Run input to completion on a fresh or named Session and return its RunResult."""
         return self.start_session(session_id).run(input, on_notification=on_notification, delivery=delivery)
 
 
@@ -206,20 +211,21 @@ class Session:
         *,
         on_notification: Callable[[Notification], None] | None = None,
         delivery: Literal["queue", "steer"] = "queue",
-    ) -> RunResult | RunCommandResult:
+    ) -> RunResult:
         """Run text or content blocks through native input routing.
 
-        Input returns the prompt's receipt-to-idle RunResult or a settled
-        RunCommandResult. Both include this Session's id. Command completion does
-        not wait for later model work.
+        Ordinary prompts finish at the next idle after their inbox receipt.
+        State-only commands finish with their native outcome. Commands that
+        submit model input wait for that activity; goal creation and resume wait
+        through automatic rounds and the last reply after the goal stops.
         The first text block selects native commands. Matched commands require
         one text block with only encoded images beside it; native handlers decide
         which commands accept those images. Ordinary prompts retain block order
         and use the requested queue or steer delivery. Notifications retain
-        wire order. Command callbacks replay Session-tree notifications
-        from subscription through their own command/done after the response,
-        including overlapping work. Handler errors remain command results;
-        routing, transport and observer failures raise without rolling back work.
+        wire order. Every result retains this Session id, its root events and
+        Session-tree notifications, including overlapping work. Native refusals
+        return finish_reason="error". Routing, transport and observer failures
+        raise without rolling back work.
         """
         if delivery not in ("queue", "steer"):
             raise ValueError("run delivery must be queue or steer")
@@ -227,20 +233,21 @@ class Session:
         with self.harness.client.subscribe_session_notifications(self.id) as subscription:
             response = self.harness.client._query(self.id, input, delivery)
             if isinstance(response, CommandExecution):
-                execution = response
+                activity = _RunActivity(self.id, "command", response.command_id)
                 while True:
-                    try:
-                        notification = subscription._next_queued()
-                    except TransportClosedError:
-                        break
-                    if notification is None:
-                        break
-                    if on_notification is not None:
-                        on_notification(notification)
-                    if _is_command_done(notification, self.id, execution.command_id):
-                        break
-                return RunCommandResult(session_id=self.id, commandId=execution.command_id, result=execution.result)
-            activity = _PromptActivity(self.id, response)
+                    notification = subscription.next()
+                    payload = notification.payload
+                    if notification.method == "session.query.completed" and payload.get("sessionId") == self.id:
+                        if not isinstance(payload.get("commandId"), str) or not payload["commandId"]:
+                            raise SdkProtocolError("Invalid session.query.completed command identity")
+                        if payload["commandId"] != response.command_id:
+                            continue
+                        if (not isinstance(payload.get("finalResponse"), str)
+                                or not isinstance(payload.get("finishReason"), str) or not payload["finishReason"]):
+                            raise SdkProtocolError("Invalid session.query.completed result")
+                        return activity.result(payload)
+                    activity.record(notification, on_notification)
+            activity = _RunActivity(self.id, "prompt", response)
             while True:
                 notification = subscription.next()
                 if not activity.record(notification, on_notification):
@@ -268,11 +275,11 @@ def _is_inbox_receipt(notification: Notification, session_id: str, message_id: s
     )
 
 
-def _is_command_done(notification: Notification, session_id: str, command_id: str) -> bool:
+def _is_command_event(notification: Notification, session_id: str, command_id: str, event_type: str) -> bool:
     if notification.method != "session.event" or notification.payload.get("sessionId") != session_id:
         return False
     event = notification.payload.get("event")
-    if not isinstance(event, dict) or event.get("type") != "command/done":
+    if not isinstance(event, dict) or event.get("type") != event_type:
         return False
     data = event.get("data")
     return isinstance(data, dict) and data.get("commandId") == command_id

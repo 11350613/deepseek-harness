@@ -22,7 +22,6 @@ export { JsonRpcResponseError } from '@deepseek-ai/dsh-sdk-protocol'
 export type {
   ContentBlock,
   CommandExecution,
-  RunCommandResult,
   SdkEncodedImageBlock,
   SdkPromptContentBlock,
   SdkUserQuestionAnswer,

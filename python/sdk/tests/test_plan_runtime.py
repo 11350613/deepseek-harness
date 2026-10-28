@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from deepseek_harness import CommandExecution, RunCommandResult, RunResult, Session, UserQuestionRequest
+from deepseek_harness import CommandExecution, RunResult, Session, UserQuestionRequest
 from test_commands_runtime import (
     _Completion, _Runtime, _SESSION_ID, _WAIT_SECONDS, _assert_request_permission,
-    _command_pair, _of_type, _permission_facts, _read_events,
+    _command_pair, _native_result, _of_type, _permission_facts, _read_events,
     _request_texts, _runtime, _text_blocks, _wait_activity,
 )
 
@@ -20,7 +20,7 @@ _GUIDANCE = "You are in plan mode."
 
 
 def _command(runtime: _Runtime, session: Session, text: str) -> CommandExecution:
-    result = runtime.call(session.run, text)
+    result = runtime.call(runtime.harness.client._query, session.id, text, "queue")
     assert isinstance(result, CommandExecution)
     assert result.result.kind == "success", result.result.text
     return result
@@ -217,14 +217,14 @@ def test_plan_state_survives_resume_without_changing_permissions(tmp_path: Path)
 def test_top_level_plan_result_identifies_the_session_for_wait_continue_and_resume(tmp_path: Path) -> None:
     first = _Completion("PLAN_READY", blocked=True)
     with _runtime(tmp_path, [first, _Completion("CONTINUED_PLAN")], initial_permission="workspace-write") as runtime:
-        execution = runtime.call(runtime.harness.run, "/plan Design this change without tools.")
-        assert isinstance(execution, RunCommandResult)
-        assert execution.result.kind == "success"
+        running = runtime.workers.submit(runtime.harness.run, "/plan Design this change without tools.")
         assert first.entered.wait(_WAIT_SECONDS), runtime.model.failures
-        assert not first.release.is_set()
-        session = runtime.harness.start_session(execution.session_id)
+        assert not running.done()
         first.release.set()
-        _wait_activity(runtime, session)
+        execution = running.result(timeout=_WAIT_SECONDS)
+        assert isinstance(execution, RunResult)
+        assert execution.finish_reason == "completed" and execution.final_response == "PLAN_READY"
+        session = runtime.harness.start_session(execution.session_id)
         continued = runtime.call(runtime.harness.run, "Continue this plan without tools.", session_id=execution.session_id)
         assert isinstance(continued, RunResult)
         assert continued.session_id == execution.session_id

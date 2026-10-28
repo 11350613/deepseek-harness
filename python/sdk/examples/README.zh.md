@@ -40,7 +40,7 @@ python python/sdk/examples/compact.py \
   --workspace /absolute/path/to/disposable-workspace
 ```
 
-脚本将命令 id 和结果与模型回复分开打印。轮次或命令失败时，示例会停止。完成和错误行为见[运行文本与命令](../README.zh.md#run-text-and-commands)；`minimal.py` 使用同一个 `run()` 入口，能力由所选 profile 提供。
+脚本对提示词和命令均打印 `RunResult.final_response`。不成功的 `finish_reason` 会停止示例。完成和错误行为见[运行文本与命令](../README.zh.md#run-text-and-commands)；`minimal.py` 使用同一个 `run()` 入口，能力由所选 profile 提供。
 
 <a id="change-session-permissions"></a>
 ## 修改 Session 权限
@@ -59,7 +59,7 @@ python python/sdk/examples/permission.py \
 <a id="review-a-plan"></a>
 ## 审查计划
 
-[计划示例](plan.py) 通过 `run()` 发送 `/plan <task>`，并在命令完成后保持 Session 通知订阅和问答处理器运行。输入 `a` 批准、`k` 提供反馈、`d` 关闭；取消或作答前遇到 EOF 会关闭审查。批准后模型可以从后续步骤开始实施，因此应选择隔离的工作区。
+[计划示例](plan.py) 通过 `run()` 发送 `/plan <task>`，并在这次调用中保持 Session 通知订阅和问答处理器运行，直到计划活动结束。输入 `a` 批准、`k` 提供反馈、`d` 关闭；取消或作答前遇到 EOF 会关闭审查。批准后模型可以从后续步骤开始实施，因此应选择隔离的工作区。
 
 ```sh
 python python/sdk/examples/plan.py \
@@ -68,7 +68,7 @@ python python/sdk/examples/plan.py \
   "Plan the requested change and present it for review."
 ```
 
-原生计划通过 `exit_plan_mode` 携带，而不是写入工作区文档。权限仍为 workspace-write。关闭审查会保留计划模式并结束当前轮次。示例通过 `session/wait` 等待，并报告根轮次截断或失败；问答回调独立于协议读取线程。等待输入时也可以通过 Ctrl+C 结束示例。
+原生计划通过 `exit_plan_mode` 携带，而不是写入工作区文档。权限仍为 workspace-write。关闭审查会保留计划模式并结束当前轮次。示例通过 `run()` 等待，并报告根轮次截断或失败；问答回调独立于协议读取线程。等待输入时也可以通过 Ctrl+C 结束示例。
 
 管道答案使用父进程的 stdin 编码，后续行保留给后续问题。UTF-16 和 UTF-32 输入须明确指定小端或大端编码。EOF 处截断的字符会作为输入错误报告。
 
@@ -84,7 +84,7 @@ python python/sdk/examples/goal.py \
   "Calculate 17 * 19, verify the result, and complete the goal without changing files."
 ```
 
-`--timeout-seconds` 必须是有限正数，用于限制首次命令等待及之后的观察时间，默认为 300 秒。超时会报告失败并关闭运行时，不会将目标标记为完成。恢复会话后可查看持久化目标，再显式恢复执行。自动轮次之间存在 idle 间隙，因此仅调用 `session/wait` 不足以等待目标结束。
+`--timeout-seconds` 必须是有限正数，用于限制首次命令等待及之后的观察时间，默认为 300 秒。超时会报告失败并关闭运行时，不会将目标标记为完成。恢复会话后可查看持久化目标，再显式恢复执行。`run()` 包含自动轮次及最后回复。
 
 ## 添加插件
 

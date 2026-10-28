@@ -705,15 +705,6 @@ class NotificationSubscription:
             raise item
         return item
 
-    def _next_queued(self) -> Notification | None:
-        try:
-            item = self._notifications.get_nowait()
-        except queue.Empty:
-            return None
-        if isinstance(item, BaseException):
-            raise item
-        return item
-
     def drain(self, on_notification: Callable[[Notification], None]) -> None:
         while True:
             try:

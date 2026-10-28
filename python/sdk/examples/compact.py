@@ -7,21 +7,14 @@ import argparse
 import os
 from pathlib import Path
 
-from deepseek_harness import RunCommandResult, DeepSeekHarness, RunResult
+from deepseek_harness import DeepSeekHarness, RunResult
 
 
-def display(result: RunResult | RunCommandResult) -> None:
+def display(result: RunResult) -> None:
     """Print the input's result and stop on a reported failure."""
-    if isinstance(result, RunCommandResult):
-        print(f"Command {result.command_id}: {result.result.kind}")
-        if result.result.kind == "error":
-            raise RuntimeError(result.result.text)
-        if result.result.text is not None:
-            print(result.result.text)
-    else:
-        if result.finish_reason != "completed":
-            raise RuntimeError(f"Agent turn ended with {result.finish_reason}: {result.final_response}")
-        print(result.final_response)
+    if result.finish_reason != "completed":
+        raise RuntimeError(f"Input ended with {result.finish_reason}: {result.final_response}")
+    print(result.final_response)
 
 
 def main() -> None:

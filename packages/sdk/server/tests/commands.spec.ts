@@ -262,7 +262,7 @@ describe('SDK command dispatch', () => {
     expect(handler).toHaveBeenCalledTimes(2)
     const commandId = handler.mock.calls[1]![0].commandId
     expect(result).toMatchObject({ kind: 'command', execution: { commandId, result: { kind: 'success', text: 'native outcome' } } })
-    expect(receivedAtQueryResolution).toMatchObject([
+    expect(receivedAtQueryResolution.filter(item => item.method === 'session.event')).toMatchObject([
       { method: 'session.event', params: { sessionId, event: { type: 'command/run', data: { commandId, name } } } },
       { method: 'session.event', params: { sessionId, event: { type: 'command/done', data: { commandId, kind: 'success' } } } },
     ])

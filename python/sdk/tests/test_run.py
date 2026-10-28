@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from deepseek_harness import CommandExecution, RunCommandResult, DeepSeekHarness, Notification, RunResult, SdkProtocolError
+from deepseek_harness import CommandExecution, DeepSeekHarness, Notification, RunResult, SdkProtocolError
 from deepseek_harness.errors import JsonRpcError
 
 
@@ -28,6 +28,7 @@ import sys
 serial = 0
 pending_commands = []
 pending_prompts = []
+pending_plans = []
 
 def send(frame):
     print(json.dumps({"jsonrpc": "2.0", **frame}), flush=True)
@@ -43,6 +44,8 @@ def command(frame, number):
     identity = "command-" + str(number)
     event(session, "command/run", {"commandId": identity})
     event(session, "command/done", {"commandId": identity, "kind": "success"})
+    send({"method": "session.query.completed", "params": {"sessionId": session, "commandId": identity,
+        "finalResponse": "command completed", "finishReason": "completed"}})
     send({"id": frame["id"], "result": {"kind": "command", "execution": {
         "commandId": identity, "result": {"kind": "success", "text": "command completed"}}}})
 
@@ -71,17 +74,33 @@ for line in sys.stdin:
         assert set(params) == {"sessionId", "contentBlocks", "delivery"}
         assert params["delivery"] in ("queue", "steer")
         text = input_text(frame)
-        if text == "hold-command":
+        if text == "/plan hold":
+            identity = "plan-" + str(serial)
+            event(params["sessionId"], "command/run", {"commandId": identity})
+            event(params["sessionId"], "command/done", {"commandId": identity, "kind": "success"})
+            send({"id": frame["id"], "result": {"kind": "command", "execution": {
+                "commandId": identity, "result": {"kind": "success", "text": "Plan enabled"}}}})
+            pending_plans.append((frame, identity))
+        elif text == "hold-command":
             pending_commands.append((frame, serial))
         elif text in ("/compact", "/plan Describe this image."):
             command(frame, serial)
         elif text == "silent-command":
+            send({"method": "session.query.completed", "params": {"sessionId": params["sessionId"],
+                "commandId": "silent", "finalResponse": "", "finishReason": "completed"}})
             send({"id": frame["id"], "result": {"kind": "command", "execution": {
                 "commandId": "silent", "result": {"kind": "success"}}}})
         elif text == "rpc-error":
             send({"id": frame["id"], "error": {"code": -32602, "message": "query rejected"}})
         elif text == "custom-response":
-            send({"id": frame["id"], "result": json.loads(os.environ["QUERY_RESPONSE"])})
+            response = json.loads(os.environ["QUERY_RESPONSE"])
+            execution = response.get("execution") if isinstance(response, dict) else None
+            if isinstance(execution, dict) and isinstance(execution.get("result"), dict):
+                send({"method": "session.query.completed", "params": {"sessionId": params["sessionId"],
+                    "commandId": execution.get("commandId"), "finalResponse": execution["result"].get("text", ""),
+                    "finishReason": "error" if execution["result"].get("kind") == "error" else "completed",
+                    **json.loads(os.environ.get("QUERY_COMPLETION", "{}"))}})
+            send({"id": frame["id"], "result": response})
         elif text == "bad-route":
             send({"id": frame["id"], "result": {"kind": "unknown"}})
         elif text == "bad-execution":
@@ -100,6 +119,11 @@ for line in sys.stdin:
                 else:
                     finish(frame)
     elif method == "release":
+        for original, identity in pending_plans:
+            finish(original)
+            send({"method": "session.query.completed", "params": {"sessionId": original["params"]["sessionId"],
+                "commandId": identity, "finalResponse": "Generated plan", "finishReason": "completed"}})
+        pending_plans.clear()
         for original, number in pending_commands:
             command(original, number)
         pending_commands.clear()
@@ -145,11 +169,11 @@ def test_run_returns_command_without_waiting_for_idle(sdk: DeepSeekHarness, entr
     notifications = []
     result = (sdk.run("/compact", session_id="main", on_notification=notifications.append)
               if entry == "harness" else sdk.start_session("main").run("/compact", on_notification=notifications.append))
-    assert isinstance(result, CommandExecution)
-    assert isinstance(result, RunCommandResult)
+    assert isinstance(result, RunResult)
+    assert isinstance(result, RunResult)
     assert result.session_id == "main"
-    assert result.result.kind == "success"
-    assert [notice.payload["event"]["type"] for notice in notifications] == ["command/run", "command/done"]
+    assert result.finish_reason == "completed"
+    assert [notice.payload["event"]["type"] for notice in notifications if notice.method == "session.event"] == ["command/run", "command/done"]
     assert_released(sdk)
 
 
@@ -158,7 +182,7 @@ def test_top_level_command_results_identify_distinct_sessions_and_allow_continui
 ) -> None:
     first = sdk.run("/compact")
     second = sdk.run("/compact")
-    assert isinstance(first, RunCommandResult) and isinstance(second, RunCommandResult)
+    assert isinstance(first, RunResult) and isinstance(second, RunResult)
     assert first.session_id and second.session_id and first.session_id != second.session_id
     continued = sdk.run("continue the first session", session_id=first.session_id)
     assert isinstance(continued, RunResult)
@@ -185,11 +209,10 @@ def test_run_adds_session_identity_without_changing_command_results(peer: Path, 
         })},
     ) as sdk:
         returned = sdk.run("custom-response")
-        assert isinstance(returned, RunCommandResult)
+        assert isinstance(returned, RunResult)
         assert returned.session_id
-        assert returned.model_dump(by_alias=True, exclude_none=True) == {
-            **execution, "session_id": returned.session_id,
-        }
+        assert returned.final_response == result.get("text", "")
+        assert returned.finish_reason == ("error" if result["kind"] == "error" else "completed")
         low_level = sdk.client._query(returned.session_id, "custom-response", "queue")
         assert isinstance(low_level, CommandExecution)
         assert low_level.model_dump(by_alias=True, exclude_none=True) == execution
@@ -236,8 +259,8 @@ def test_run_forwards_content_blocks_with_the_routed_result_and_notifications(
         )
     )
     if text == "/plan Describe this image.":
-        assert isinstance(result, CommandExecution)
-        assert [notice.payload["event"]["type"] for notice in notifications] == ["command/run", "command/done"]
+        assert isinstance(result, RunResult)
+        assert [notice.payload["event"]["type"] for notice in notifications if notice.method == "session.event"] == ["command/run", "command/done"]
     else:
         assert isinstance(result, RunResult)
         assert result.final_response == "answer for " + text
@@ -267,7 +290,7 @@ def test_concurrent_runs_keep_their_own_results(sdk: DeepSeekHarness) -> None:
         try:
             assert entered.wait(5), "the first run must observe its receipt"
             second = workers.submit(session.run, "/compact")
-            assert isinstance(second.result(timeout=5), CommandExecution)
+            assert isinstance(second.result(timeout=5), RunResult)
         finally:
             release(sdk)
         result = first.result(timeout=5)
@@ -279,7 +302,7 @@ def test_concurrent_runs_keep_their_own_results(sdk: DeepSeekHarness) -> None:
 def test_command_result_needs_no_notifications(sdk: DeepSeekHarness) -> None:
     notices = []
     result = sdk.start_session("main").run("silent-command", on_notification=notices.append)
-    assert isinstance(result, CommandExecution)
+    assert isinstance(result, RunResult)
     assert notices == []
     assert_released(sdk)
 
@@ -290,7 +313,7 @@ def test_run_reports_routing_failures_without_retry(sdk: DeepSeekHarness, text: 
     with pytest.raises(error):
         session.run(text)
     assert_released(sdk)
-    assert isinstance(session.run("/compact"), CommandExecution)
+    assert isinstance(session.run("/compact"), RunResult)
 
 
 @pytest.mark.parametrize("text", ["ordinary", "/compact"])
@@ -310,7 +333,7 @@ def test_command_timeout_keeps_runtime_responsive(sdk: DeepSeekHarness) -> None:
     sdk.client.config.request_timeout_seconds = 5
     assert_released(sdk)
     release(sdk)
-    assert isinstance(sdk.start_session("main").run("/compact"), CommandExecution)
+    assert isinstance(sdk.start_session("main").run("/compact"), RunResult)
 
 
 def test_run_requires_supported_delivery(sdk: DeepSeekHarness) -> None:
@@ -338,4 +361,40 @@ def test_run_rejects_invalid_routing_responses_as_protocol_errors(peer: Path, tm
         if isinstance(response, dict) and response.get("kind") == "command":
             assert isinstance(raised.value.__cause__, ValidationError)
         assert_released(sdk)
-        assert isinstance(sdk.start_session("main").run("/compact"), CommandExecution)
+        assert isinstance(sdk.start_session("main").run("/compact"), RunResult)
+
+
+def test_plan_run_waits_for_model_output_after_the_command_receipt(sdk: DeepSeekHarness) -> None:
+    admitted = threading.Event()
+    session = sdk.start_session("plan")
+    def observe(notice: Notification) -> None:
+        if notice.method == "session.event" and notice.payload["event"]["type"] == "command/done":
+            admitted.set()
+    with ThreadPoolExecutor(max_workers=1) as workers:
+        running = workers.submit(session.run, "/plan hold", on_notification=observe)
+        try:
+            assert admitted.wait(5)
+            assert not running.done()
+        finally:
+            release(sdk)
+        result = running.result(timeout=5)
+    assert isinstance(result, RunResult)
+    assert result.final_response == "Generated plan" and result.finish_reason == "completed"
+    assert_released(sdk)
+
+
+@pytest.mark.parametrize("completion", [{"commandId": None}, {"finalResponse": 1}, {"finishReason": None}, {"finishReason": ""}])
+def test_run_rejects_malformed_completion_and_releases_its_subscription(
+    peer: Path, tmp_path: Path, completion: dict,
+) -> None:
+    with DeepSeekHarness(
+        cwd=str(tmp_path), dsh_home=str(tmp_path / "home"),
+        _launch_args=(sys.executable, str(peer)),
+        env={"REQUEST_LOG": str(tmp_path / "requests.jsonl"),
+             "QUERY_COMPLETION": json.dumps(completion),
+             "QUERY_RESPONSE": json.dumps({"kind": "command", "execution": {
+                 "commandId": "c", "result": {"kind": "success"}}})},
+    ) as sdk:
+        with pytest.raises(SdkProtocolError):
+            sdk.run("custom-response")
+        assert_released(sdk)

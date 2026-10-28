@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 import type { SessionEvent, TurnEndReason } from '@deepseek-ai/dsh-session'
 import { createProcessHarnessClient, HarnessClient, isRecord, queryInput, SdkProtocolError } from './client.ts'
 import type { RuntimeProcessOptions } from './launch.ts'
-import type { RunCommandResult, ContentBlock, DeepSeekHarnessOptions, HarnessNotification, RunResult, SdkPromptContentBlock } from './types.ts'
+import type { ContentBlock, DeepSeekHarnessOptions, HarnessNotification, RunResult, SdkPromptContentBlock } from './types.ts'
 
 /**
  * Reusable SDK for running DeepSeek Harness agent turns in a runtime
@@ -122,9 +122,9 @@ export class DeepSeekHarness implements AsyncDisposable {
    * Run text or content blocks on a fresh or named Session through native input routing.
    * @param input - prompt or command text, optionally accompanied by image content blocks.
    * @param options - optional Session identity, delivery and notification observer.
-   * @returns ordinary prompt activity or the native command result, both with the receiving Session id.
+   * @returns the completed input's RunResult, including its Session id.
    */
-  run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult | RunCommandResult> {
+  run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult> {
     return this.session(options?.sessionId).run(input, options)
   }
 
@@ -169,9 +169,8 @@ export interface RunOptions {
   /** Ordinary prompt delivery, defaulting to queue; commands retain their native execution timing. */
   delivery?: 'queue' | 'steer'
   /**
-   * Observe prompt activity from receipt through idle. Command callbacks replay
-   * Session-tree notifications from subscription through their own command/done
-   * after the response; either interval can include overlapping work.
+   * Observe the input's Session-tree activity in wire order until completion.
+   * The interval can include overlapping work from other inputs.
    */
   onNotification?: (notification: HarnessNotification) => void
 }
@@ -181,19 +180,20 @@ function resolveRunDelivery(requested: RunOptions['delivery']): 'queue' | 'steer
   return requested ?? 'queue'
 }
 
-/** Collect an ordinary prompt's notifications from its inbox receipt through idle. */
-class PromptActivity {
+/** Collect one input's root events and Session-tree notifications from its admission. */
+class RunActivity {
   private received = false
   private readonly events: SessionEvent[] = []
   private readonly notifications: HarnessNotification[] = []
 
-  constructor(private readonly sessionId: string, private readonly messageId: string) {}
+  constructor(private readonly sessionId: string, private readonly receipt: { messageId: string } | { commandId: string }) {}
 
   /** Ignore pre-receipt traffic; validate root events before invoking the observer. */
   record(notification: HarnessNotification, onNotification?: RunOptions['onNotification']): boolean {
+    if (notification.method === 'session.query.completed') return false
     if (!this.received) {
       if (notification.method !== 'session.event' || notification.params.sessionId !== this.sessionId
-        || !isInboxReceipt(notification.params.event, this.messageId)) return false
+        || !this.matchesReceipt(notification.params.event)) return false
       this.received = true
     }
     const event = notification.method === 'session.event' && notification.params.sessionId === this.sessionId
@@ -204,9 +204,17 @@ class PromptActivity {
     return true
   }
 
-  result(): RunResult {
+  private matchesReceipt(event: unknown): boolean {
+    return 'messageId' in this.receipt ? isInboxReceipt(event, this.receipt.messageId)
+      : isRecord(event) && event.type === 'command/run' && isRecord(event.data)
+        && event.data.commandId === this.receipt.commandId
+  }
+
+  result(completed?: { finalResponse: string; finishReason: string }): RunResult {
+    const terminal = this.events.findLast(event => event.type === 'turn/end')
     return {
-      sessionId: this.sessionId, finalResponse: finalResponse(this.events),
+      sessionId: this.sessionId, finalResponse: completed?.finalResponse ?? finalResponse(this.events),
+      finishReason: completed?.finishReason ?? terminal?.data.reason.kind ?? null,
       events: this.events, notifications: this.notifications,
     }
   }
@@ -245,11 +253,12 @@ export class HarnessSession {
    * Run text or content blocks through native prompt-or-command routing.
    * @param input - prompt or command text, optionally accompanied by image content blocks; image-only input is an ordinary prompt.
    * @param options - input delivery and a per-notification observer.
-   * @returns the prompt's receipt-to-idle activity or a settled command with this Session id; command
-   * completion does not wait for later model work. Handler errors remain results.
+   * @returns RunResult after prompt activity, a state-only command, or command-started model work ends.
+   * Goal creation and resume include automatic rounds through goal termination and the closing reply.
+   * Native handler refusals return finishReason="error".
    * @throws on routing, protocol, transport or observer failure; runtime work is not rolled back.
    */
-  async run(input: string | SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult | RunCommandResult> {
+  async run(input: string | SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult> {
     const delivery = resolveRunDelivery(options?.delivery)
     await this.harness.start()
     const client = this.harness.client
@@ -257,16 +266,23 @@ export class HarnessSession {
     try {
       const response = await queryInput(client, this.id, input, delivery)
       if (response.kind === 'command') {
-        for (let notification = subscription.tryNext(); notification !== undefined; notification = subscription.tryNext()) {
-          options?.onNotification?.(notification)
-          const event = notification.params.event
-          if (notification.method === 'session.event' && notification.params.sessionId === this.id
-            && isRecord(event) && event.type === 'command/done' && isRecord(event.data)
-            && event.data.commandId === response.execution.commandId) break
+        const activity = new RunActivity(this.id, { commandId: response.execution.commandId })
+        while (true) {
+          const notification = await subscription.next()
+          const params = notification.params
+          if (notification.method === 'session.query.completed' && params.sessionId === this.id) {
+            if (typeof params.commandId !== 'string' || params.commandId.length === 0) {
+              throw new SdkProtocolError('Invalid session.query.completed command identity')
+            }
+            if (params.commandId !== response.execution.commandId) continue
+            if (typeof params.finalResponse !== 'string' || typeof params.finishReason !== 'string'
+              || params.finishReason.length === 0) throw new SdkProtocolError('Invalid session.query.completed result')
+            return activity.result({ finalResponse: params.finalResponse, finishReason: params.finishReason })
+          }
+          activity.record(notification, options?.onNotification)
         }
-        return { ...response.execution, sessionId: this.id }
       }
-      const activity = new PromptActivity(this.id, response.messageId)
+      const activity = new RunActivity(this.id, { messageId: response.messageId })
       while (true) {
         const notification = await subscription.next()
         if (!activity.record(notification, options?.onNotification)) continue

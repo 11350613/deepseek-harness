@@ -49,6 +49,9 @@
     },
     {
       "path": "../../interaction/commands"
+    },
+    {
+      "path": "../../goal/goal"
     }
   ]
 }

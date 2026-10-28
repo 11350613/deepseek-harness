@@ -7,7 +7,7 @@ import argparse
 import os
 from pathlib import Path
 
-from deepseek_harness import RunCommandResult, DeepSeekHarness
+from deepseek_harness import DeepSeekHarness
 
 
 def main() -> None:
@@ -41,12 +41,9 @@ def main() -> None:
         profile=args.profile,
     ) as harness:
         result = harness.run(args.prompt, session_id=args.session_id)
-    if isinstance(result, RunCommandResult):
-        if result.result.kind == "error":
-            raise RuntimeError(result.result.text)
-        print(result.result.text or "")
-    else:
-        print(result.final_response)
+    if result.finish_reason not in (None, "completed"):
+        raise RuntimeError(f"Input ended with {result.finish_reason}: {result.final_response}")
+    print(result.final_response)
 
 
 if __name__ == "__main__":
