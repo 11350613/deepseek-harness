@@ -5,7 +5,7 @@ import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
 import { changeRequestKey } from '@deepseek-ai/dsh-experimental-forge'
-import type { ForgeActionFailure, ForgeFailure, MergeMethod } from '@deepseek-ai/dsh-experimental-forge'
+import type { ForgeActionFailure, ForgeFailure, ForgeReviewRequest, ForgeReviewResult, MergeMethod } from '@deepseek-ai/dsh-experimental-forge'
 import type { SessionChangeRequest } from '@deepseek-ai/dsh-experimental-forge-session'
 import type {} from '@deepseek-ai/dsh-experimental-worktree'
 import { appendPluginRecord } from '@deepseek-ai/dsh-session'
@@ -336,6 +336,27 @@ export class ForgePanelController extends TypertRemoteService {
   }
 
   /**
+   * Publish a line comment or completed review for a visible Session binding.
+   * @param session - Session retaining the change request.
+   * @param url - visible binding URL.
+   * @param request - reviewed head, ranges, plain text, and explicit review decision.
+   * @param signal - request cancellation.
+   * @returns confirmed publication or a typed failure; unknown outcomes require reconciliation on the host.
+   */
+  @Remote
+  async submitReview(session: Session, url: string, request: ForgeReviewRequest, signal: AbortSignal): Promise<ForgeReviewResult> {
+    signal.throwIfAborted()
+    const { ref } = this.bound(session, url)
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(request.headSha)) throw new Error('Invalid review commit')
+    const comments = request.kind === 'comment' ? [request.comment] : request.comments
+    if (comments.some(comment => comment.path === '' || comment.body.trim() === ''
+      || !Number.isSafeInteger(comment.startLine) || comment.startLine < 1
+      || !Number.isSafeInteger(comment.endLine) || comment.endLine < comment.startLine)) throw new Error('Invalid review comment')
+    if (request.kind === 'review' && request.event !== 'approve' && request.body.trim() === '' && comments.length === 0) throw new Error('Empty review')
+    return await this.home.forge.submitReview(ref, request, signal)
+  }
+
+  /**
    * Mark a draft change request of a Session ready for review; the change
    * request is polled again once the host answers.
    * @param session - Session the change request is bound to.
@@ -617,7 +638,10 @@ export class ForgePanelController extends TypertRemoteService {
       }),
       refOf: url => ctx.forge.changeRequestFromUrl(url),
       watch: (ref, listener) => ctx.forge.watch(ref, listener),
-      open: async () => (await storage.open(changeRequestStatesDomain)).table('states'),
+      open: async () => {
+        const domain = await storage.open(changeRequestStatesDomain)
+        return { table: domain.table('states'), close: () => domain.close() }
+      },
       report: (error) => { ctx.logger.warn(`forge-panel: storing a change request state failed: ${String(error)}`) },
     })
     return this.states
