@@ -1,19 +1,19 @@
 /** Single-popup viewing state and feedback retained outside trigger components. */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
-import type { MenuActionView, MenuPoint, MenuTarget } from './types.ts'
+import type { MenuActionView, MenuPoint, ContextMenuTarget } from './types.ts'
 
 interface Notice { id: number; text: string; success: boolean; action?: { label: string; onClick: () => void } }
 interface MenuState {
   occurrence: number
   closing: boolean
   replacing: boolean
-  target: MenuTarget | null
+  target: ContextMenuTarget | null
   point: MenuPoint
   items: readonly MenuActionView[]
   notice: Notice | null
 }
 type MenuActions = {
-  open(draft: MenuState, target: MenuTarget, point: MenuPoint): void
+  open(draft: MenuState, target: ContextMenuTarget, point: MenuPoint): void
   items(draft: MenuState, items: readonly MenuActionView[]): void
   exit(draft: MenuState, replacing: boolean): void
   close(draft: MenuState): void

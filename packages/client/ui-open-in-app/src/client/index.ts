@@ -1,4 +1,5 @@
-import { registerContextMenus } from './context-menus.tsx'
+import { IconFolderOpenOutlineRegular, IconCopyOutlineRegular, IconPanelLeftOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { ContextMenuApplicationIcon, registerContextMenus } from './context-menus.tsx'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
  * Shared native opening controls for workspace directories, document previews,
@@ -61,6 +62,13 @@ export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
   // Keep operation feedback visible after its initiating panel closes.
   const announcement = createOpenInAppToastSource()
+  ctx.slots.inject('contextMenu.icon', function* () {
+    for (const [key, Icon] of Object.entries({
+      'open-in-app.reveal': IconFolderOpenOutlineRegular, 'open-in-app.copy': IconCopyOutlineRegular,
+      'open-in-app.sidebar': IconPanelLeftOutlineRegular,
+    })) yield ctx.slots.register({ name: 'contextMenu.icon', key }, Icon)
+    yield ctx.slots.register({ name: 'contextMenu.icon', key: 'open-in-app.application' }, ContextMenuApplicationIcon)
+  })
   registerContextMenus(ctx, paths, t, controller, announcement.report)
   registerSessionReveal(ctx, controller, t, announcement.report)
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({

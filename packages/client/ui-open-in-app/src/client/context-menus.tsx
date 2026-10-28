@@ -1,5 +1,6 @@
 /** Native path and URL menu contributions, independent of their trigger components. */
-import { IconFolderOpenOutlineRegular, IconCopyOutlineRegular, IconPanelLeftOutlineRegular, IconRightUpOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconRightUpOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
@@ -49,7 +50,7 @@ export function registerContextMenus(
       await directories.load()
       signal.throwIfAborted()
       const manager = directories.apps.getSnapshot()?.find(id => ['finder', 'explorer', 'filemanager'].includes(id))
-      return [{ id: 'reveal', icon: <IconFolderOpenOutlineRegular />, label: fileManager(), disabled: manager === undefined,
+      return [{ id: 'reveal', icon: { key: 'open-in-app.reveal' }, label: fileManager(), disabled: manager === undefined,
         failureLabel: t('path.revealError'),
         ...manager === undefined ? {} : { run: async () => {
           const outcome = await directories.launch(manager, path)
@@ -65,9 +66,9 @@ export function registerContextMenus(
       const absolutePath = resolveWorkspacePath(cwd, path)
       signal.throwIfAborted()
       return [
-        { id: 'reveal', icon: <IconFolderOpenOutlineRegular />, label: fileManager(), disabled: paths.desktop.getSnapshot() !== true,
+        { id: 'reveal', icon: { key: 'open-in-app.reveal' }, label: fileManager(), disabled: paths.desktop.getSnapshot() !== true,
           run: () => open(absolutePath, 'reveal') },
-        { id: 'copyPath', icon: <IconCopyOutlineRegular />, label: t('menu.copyDirectoryPath'), failureLabel: t('menu.copyFailed'), run: async () => {
+        { id: 'copyPath', icon: { key: 'open-in-app.copy' }, label: t('menu.copyDirectoryPath'), failureLabel: t('menu.copyFailed'), run: async () => {
           await navigator.clipboard.writeText(absolutePath)
           ctx.contextMenus.notify(t('menu.copied'), true)
         } },
@@ -86,19 +87,20 @@ export function registerContextMenus(
       signal.throwIfAborted()
       const application = apps?.find(app => app.default)
       return [
-        { id: 'sidebar', icon: <IconPanelLeftOutlineRegular />, label: t('menu.sidebar'), disabled: !available,
+        { id: 'sidebar', icon: { key: 'open-in-app.sidebar' }, label: t('menu.sidebar'), disabled: !available,
           run: () => {
             const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
             ctx.sidebarRight.openResourceIn(sessionId, fileAddressFor(sessionId, cwd, path), {
               ...(paneId === undefined ? {} : { paneId }), ...(line === undefined ? {} : { params: { line } }),
             })
           } },
-        { id: 'reveal', icon: <IconFolderOpenOutlineRegular />, label: fileManager(), disabled: !desktop,
+        { id: 'reveal', icon: { key: 'open-in-app.reveal' }, label: fileManager(), disabled: !desktop,
           ...absolutePath === undefined ? {} : { run: () => open(absolutePath, 'reveal') } },
         { id: 'open', label: application ? t('open.title', { app: application.name }) : t('menu.defaultApp'),
-          icon: application?.icon ? <img src={application.icon} width={14} height={14} alt="" /> : <IconRightUpOutlineRegular />, disabled: application === undefined,
+          icon: { key: 'open-in-app.application', ...application?.icon ? { src: application.icon } : {} },
+          disabled: application === undefined,
           ...absolutePath === undefined || application === undefined ? {} : { run: () => open(absolutePath, 'open', application.id) } },
-        { id: 'copyPath', icon: <IconCopyOutlineRegular />, failureLabel: t('menu.copyFailed'), label: t('menu.copyPath'),
+        { id: 'copyPath', icon: { key: 'open-in-app.copy' }, failureLabel: t('menu.copyFailed'), label: t('menu.copyPath'),
           run: async () => {
             const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
             await navigator.clipboard.writeText(absolutePath ?? resolveWorkspacePath(cwd, path))
@@ -110,11 +112,11 @@ export function registerContextMenus(
   ctx.effect(() => ctx.contextMenus.register({
     id: 'open-in-app.url', target: 'url', order: 100,
     resolve: ({ sessionId, url }) => [
-      { id: 'sidebar', icon: <IconPanelLeftOutlineRegular />, label: t('menu.sidebar'), disabled: ctx.sidebarRightTabs.get('browser') === undefined,
+      { id: 'sidebar', icon: { key: 'open-in-app.sidebar' }, label: t('menu.sidebar'), disabled: ctx.sidebarRightTabs.get('browser') === undefined,
         run: () => { ctx.sidebarRight.openTabIn(sessionId, 'browser', { params: { url } }) } },
       { id: 'external', label: t('menu.external'),
         run: () => { window.open(url, '_blank', 'noopener,noreferrer') } },
-      { id: 'copy', icon: <IconCopyOutlineRegular />, failureLabel: t('menu.copyFailed'), label: t('menu.copyLink'), run: async () => {
+      { id: 'copy', icon: { key: 'open-in-app.copy' }, failureLabel: t('menu.copyFailed'), label: t('menu.copyLink'), run: async () => {
         await navigator.clipboard.writeText(url); ctx.contextMenus.notify(t('menu.copied'), true)
       } },
     ],
@@ -128,9 +130,14 @@ export function registerContextMenus(
         ? await resolvePath(sessionId, path, signal) : undefined
       signal.throwIfAborted()
       return [
-        { id: 'reveal', icon: <IconFolderOpenOutlineRegular />, label: fileManager(), disabled: local === undefined,
+        { id: 'reveal', icon: { key: 'open-in-app.reveal' }, label: fileManager(), disabled: local === undefined,
           ...local !== undefined ? { run: () => open(local, 'reveal') } : {} },
       ]
     },
   }), 'open-in-app: image context menu')
+}
+
+/** @param props - icon metadata captured with the resolved action. @returns Application image or the native-open glyph. */
+export function ContextMenuApplicationIcon({ icon }: Pick<PropsRuntime<'contextMenu.icon'>, 'icon'>) {
+  return icon.src ? <img src={icon.src} width={14} height={14} alt="" /> : <IconRightUpOutlineRegular />
 }

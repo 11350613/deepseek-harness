@@ -1,5 +1,7 @@
 /** Original-file actions independent of menu or image component ownership. */
+import { IconCopyOutlineRegular, IconDownloadOutlineRegular, IconSaveOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { DesktopFileActions, FileActions } from '../types.ts'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { registerFileMenus } from './context-menus.tsx'
@@ -24,8 +26,14 @@ export function apply(ctx: Context): void {
   const actions = new BrowserFileActions(desktop)
   ctx.provide('fileActions', actions)
   ctx.effect(() => () => { actions.dispose() }, 'file actions: lifetime')
-  ctx.inject(['contextMenus', 'locale', 'remote', 'remote.workspaceFiles', 'remote.session'], (child) => {
+  ctx.inject(['contextMenus', 'slots', 'locale', 'remote', 'remote.workspaceFiles', 'remote.session'], (child) => {
     child.effect(() => child.locale.register('fileActions', { zh, en, ja, es, fr, de, ru, pt }), 'file actions: locale')
+    child.slots.inject('contextMenu.icon', function* () {
+      for (const [key, Icon] of Object.entries({
+        'file-actions.copy': IconCopyOutlineRegular, 'file-actions.download': IconDownloadOutlineRegular,
+        'file-actions.save': IconSaveOutlineRegular,
+      })) yield child.slots.register({ name: 'contextMenu.icon', key }, Icon)
+    })
     registerFileMenus(child, actions, child.locale.bind('fileActions'))
   })
 }

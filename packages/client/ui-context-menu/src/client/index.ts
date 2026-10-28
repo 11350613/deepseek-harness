@@ -11,11 +11,12 @@ import { MenuRegistry } from './registry.ts'
 import { createMenuStore } from './store.ts'
 import { dictionaries } from './locales.ts'
 import { MenuOverlay } from './View.tsx'
-import type { ContextMenus, MenuResolution, MenuTarget, MenuPoint, UseContextMenu } from './types.ts'
+import type { ContextMenus, MenuResolution, ContextMenuTarget, ContextMenuIcon, MenuPoint, UseContextMenu } from './types.ts'
 import { createContextMenuBindings } from './trigger.ts'
 
-export type { ContextMenus, MenuTarget, ContextMenuTargetMap, MenuPoint, MenuAction, MenuActionView, MenuContribution, MenuResolution } from './types.ts'
+export type { ContextMenus, ContextMenuTarget, ContextMenuTargetMap, MenuPoint, MenuAction, MenuActionView, MenuContribution, MenuResolution } from './types.ts'
 export type { ContextMenuBindings, ContextMenuTriggerProps, UseContextMenu } from './types.ts'
+export type { ContextMenuIcon } from './types.ts'
 export { createMenuStore } from './store.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -27,8 +28,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     useContextMenu: UseContextMenu
   }
   interface SlotMap {
+    /** Business-owned glyph or image selected by the action's icon key. */
+    'contextMenu.icon': { kind: 'keyed'; scope: 'root'; inline: true; owner: { icon: ContextMenuIcon } }
     /** Optional React rows for existing extension positions; data contributions need no renderer. */
-    'contextMenu.content': { kind: 'keyed'; scope: 'root'; owner: { target: MenuTarget; dismiss: () => void } }
+    'contextMenu.content': { kind: 'keyed'; scope: 'root'; owner: { target: ContextMenuTarget; dismiss: () => void } }
   }
   interface LocaleNamespaceMap { /** Menu operation feedback. */ contextMenu: 'failed' }
 }
@@ -47,9 +50,9 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   const handle = createMenuStore()
   const instance = handle.create()
   const store: typeof handle = { ...handle, create: () => instance }
-  const targetSource = createSnapshotStore<MenuTarget | null>(null)
+  const targetSource = createSnapshotStore<ContextMenuTarget | null>(null)
   let sequence = 0
-  let active: { resolution: MenuResolution; unsubscribe: () => void; target: MenuTarget; point: MenuPoint } | undefined
+  let active: { resolution: MenuResolution; unsubscribe: () => void; target: ContextMenuTarget; point: MenuPoint } | undefined
   let closeTimer: ReturnType<typeof setTimeout> | undefined
   let openingTimer: ReturnType<typeof setTimeout> | undefined
   let finishOpening: (() => void) | undefined
@@ -139,7 +142,10 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   }, 'context menu: lifetime')
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'context-menu', store,
-    children: { 'contextMenu.content': { kind: 'keyed', scope: 'root' } },
+    children: {
+      'contextMenu.content': { kind: 'keyed', scope: 'root' },
+      'contextMenu.icon': { kind: 'keyed', scope: 'root', inline: true },
+    },
     inject: () => ({ hooks: { catalog: ctx.shortcuts.catalog }, close, returnFocus: () => returnFocus, select: (id: string) => {
       const selected = active?.resolution
       active?.unsubscribe(); active = undefined

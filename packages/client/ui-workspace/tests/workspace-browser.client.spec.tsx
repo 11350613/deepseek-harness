@@ -116,7 +116,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     useWorkspaceActionRequest: bindSnapshotSelector(request),
     settleWorkspaceAction: () => { request.set(null) },
     openSessionMenu: vi.fn(),
-    useMenuTarget: selector => selector(null),
+    useContextMenuTarget: selector => selector(null),
     useShortcuts: select => select([]),
     useWorkspaceShortcuts: bindSnapshotSelector(controls.state),
     requestSearch: controls.search,

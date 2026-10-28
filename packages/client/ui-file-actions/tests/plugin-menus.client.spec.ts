@@ -1,16 +1,21 @@
 // @vitest-environment jsdom
 /** File-operation contributions survive removal of application-opening providers. */
-import { Context } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
+import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply } from '../src/client/index.ts'
 import type { FileActionSource } from '../src/types.ts'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
 it('contributes file and image operations without open-in-app and withdraws them on unload', async () => {
-  const ctx = new Context()
+  const runtime = await SlotTestRuntime.create()
+  onTestFinished(() => runtime.dispose())
+  const { ctx } = runtime
+  await runtime.declare({
+    'contextMenu.icon': { kind: 'keyed', scope: 'root', inline: true },
+  })
   const failure = vi.fn(), notify = vi.fn()
   const registry = new MenuRegistry(failure)
   ctx.provide('contextMenus', { register: registry.register.bind(registry), notify } as never)
@@ -22,13 +27,14 @@ it('contributes file and image operations without open-in-app and withdraws them
     readBytes,
   }
   const session = { openWorkspacePath: vi.fn() }
-  ctx.provide('remote', { workspaceFiles, session } as never)
-  ctx.provide('remote.workspaceFiles', workspaceFiles as never)
-  ctx.provide('remote.session', session as never)
+  runtime.remote.provideNamespaces({ workspaceFiles, session })
   const fiber = ctx.plugin({ apply })
   await fiber.await()
   try {
     await vi.waitFor(() => { expect(registerLocale).toHaveBeenCalledOnce() })
+    expect(ctx.slots.entries('contextMenu.icon').map(entry => entry.options.key)).toEqual([
+      'file-actions.copy', 'file-actions.download', 'file-actions.save',
+    ])
     const file = registry.resolve({ kind: 'file', value: { sessionId: SessionId('files'), path: 'image.png' } })
     await file.ready
     expect(file.source.getSnapshot().map(action => action.id)).toEqual([
@@ -53,6 +59,7 @@ it('contributes file and image operations without open-in-app and withdraws them
       'file-actions.image/copy', 'file-actions.image/download',
     ])
     await fiber.dispose()
+    expect(ctx.slots.entries('contextMenu.icon')).toEqual([])
     expect(file.source.getSnapshot()).toEqual([])
     expect(image.source.getSnapshot()).toEqual([])
     file.dispose()
@@ -60,6 +67,6 @@ it('contributes file and image operations without open-in-app and withdraws them
     expect(failure).not.toHaveBeenCalled()
   } finally {
     registry.dispose()
-    await ctx.fiber.dispose()
+    await runtime.dispose()
   }
 })

@@ -1,4 +1,3 @@
-import { createElement } from 'react'
 import { IconCloseOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { TabMenuContent } from './shell/TabMenuContent.tsx'
@@ -136,6 +135,9 @@ export function apply(ctx: ClientContext): void {
       closeWithFocus: (sessionId, paneId, close) => { closeWithPaneFocus(document, sessionId, paneId, close) },
     },
   )
+  ctx.effect(() => ctx.slots.inject('contextMenu.icon', () => ctx.slots.register({
+    name: 'contextMenu.icon', key: 'sidebar.close',
+  }, IconCloseOutlineRegular)), 'sidebar: menu icon')
   ctx.effect(() => ctx.contextMenus.register({
     id: 'sidebar.close', target: 'tab', order: 100,
     resolve: ({ sessionId, paneId, tab }) => {
@@ -148,7 +150,7 @@ export function apply(ctx: ClientContext): void {
         }
       }
       return [
-        { id: 'close', commandId: 'page.close' as ShortcutCommandId, icon: createElement(IconCloseOutlineRegular), label: t('menu.close'), disabled: !tabs.close, run: () => { if (controller.menuTabs(sessionId, paneId, tabId).close) controller.closeIn(sessionId, tabId) } },
+        { id: 'close', commandId: 'page.close' as ShortcutCommandId, icon: { key: 'sidebar.close' }, label: t('menu.close'), disabled: !tabs.close, run: () => { if (controller.menuTabs(sessionId, paneId, tabId).close) controller.closeIn(sessionId, tabId) } },
         { id: 'others', label: t('menu.closeOthers'), disabled: tabs.all.length === 0, run: () => { closeMany(tabs.all) } },
         ...tabs.right.length === 0 ? [] : [{ id: 'right', label: t('menu.closeRight'), run: () => { closeMany(tabs.right) } }],
       ]
@@ -225,7 +227,7 @@ export function apply(ctx: ClientContext): void {
       toggleFullscreen: () => { const target = controller.commandTarget(); if (target !== undefined) controller.toggleFullscreen(target) },
       openTab: (kind, options) => { controller.openTab(kind, options) },
       hooks: {
-        menuTarget: ctx.contextMenus.active,
+        contextMenuTarget: ctx.contextMenus.active,
         shortcuts: ctx.shortcuts.catalog,
         tabTypes: { subscribe: listener => tabs.subscribe(listener), getSnapshot: () => tabs.entries() },
       },

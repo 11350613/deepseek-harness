@@ -1,6 +1,6 @@
 /** DOM gesture bindings owned by one menu plugin instance. */
 import type { SyntheticEvent } from 'react'
-import type { ContextMenuTriggerProps, MenuPoint, MenuTarget } from './types.ts'
+import type { ContextMenuTriggerProps, MenuPoint, ContextMenuTarget } from './types.ts'
 
 /**
  * Create stable bindings for the plugin's injected hook.
@@ -8,7 +8,7 @@ import type { ContextMenuTriggerProps, MenuPoint, MenuTarget } from './types.ts'
  * @param active - Whether the plugin still owns its service.
  * @returns Ordinary trigger-prop factory; no React subscription or context is created.
  */
-export function createContextMenuBindings<Target extends object = MenuTarget>(
+export function createContextMenuBindings<Target extends object = ContextMenuTarget>(
   open: (target: Target, point: MenuPoint) => void, active: () => boolean,
 ): { getTriggerProps: (target: Target | (() => Target) | undefined, handlers?: ContextMenuTriggerProps) => ContextMenuTriggerProps } {
   return {

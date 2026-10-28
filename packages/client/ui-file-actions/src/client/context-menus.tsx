@@ -1,5 +1,4 @@
 /** Original-file menu contributions owned by the file-action capability. */
-import { IconCopyOutlineRegular, IconDownloadOutlineRegular, IconSaveOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
@@ -68,15 +67,15 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
       }
       return [
         ...mediaType.startsWith('image/') ? [
-          { id: 'copyImage', icon: <IconCopyOutlineRegular />, separatorBefore: true, failureLabel: t('menu.copyFailed'),
+          { id: 'copyImage', icon: { key: 'file-actions.copy' }, separatorBefore: true, failureLabel: t('menu.copyFailed'),
             label: t('menu.copyImage'), disabled: !available, run: () => copy(source) },
         ] : [],
         ...mediaType.startsWith('image/') || !actions.canSaveAs ? [
-          { id: 'download', icon: <IconDownloadOutlineRegular />, failureLabel: t('menu.saveFailed'),
+          { id: 'download', icon: { key: 'file-actions.download' }, failureLabel: t('menu.saveFailed'),
             label: t('menu.download'), disabled: !available, run: () => save(source, 'download') },
         ] : [],
         ...actions.canSaveAs ? [
-          { id: 'saveAs', icon: <IconSaveOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
+          { id: 'saveAs', icon: { key: 'file-actions.save' }, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
             disabled: !available, run: () => save(source, 'saveAs') },
         ] : [],
       ]
@@ -97,10 +96,10 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
         }),
       }
       return [
-        { id: 'copy', icon: <IconCopyOutlineRegular />, failureLabel: t('menu.copyFailed'), label: t('menu.copyImage'), run: () => copy(source) },
-        { id: 'download', icon: <IconDownloadOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.download'), run: () => save(source, 'download') },
+        { id: 'copy', icon: { key: 'file-actions.copy' }, failureLabel: t('menu.copyFailed'), label: t('menu.copyImage'), run: () => copy(source) },
+        { id: 'download', icon: { key: 'file-actions.download' }, failureLabel: t('menu.saveFailed'), label: t('menu.download'), run: () => save(source, 'download') },
         ...actions.canSaveAs ? [
-          { id: 'saveAs', icon: <IconSaveOutlineRegular />, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
+          { id: 'saveAs', icon: { key: 'file-actions.save' }, failureLabel: t('menu.saveFailed'), label: t('menu.saveAs'),
             run: () => save(source, 'saveAs') },
         ] : [],
       ]

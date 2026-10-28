@@ -1,4 +1,4 @@
-import type { MenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
+import type { ContextMenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import { Context } from '@deepseek-ai/cordis'
@@ -184,8 +184,9 @@ type RowListName = typeof MENU_ITEM | typeof ROW_ACTION | 'shell.overlay'
 
 /** Declare any subset of the holes with a single root registration ('root' is a single slot); the overlay is a list. */
 function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
-  const children = Object.fromEntries([...names, 'contextMenu.content'].map(name => [
-    name, { kind: name === 'shell.overlay' ? 'list' : name === 'contextMenu.content' ? 'keyed' : 'single', scope: 'root' },
+  const children = Object.fromEntries([...names, 'contextMenu.content', 'contextMenu.icon'].map(name => [
+    name, { kind: name === 'shell.overlay' ? 'list' : name.startsWith('contextMenu.') ? 'keyed' : 'single', scope: 'root',
+      ...name === 'contextMenu.icon' ? { inline: true } : {} },
   ]))
   return slots.register({ name: 'root', children } as never, () => null)
 }
@@ -937,7 +938,7 @@ it('captures Workspace menu requests, rechecks mutable access, and withdraws reg
   const target = { kind: 'workspace' as const, value: { workspaceId: 'alpha' as WorkspaceId, path: '/projects/alpha', displayTitle: 'Alpha' } }
   browser.openWorkspaceMenu(target.value.workspaceId, target.value.path, 'Alpha', { x: 20, y: 30 })
   expect(vi.spyOn(b.ctx.contextMenus, 'open')).toHaveBeenLastCalledWith(target, { x: 20, y: 30 })
-  const active = b.ctx.contextMenus.active as ReturnType<typeof createSnapshotStore<MenuTarget | null>>
+  const active = b.ctx.contextMenus.active as ReturnType<typeof createSnapshotStore<ContextMenuTarget | null>>
   active.set(target)
   browser.openWorkspaceMenu(target.value.workspaceId, target.value.path, 'Alpha', { x: 20, y: 30 }, 'toggle')
   expect(vi.spyOn(b.ctx.contextMenus, 'close')).toHaveBeenCalledOnce()

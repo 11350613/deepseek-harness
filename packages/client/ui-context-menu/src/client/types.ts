@@ -1,5 +1,4 @@
 /** Client menu contributions and explicit gesture targets. */
-import type { MenuItem } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -17,7 +16,9 @@ export interface ContextMenuBindings {
    * @param handlers - Existing handlers run first and can cancel with preventDefault().
    * @returns Combined pointer and keyboard handlers plus a keyboard focus stop.
    */
-  getTriggerProps: (target: MenuTarget | (() => MenuTarget) | undefined, handlers?: ContextMenuTriggerProps) => ContextMenuTriggerProps
+  getTriggerProps: (
+    target: ContextMenuTarget | (() => ContextMenuTarget) | undefined, handlers?: ContextMenuTriggerProps,
+  ) => ContextMenuTriggerProps
 }
 
 /** Read menu gesture bindings owned by the current menu plugin lifetime. */
@@ -40,11 +41,16 @@ export interface ContextMenuTargetMap {
 }
 
 /** Captured target; changing selection never changes an open menu's target. */
-export type MenuTarget = {
+export type ContextMenuTarget = {
   [K in keyof ContextMenuTargetMap]: { readonly kind: K; readonly value: ContextMenuTargetMap[K] }
 }[keyof ContextMenuTargetMap]
 /** Pointer position in CSS pixels; keyboard gestures use the trigger's bottom edge. */
 export interface MenuPoint { readonly x: number; readonly y: number }
+/** Keyed icon renderer and optional image URL captured with the action. */
+export interface ContextMenuIcon {
+  readonly key: string
+  readonly src?: string
+}
 /** Client presentation fields; callbacks stay in the registry. */
 export interface MenuActionView {
   readonly id: string
@@ -52,7 +58,7 @@ export interface MenuActionView {
   /** Command identity for live shortcut display only; selection still invokes this action’s run callback. */
   readonly commandId?: ShortcutCommandId
   readonly disabled?: boolean
-  readonly icon?: MenuItem['icon']
+  readonly icon?: ContextMenuIcon
   readonly danger?: boolean
   readonly separatorBefore?: boolean
   /** Render after legacy component contributions in the shared Web popup. */
@@ -102,7 +108,7 @@ export interface MenuResolution {
 /** Client capability used equally by built-in and external plugins. */
 export interface ContextMenus {
   /** Captured target of the shared popup; null after dismissal. */
-  readonly active: ObservableSnapshot<MenuTarget | null>
+  readonly active: ObservableSnapshot<ContextMenuTarget | null>
   /**
    * Register for subsequent openings; unloading withdraws actions and aborts their queries. Duplicate ids within a target fail.
    * @param contribution - target provider.
@@ -114,13 +120,13 @@ export interface ContextMenus {
    * @param target - captured object.
    * @param point - viewport position.
    */
-  open(target: MenuTarget, point: MenuPoint): void
+  open(target: ContextMenuTarget, point: MenuPoint): void
   /**
    * Resolve an embedded menu without opening the shared popup.
    * @param target - captured object.
    * @returns owned occurrence.
    */
-  resolve(target: MenuTarget): MenuResolution
+  resolve(target: ContextMenuTarget): MenuResolution
   /** Close the shared popup and cancel its metadata queries. */
   close(): void
   /**

@@ -6,16 +6,26 @@ import type { Shortcuts, ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-sh
 import type { createMenuStore } from './store.ts'
 import type { MenuActionView } from './types.ts'
 
-/** @param actions - plain presentation. @param catalog - effective user shortcuts. @returns existing Menu entries. */
-export function menuEntries(actions: readonly MenuActionView[], catalog: readonly ShortcutCatalogEntry[]): MenuEntry[] {
+/**
+ * @param actions - plain presentation.
+ * @param catalog - effective user shortcuts.
+ * @param renderSlot - owner-authorized keyed icon renderer.
+ * @returns Existing Menu entries.
+ */
+export function menuEntries(
+  actions: readonly MenuActionView[], catalog: readonly ShortcutCatalogEntry[],
+  renderSlot: PropsRenderSlots<'contextMenu.icon'>['renderSlot'],
+): MenuEntry[] {
   return actions.flatMap((action) => {
     const shortcut = catalog.find(entry => entry.id === action.commandId)
     const item: MenuEntry = { id: action.id, label: action.label,
       ...(shortcut === undefined ? {} : { shortcut }),
       ...(action.disabled === undefined ? {} : { disabled: action.disabled }),
       ...(action.danger === undefined ? {} : { danger: action.danger }),
-      ...(action.icon === undefined ? {} : { icon: action.icon }),
-      ...(action.children === undefined ? {} : { submenu: menuEntries(action.children, catalog) }),
+      ...(action.icon === undefined ? {} : {
+        icon: renderSlot('contextMenu.icon', { icon: action.icon }, { entryKey: action.icon.key }),
+      }),
+      ...(action.children === undefined ? {} : { submenu: menuEntries(action.children, catalog, renderSlot) }),
     }
     return action.separatorBefore ? [{ type: 'separator', id: `${action.id}:separator` }, item] : [item]
   })
@@ -29,7 +39,7 @@ export interface MenuOverlayInjected {
   select: (id: string) => void
 }
 type Props = PropsStore<ReturnType<typeof createMenuStore>>
-  & PropsRenderSlots<'contextMenu.content'> & InjectFace<MenuOverlayInjected>
+  & PropsRenderSlots<'contextMenu.content' | 'contextMenu.icon'> & InjectFace<MenuOverlayInjected>
 
 /** @param props - registered state, target-specific legacy rows, and actions. @returns one menu and persistent feedback. */
 export function MenuOverlay({ useStore, actions, renderSlot, close, select, returnFocus, useCatalog }: Props) {
@@ -39,8 +49,8 @@ export function MenuOverlay({ useStore, actions, renderSlot, close, select, retu
     <Menu key={occurrence} open={target !== null} anchor={null} portal autoFocus contextual returnFocus={returnFocus}
       exiting={closing ? replacing ? 'replace' : 'dismiss' : undefined}
       getAnchorRect={() => new DOMRect(point.x, point.y, 0, 0)}
-      items={menuEntries(items.filter(item => !item.afterContent), catalog)}
-      footer={menuEntries(items.filter(item => item.afterContent), catalog)} onClose={close} onSelect={select}>
+      items={menuEntries(items.filter(item => !item.afterContent), catalog, renderSlot)}
+      footer={menuEntries(items.filter(item => item.afterContent), catalog, renderSlot)} onClose={close} onSelect={select}>
       {target !== null && renderSlot('contextMenu.content', { target, dismiss: close }, { entryKey: target.kind })}
     </Menu>
     {notice !== null && <Toast key={notice.id} text={notice.text}

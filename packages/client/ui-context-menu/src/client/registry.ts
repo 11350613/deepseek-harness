@@ -1,15 +1,15 @@
 /** Ordered menu resolution with cancellation and contribution-owned action lifetimes. */
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { MenuAction, MenuActionView, MenuContribution, MenuResolution, MenuTarget, ContextMenuTargetMap } from './types.ts'
+import type { MenuAction, MenuActionView, MenuContribution, MenuResolution, ContextMenuTarget, ContextMenuTargetMap } from './types.ts'
 
 interface Provider {
   readonly id: string
   readonly order: number
   readonly kind: keyof ContextMenuTargetMap
   readonly lifetime: AbortController
-  observe(target: MenuTarget): readonly ObservableSnapshot<unknown>[]
-  resolve(target: MenuTarget, signal: AbortSignal): readonly MenuAction[] | Promise<readonly MenuAction[]>
+  observe(target: ContextMenuTarget): readonly ObservableSnapshot<unknown>[]
+  resolve(target: ContextMenuTarget, signal: AbortSignal): readonly MenuAction[] | Promise<readonly MenuAction[]>
 }
 
 /** React-free registry; each occurrence captures the providers registered at opening. */
@@ -46,7 +46,7 @@ export class MenuRegistry {
    * @param target - captured clicked identity.
    * @returns presentation, selection, and disposal.
    */
-  resolve(target: MenuTarget): MenuResolution {
+  resolve(target: ContextMenuTarget): MenuResolution {
     if (this.disposed) throw new Error('Menu registry is disposed')
     const lifetime = new AbortController()
     const source = createSnapshotStore<readonly MenuActionView[]>([])

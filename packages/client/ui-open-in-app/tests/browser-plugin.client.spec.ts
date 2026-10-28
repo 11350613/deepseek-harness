@@ -29,6 +29,7 @@ import { OpenPathEmptyAction } from '../src/client/OpenPathEmptyAction.tsx'
 import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import type { OpenTargetReporter } from '../src/client/OpenTargetButton.tsx'
 import { FileRouteAction } from '../src/client/FileRouteAction.tsx'
+import { ContextMenuApplicationIcon } from '../src/client/context-menus.tsx'
 import type { OpenInAppOutcome } from '../src/client/outcome.ts'
 import { OpenInAppToast, type OpenInAppToastProps, type OpenInAppToastSource } from '../src/client/open-toast.tsx'
 import { en, NS, zh } from '../src/client/locales.ts'
@@ -70,6 +71,7 @@ async function bench() {
       'deliverables.file.actions': { kind: 'list', scope: 'session' },
       'deliverables.review.file.actions': { kind: 'list', scope: 'session' },
       'shell.overlay': { kind: 'list', scope: 'root' },
+      'contextMenu.icon': { kind: 'keyed', scope: 'root', inline: true },
     },
   } as never, () => null)
   const list = createSnapshotStore<SessionListState>({ ids: [], byId: {}, phase: 'ready', projectionsBySession: {} })
@@ -113,6 +115,13 @@ function toastSource(ctx: Context): Omit<OpenInAppToastSource, 'report'> {
 }
 
 describe('open-in-app browser half', () => {
+  it('renders captured application images and the default glyph without an image URL', () => {
+    const view = render(createElement(ContextMenuApplicationIcon, { icon: { key: 'open-in-app.application', src: '/captured.png' } }))
+    expect(view.container.querySelector('img')?.getAttribute('src')).toBe('/captured.png')
+    view.rerender(createElement(ContextMenuApplicationIcon, { icon: { key: 'open-in-app.application' } }))
+    expect(view.container.querySelector('img')).toBeNull()
+    expect(view.container.querySelector('svg')).not.toBeNull()
+  })
   it.each([
     [false, true], [true, true], [false, false], [true, false],
   ])('shares native feedback after Session menu dismissal (mobile=%s, success=%s)', async (mobile, success) => {
@@ -128,6 +137,9 @@ describe('open-in-app browser half', () => {
     const menu = ctx.contextMenus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
     const toast = toastSource(ctx)
     try {
+      expect(ctx.slots.entries('contextMenu.icon').map(entry => entry.options.key)).toEqual([
+        'open-in-app.reveal', 'open-in-app.copy', 'open-in-app.sidebar', 'open-in-app.application',
+      ])
       expect(ctx.slots.entries('sidebar.workspaces.session.menu.item')).toHaveLength(0)
       await vi.waitFor(() => { expect(menu.source.getSnapshot()[0]).toMatchObject({ label: 'Show in Finder', disabled: false }) })
       menu.select('open-in-app.reveal/reveal')
@@ -142,6 +154,7 @@ describe('open-in-app browser half', () => {
         body: JSON.stringify({ app: 'finder', path: '/captured' }),
       }))
     } finally { menu.dispose(); await fiber.dispose() }
+    expect(ctx.slots.entries('contextMenu.icon')).toEqual([])
     const removed = ctx.contextMenus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
     expect(removed.source.getSnapshot()).toEqual([])
     removed.dispose()

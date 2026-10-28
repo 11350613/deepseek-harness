@@ -37,13 +37,15 @@ Web 应用 bundle 挂载此客户端插件。外部客户端插件在 `dsh.clien
 
 贡献可通过 `observe(target)` 声明权限、成员状态或本地化标签的数据源。数据源更新时，针对同一捕获目标重新解析该贡献并替换回调；过期的异步准备会被取消。关闭菜单和卸载插件都会释放所有订阅。
 
-通过对 `@deepseek-ai/dsh-client-ui-context-menu/client` 的声明合并扩展 `ContextMenuTargetMap`，即可增加目标类别，再通过 `ctx.contextMenus.open({ kind, value }, { x, y })` 打开。目标值使用不可变、可 JSON 序列化的标识与元数据。执行回调捕获该值，并在操作前重新检查可变资源。新注册项在下次打开时生效。注销会移除可见操作并取消待处理的元数据查询。
+通过对 `@deepseek-ai/dsh-client-ui-context-menu/client` 的声明合并扩展 `ContextMenuTargetMap`，即可增加目标类别；`ContextMenuTarget` 从该映射派生 `{ kind, value }` 联合类型。通过 `ctx.contextMenus.open(target, { x, y })` 打开目标。目标值使用不可变、可 JSON 序列化的标识与元数据。执行回调捕获该值，并在操作前重新检查可变资源。新注册项在下次打开时生效。注销会移除可见操作并取消待处理的元数据查询。
 
 `ctx.contextMenus.resolve(target)` 为其他渲染器提供独立菜单实例。订阅不可变操作视图，选择已发布的 ID，并在所属界面关闭时释放。视图仅包含展示字段。回调保留在注册表中，最多执行一次。关闭和替换菜单会取消元数据查询，已选中操作则自行管理执行与取消。提供方或操作拒绝时由持久的覆盖层提示；操作的本地化 `failureLabel` 提供具体的恢复建议。
 
 `ctx.contextMenus.notify(text, success, action?)` 可通过共享 Toast 附加本地化文字操作。操作提供 `label`、`run` 和 `failureLabel`；点击后先关闭提示再执行，失败时显示对应文案。已关闭或被替换的提示不能再次执行其操作。
 
-共享弹窗等待全部贡献项完成或超时后才显示。同一目标在四个 CSS 像素以内重复触发会关闭菜单；更远的触发以独立淡入淡出替换菜单。`ready` 向自定义渲染器提供同一个准备完成时点。操作将 `icon?: ReactNode` 直接传给共享 Menu。贡献插件提供图标元素，或用 `<img>` 包装应用图标；registry 不序列化或映射图标。结构化操作的图标按分隔线组对齐；组件贡献保留自己的布局。普通关闭保留弹窗 80ms，替换保留 10ms；打开至少等待 20ms，再用 40ms 淡入。减少动态效果偏好会禁用淡入淡出。
+共享弹窗等待全部贡献项完成或超时后才显示。同一目标在四个 CSS 像素以内重复触发会关闭菜单；更远的触发以独立淡入淡出替换菜单。`ready` 向自定义渲染器提供同一个准备完成时点。结构化操作的图标按分隔线组对齐；组件贡献保留自己的布局。普通关闭保留弹窗 80ms，替换保留 10ms；打开至少等待 20ms，再用 40ms 淡入。减少动态效果偏好会禁用淡入淡出。
+
+操作携带 `icon?: { key: string; src?: string }`。通过 `ctx.slots.inject('contextMenu.icon', () => ctx.slots.register({ name: 'contextMenu.icon', key: 'my-plugin.action' }, Icon))` 注册匹配的图标组件。覆盖层对普通项、子菜单和底部操作都按该 key 调用 `renderSlot`；组件接收已捕获的 `icon` 元数据，包括可选图片 URL。注册随贡献插件和菜单 Slot 声明的生命周期清理。操作视图不包含 JSX 节点。
 
 可选的 keyed Slot `contextMenu.content` 承载组件贡献。现有会话和标签菜单 Slot 名称仍由各自功能适配器维护。键盘菜单键和 Shift+F10 使用焦点触发元素的下边缘定位。`afterContent` 将数据操作放在这些行之后；普通操作排在之前。
 

@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
+import { bindSnapshotSelector, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { MenuItemButton } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ShortcutRegistry } from '../../shortcuts/src/client/registry.ts'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { createMenuStore } from '../src/client/store.ts'
 import { MenuOverlay } from '../src/client/View.tsx'
-import type { MenuTarget } from '../src/client/types.ts'
+import { apply, inject } from '../src/client/index.ts'
+import type { ContextMenuTarget } from '../src/client/types.ts'
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
@@ -20,7 +23,7 @@ it('renders legacy Session actions before data contributions and restores More f
     <button onClick={() => { store.actions.open({ kind: 'session', value: { sessionId: SessionId('clicked'), displayTitle: 'Clicked' } }, { x: 20, y: 30 }) }}>More</button>
     <MenuOverlay useCatalog={select => select([])} useStore={useStore} actions={store.actions} close={close} select={run}
       renderSlot={(_key, owner: object) => {
-        const { target, dismiss } = owner as { target: MenuTarget; dismiss: () => void }
+        const { target, dismiss } = owner as { target: ContextMenuTarget; dismiss: () => void }
         return <MenuItemButton onSelect={() => {
           if (target.kind === 'session') run(target.value.sessionId)
           dismiss()
@@ -47,14 +50,13 @@ it('renders disabled, grouped and nested data actions and keeps feedback after m
   const store = createMenuStore().create(), select = vi.fn()
   store.actions.open({ kind: 'session', value: { sessionId: SessionId('clicked'), displayTitle: 'Clicked' } }, { x: 20, y: 30 })
   store.actions.items([
-    { id: 'plain', label: 'Open', icon: <svg data-testid="plugin-icon"><path d="M0 0" /></svg> },
-    { id: 'blocked', label: 'Unavailable', disabled: true, danger: true, icon: <img src="data:image/png;base64,AA==" width={14} height={14} alt="" />, separatorBefore: true },
+    { id: 'plain', label: 'Open' },
+    { id: 'blocked', label: 'Unavailable', disabled: true, danger: true, separatorBefore: true },
     { id: 'parent', label: 'Export', children: [{ id: 'child', label: 'Original' }, { id: 'other', label: 'Other', separatorBefore: true }] },
     { id: 'footer', label: 'Folder', afterContent: true },
   ])
   const view = render(<MenuOverlay useCatalog={select => select([])} useStore={bindSnapshotSelector(store)} actions={store.actions}
     close={() => { store.actions.close() }} select={select} renderSlot={() => null} />)
-  expect(view.getByTestId('plugin-icon').parentElement?.closest('[role="menuitem"]')?.textContent).toContain('Open')
   expect(view.getByRole('menuitem', { name: 'Unavailable' }).hasAttribute('disabled')).toBe(true)
   fireEvent.click(view.getByRole('menuitem', { name: 'Open' }))
   expect(select).toHaveBeenCalledWith('plain')
@@ -78,6 +80,51 @@ it('renders disabled, grouped and nested data actions and keeps feedback after m
   expect(view.queryByRole('button', { name: 'Show in Finder' })).toBeNull()
   act(() => { vi.advanceTimersByTime(4000) })
   expect(view.queryByRole('alert')).toBeNull()
+})
+
+function PluginIcon({ icon }: PropsRuntime<'contextMenu.icon'>) {
+  return <img data-testid="plugin-icon" src={icon.src} alt="" />
+}
+
+it('dispatches captured icon keys in rows, submenus and footers and retires renderer registrations on unload', async () => {
+  const runtime = await SlotTestRuntime.create()
+  onTestFinished(() => runtime.dispose())
+  runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) } as never)
+  runtime.ctx.provide('locale', { register: () => () => {}, bind: () => (key: string) => key } as never)
+  await runtime.root.declare({ 'shell.overlay': { kind: 'list', scope: 'root' } }, ({ renderSlot }) =>
+    <>{renderSlot('shell.overlay', {})}</>)
+  const menuPlugin = await runtime.mount({ inject, apply })
+  const run = vi.fn()
+  const contribution = await runtime.mount({ inject: ['contextMenus'], apply(ctx) {
+    ctx.effect(() => ctx.contextMenus.register({ id: 'icons', target: 'session', order: 0, resolve: () => [
+      { id: 'row', label: 'Open', icon: { key: 'example.icon', src: '/captured.png' }, run },
+      { id: 'parent', label: 'Export', children: [{ id: 'child', label: 'Original', icon: { key: 'example.icon' } }] },
+      { id: 'footer', label: 'Footer', afterContent: true, icon: { key: 'example.icon' } },
+    ] }))
+  } })
+  const icons = await runtime.mount({ inject: ['slots'], apply(ctx) {
+    ctx.slots.inject('contextMenu.icon', function* () {
+      yield ctx.slots.register({ name: 'contextMenu.icon', key: 'example.icon' }, PluginIcon)
+      yield ctx.slots.register({ name: 'contextMenu.icon', key: 'example.unused' }, () => <span>Unused icon</span>)
+    })
+  } })
+  const view = runtime.renderRoot()
+  const open = () => { runtime.ctx.contextMenus.open({ kind: 'session', value: {
+    sessionId: SessionId('icons'), displayTitle: 'Icons',
+  } }, { x: 20, y: 30 }) }
+  act(open)
+  await waitFor(() => { expect(view.getAllByTestId('plugin-icon')).toHaveLength(2) })
+  expect(view.getByRole('menuitem', { name: 'Open' }).querySelector('img')?.getAttribute('src')).toBe('/captured.png')
+  expect(view.queryByText('Unused icon')).toBeNull()
+  fireEvent.click(view.getByRole('menuitem', { name: 'Export' }))
+  expect(view.getByRole('menuitem', { name: 'Original' }).querySelector('img')).not.toBeNull()
+  await icons.dispose()
+  expect(view.queryAllByTestId('plugin-icon')).toHaveLength(0)
+  fireEvent.click(view.getByRole('menuitem', { name: 'Open' }))
+  expect(run).toHaveBeenCalledOnce()
+  await contribution.dispose()
+  await menuPlugin.dispose()
+  expect(runtime.slots.spec('contextMenu.icon')).toBeUndefined()
 })
 
 it('tracks configured shortcuts for nested and footer actions without invoking command dispatch', () => {
