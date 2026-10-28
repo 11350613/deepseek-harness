@@ -160,6 +160,8 @@ const FOLD_PROPS = {
   onToggleTurn: () => {},
   collapsedAssistants: new Set<string>(),
   onToggleAssistant: () => {},
+  collapsedTools: new Set<string>(),
+  onToggleTool: () => {},
 }
 
 describe('TrajectoryTable', () => {
@@ -210,6 +212,8 @@ describe('TrajectoryTable', () => {
         onToggleTurn={() => {}}
         collapsedAssistants={new Set([trajectoryRecordId(assistant)])}
         onToggleAssistant={() => {}}
+        collapsedTools={new Set()}
+        onToggleTool={() => {}}
       />,
     )
 

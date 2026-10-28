@@ -1339,6 +1339,44 @@ describe('timeline projection', () => {
 })
 
 describe('TrajectoryView state', () => {
+  it('folds subcalls independently, searches them, and reveals a requested child', () => {
+    const nodes: LegacyConversationSlice['nodes'] = [{
+      kind: 'tool-result', seq: 1, time: 3, callId: 'root',
+      name: 'run_code', args: PartialArguments.fromText('{}'),
+      call: { name: 'run_code', argsRaw: '{}' }, callTime: 1,
+      content: [], isError: false,
+      subCalls: [{
+        phase: 'start', args: PartialArguments.fromText('{}'),
+        callId: 'child', parentCallId: 'root', name: 'bash', argsRaw: '{}',
+        turn: 1, step: 1, time: 2, subCalls: [],
+      }],
+    }]
+    const props = {
+      ...standaloneProps(nodes),
+      ...standaloneHistory(historySnapshot(nodes)),
+      ...standaloneDuration(),
+    }
+    const view = render(<TrajectoryView {...props} />)
+    const collapse = screen.getByRole('button', { name: '收起所有子调用' })
+    expect(screen.getByRole('button', { name: '收起所有调用' }).nextElementSibling).toBe(collapse)
+    expect(screen.getByRole('row', { name: /子工具.*bash/ })).toBeTruthy()
+    fireEvent.click(collapse)
+    expect(screen.queryByRole('row', { name: /子工具.*bash/ })).toBeNull()
+    expect(screen.getByRole('row', { name: /工具.*run_code/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '展开所有子调用' }))
+    expect(screen.getByRole('row', { name: /子工具.*bash/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '收起所有子调用' }))
+    fireEvent.keyDown(screen.getByRole('row', { name: /收起的子调用/ }), { key: 'Enter' })
+    expect(screen.getByRole('row', { name: /子工具.*bash/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '收起所有子调用' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索轨迹' }), { target: { value: 'bash' } })
+    expect(screen.getByRole('row', { name: /子工具.*bash/ })).toBeTruthy()
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索轨迹' }), { target: { value: '' } })
+    expect(screen.queryByRole('row', { name: /子工具.*bash/ })).toBeNull()
+    view.rerender(<TrajectoryView {...props} viewRequest={{ view: 'trajectory', focus: 'child' }} />)
+    expect(screen.getByRole('row', { name: /子工具.*bash/ }).getAttribute('aria-selected')).toBe('true')
+  })
+
   it.each([
     { interrupted: true, status: '失败' },
     { interrupted: false, status: '已完成' },

@@ -142,7 +142,7 @@ interface TableRecord {
   cell: TrajectoryCellProps
   turnEnd: boolean
   collapsedSummary?: string
-  collapsedSummaryKind?: 'turn' | 'assistant'
+  collapsedSummaryKind?: 'turn' | 'assistant' | 'tool'
 }
 
 interface VirtualRowStructure {
@@ -438,6 +438,10 @@ export interface TrajectoryTableProps {
   collapsedAssistants: ReadonlySet<string>
   /** Toggle tool calls under one assistant record. */
   onToggleAssistant: (id: string) => void
+  /** Stable tool record ids whose nested calls are folded. */
+  collapsedTools: ReadonlySet<string>
+  /** Toggle nested calls under one tool record. */
+  onToggleTool: (id: string) => void
   /** One-shot cross-view inspect: open and scroll to this call's record. */
   inspectCallId?: string | null
   /** Acknowledge a consumed (or unresolvable) inspect request. */
@@ -690,9 +694,10 @@ function summarizeAssistantTools(
   return names.length > 0 ? `${summary} · ${names.join(', ')}` : summary
 }
 
-function collapseAssistantRecords(
+function collapseCallRecords(
   records: readonly TableRecord[],
-  collapsedAssistants: ReadonlySet<string>,
+  collapsedIds: ReadonlySet<string>,
+  kind: 'assistant' | 'tool',
   t: TrajectoryTranslate,
 ): TableRecord[] {
   const out: TableRecord[] = []
@@ -701,8 +706,9 @@ function collapseAssistantRecords(
     if (record === undefined) continue
     out.push(record)
     if (
-      record.cell.kind !== 'message'
-      || !collapsedAssistants.has(trajectoryRecordId(record.cell))
+      record.collapsedSummary !== undefined
+      || record.cell.kind !== (kind === 'assistant' ? 'message' : 'tool')
+      || !collapsedIds.has(trajectoryRecordId(record.cell))
     ) continue
     const calls: TableRecord[] = []
     for (let j = i + 1; j < records.length; j++) {
@@ -711,6 +717,7 @@ function collapseAssistantRecords(
         candidate === undefined
         || candidate.collapsedSummary !== undefined
         || (candidate.cell.kind !== 'tool' && candidate.cell.kind !== 'subtool')
+        || (kind === 'tool' && candidate.cell.kind !== 'subtool')
       ) break
       calls.push(candidate)
     }
@@ -723,7 +730,7 @@ function collapseAssistantRecords(
       turnStart: false,
       turnEnd: last?.turnEnd ?? false,
       collapsedSummary: summarizeAssistantTools(calls, t),
-      collapsedSummaryKind: 'assistant',
+      collapsedSummaryKind: kind,
     })
     i += calls.length
   }
@@ -2103,6 +2110,8 @@ export function TrajectoryTable({
   onToggleTurn,
   collapsedAssistants,
   onToggleAssistant,
+  collapsedTools,
+  onToggleTool,
   inspectCallId = null,
   onInspectApplied,
 }: TrajectoryTableProps) {
@@ -2184,10 +2193,13 @@ export function TrajectoryTable({
     const turnRecords = collapsedTurns.size === 0
       ? allRecords
       : collapseTurnRecords(allRecords, collapsedTurns, requestGroups, t)
-    return collapsedAssistants.size === 0
+    const assistantRecords = collapsedAssistants.size === 0
       ? turnRecords
-      : collapseAssistantRecords(turnRecords, collapsedAssistants, t)
-  }, [allRecords, collapsedAssistants, collapsedTurns, requestGroups, searchMatchIndexes, t])
+      : collapseCallRecords(turnRecords, collapsedAssistants, 'assistant', t)
+    return collapsedTools.size === 0
+      ? assistantRecords
+      : collapseCallRecords(assistantRecords, collapsedTools, 'tool', t)
+  }, [allRecords, collapsedAssistants, collapsedTools, collapsedTurns, requestGroups, searchMatchIndexes, t])
   const projectedVirtualRows = useMemo(
     () => groupTrajectoryVirtualRows(records),
     [records],
@@ -2425,6 +2437,17 @@ export function TrajectoryTable({
   const openRecordSummary = (target: TableRecord) => {
     const targetAt = allRecords.findIndex(record => record.cell.index === target.cell.index)
     if (target.turn !== null && collapsedTurns.has(target.turn)) onToggleTurn(target.turn)
+    if (target.cell.kind === 'subtool') {
+      for (let i = targetAt - 1; i >= 0; i--) {
+        const candidate = allRecords[i]
+        if (candidate === undefined || candidate.cell.kind === 'subtool') continue
+        if (candidate.cell.kind === 'tool') {
+          const toolId = trajectoryRecordId(candidate.cell)
+          if (collapsedTools.has(toolId)) onToggleTool(toolId)
+        }
+        break
+      }
+    }
     if (target.cell.kind === 'tool' || target.cell.kind === 'subtool') {
       for (let i = targetAt - 1; i >= 0; i--) {
         const candidate = allRecords[i]
@@ -2443,6 +2466,16 @@ export function TrajectoryTable({
   const openCallSummary = (callId: string) => {
     const target = allRecords.find(record => record.cell.callId === callId)
     if (target !== undefined) openRecordSummary(target)
+  }
+
+  const expandSummary = (record: TableRecord) => {
+    if (record.collapsedSummaryKind === 'turn' && record.turn !== null) {
+      onToggleTurn(record.turn)
+    } else if (record.collapsedSummaryKind === 'tool') {
+      onToggleTool(trajectoryRecordId(record.cell))
+    } else {
+      onToggleAssistant(trajectoryRecordId(record.cell))
+    }
   }
 
   // Cross-view inspect handoff: resolve the requested call to its record,
@@ -2732,7 +2765,9 @@ export function TrajectoryTable({
                         ? t('request.collapsedSummary', {
                           kind: t(record.collapsedSummaryKind === 'turn'
                             ? 'request.collapsedTurn'
-                            : 'request.collapsedAssistant'),
+                            : record.collapsedSummaryKind === 'tool'
+                              ? 'request.collapsedTool'
+                              : 'request.collapsedAssistant'),
                           summary: record.collapsedSummary,
                         })
                         : isRequestOnly
@@ -2764,11 +2799,7 @@ export function TrajectoryTable({
                       onClick={isRequestOnly || singleToolNotice
                         ? undefined
                         : isCollapsedSummary
-                          ? () => {
-                            if (record.collapsedSummaryKind === 'turn' && record.turn !== null) {
-                              onToggleTurn(record.turn)
-                            } else onToggleAssistant(trajectoryRecordId(record.cell))
-                          }
+                          ? () => { expandSummary(record) }
                           : () => { selectRecord(record.cell.index) }}
                       onDoubleClick={(event) => {
                         if (isCollapsedSummary || isRequestOnly || singleToolNotice) return
@@ -2799,9 +2830,7 @@ export function TrajectoryTable({
                         if (event.key !== 'Enter' && event.key !== ' ') return
                         event.preventDefault()
                         if (isCollapsedSummary) {
-                          if (record.collapsedSummaryKind === 'turn' && record.turn !== null) {
-                            onToggleTurn(record.turn)
-                          } else onToggleAssistant(trajectoryRecordId(record.cell))
+                          expandSummary(record)
                           return
                         }
                         selectRecord(record.cell.index)
