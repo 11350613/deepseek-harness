@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { GhOutputLimitError, GhTimeoutError, GhUnavailableError } from '../src/gh.ts'
 import type { GhOutput, GhRunner } from '../src/gh.ts'
 import { GitHubProvider } from '../src/provider.ts'
-import { demo, pull, pullRequestNode } from './fixtures.ts'
+import { checkRun, demo, pull, pullRequestNode } from './fixtures.ts'
 
 const enterprise = { forge: 'github', host: 'ghe.corp.example', owner: 'team', name: 'svc' }
 const signal = new AbortController().signal
@@ -56,6 +56,70 @@ describe('GitHub provider addressing', () => {
 })
 
 describe('GitHub provider fetch', () => {
+  const firstPage = () => pullRequestNode(1, { commits: { nodes: [{ commit: { statusCheckRollup: {
+    id: 'fixed-rollup', state: 'SUCCESS', contexts: { pageInfo: { hasNextPage: true, endCursor: 'page-1' },
+      nodes: Array.from({ length: 100 }, (_, index) => ({ ...checkRun('lint', 'COMPLETED', 'FAILURE'), databaseId: index + 1 })) },
+  } } }] } })
+
+  it('reads past 100 historical runs from the pinned rollup and counts only the latest run', async () => {
+    const gh = fakeGh(args => output(args.includes('id=fixed-rollup')
+      ? { data: { node: { contexts: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [
+        { ...checkRun('lint', 'COMPLETED', 'SUCCESS'), databaseId: 101 }, checkRun('test', 'COMPLETED', 'SUCCESS'),
+      ] } } } }
+      : { data: { r0: { p0: firstPage() } } }))
+    const result = (await provider(gh.run).fetch([pull(1)], signal)).get(changeRequestKey(pull(1)))
+    expect(result).toMatchObject({ checks: [{ name: 'lint', state: 'success' }, { name: 'test', state: 'success' }], checksTruncated: false })
+    expect(gh.calls).toHaveLength(2)
+    expect(gh.calls[1]).toContain('cursor=page-1')
+    expect(gh.calls[1]?.[5]).toContain('node(id: $id)')
+  })
+
+  it.each([
+    [output({ message: 'API rate limit exceeded' }, 1), 'API rate limit exceeded'],
+    [output({ errors: [{ message: 'Check page failed' }] }, 1), 'Check page failed'],
+    [output({ data: { node: { contexts: { pageInfo: { hasNextPage: true, endCursor: 'page-1' }, nodes: [] } } } }), 'GitHub check pagination did not advance'],
+    [output({ data: { node: { contexts: { pageInfo: { hasNextPage: true, endCursor: null }, nodes: [] } } } }), 'GitHub check pagination did not advance'],
+  ])('rejects an incomplete check read without losing another pull request', async (page, message) => {
+    const gh = fakeGh(args => args.includes('id=fixed-rollup') ? page : output({ data: { r0: { p0: firstPage(), p1: pullRequestNode(2) } } }))
+    const results = await provider(gh.run).fetch([pull(1), pull(2)], signal)
+    expect(results.get(changeRequestKey(pull(1)))).toEqual({ code: 'unavailable', message })
+    expect(results.get(changeRequestKey(pull(2)))).toMatchObject({ title: 'Change 2' })
+    expect(gh.calls).toHaveLength(2)
+  })
+
+  it('stops before requesting another check page when cancelled', async () => {
+    const controller = new AbortController()
+    const gh = fakeGh(() => { controller.abort(new Error('cancelled')); return output({ data: { r0: { p0: firstPage() } } }) })
+    await expect(provider(gh.run).fetch([pull(1)], controller.signal)).rejects.toThrow('cancelled')
+    expect(gh.calls).toHaveLength(1)
+  })
+
+  it.each([new GhTimeoutError('timed out'), new GhOutputLimitError('too much output'), new GhUnavailableError('gh missing')])(
+    'contains a failed continuation process to its pull request', async (error) => {
+      const gh = fakeGh((args) => {
+        if (args.includes('id=fixed-rollup')) throw error
+        return output({ data: { r0: { p0: firstPage(), p1: pullRequestNode(2) } } })
+      })
+      const results = await provider(gh.run).fetch([pull(1), pull(2)], signal)
+      expect(results.get(changeRequestKey(pull(1)))).toEqual({ code: 'unavailable', message: error.message })
+      expect(results.get(changeRequestKey(pull(2)))).toMatchObject({ title: 'Change 2' })
+    },
+  )
+
+  it('propagates cancellation and unexpected defects during a continuation', async () => {
+    for (const cancel of [true, false]) {
+      const controller = new AbortController()
+      const gh = fakeGh((args) => {
+        if (args.includes('id=fixed-rollup')) {
+          if (cancel) controller.abort(new Error('cancelled'))
+          throw new Error('unexpected')
+        }
+        return output({ data: { r0: { p0: firstPage() } } })
+      })
+      await expect(provider(gh.run).fetch([pull(1)], controller.signal)).rejects.toThrow(cancel ? 'cancelled' : 'unexpected')
+    }
+  })
+
   it.each([
     [{ message: 'Bad credentials' }, 1, 'gh: Bad credentials (HTTP 401)', 'unauthenticated', 'gh: Bad credentials (HTTP 401)'],
     [{ message: 'API rate limit exceeded' }, 1, 'gh: API rate limit exceeded (HTTP 403)', 'unavailable', 'gh: API rate limit exceeded (HTTP 403)'],

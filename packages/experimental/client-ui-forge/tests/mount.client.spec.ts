@@ -8,7 +8,7 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { SidebarRightTabDefinition, TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { ForgeReviewRequest, ForgeReviewResult } from '@deepseek-ai/dsh-experimental-forge/types'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, type RemoteResult, type TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
@@ -167,7 +167,7 @@ async function base() {
   ctx.provide('remote.forgePanel', forgePanel)
   ctx.provide('locale', new LocaleRuntime(ctx))
   const unregisterTab = vi.fn()
-  const sidebarRightTabs = { register: vi.fn((_type: { id: string; kind: string; title: () => string }) => unregisterTab) }
+  const sidebarRightTabs = { register: vi.fn((_type: SidebarRightTabDefinition) => unregisterTab) }
   ctx.provide('sidebarRightTabs', sidebarRightTabs)
   const sidebarRight = { openTab: vi.fn(), toggleExpanded: vi.fn(), hide: vi.fn(),
     tabsIn: vi.fn(() => [{ id: 'forge-tab' as TabId, kind: TAB_KIND }]) }
@@ -264,7 +264,10 @@ describe('mountForgePanel registration', () => {
     expect(f.sidebarRightTabs.register).toHaveBeenCalledTimes(2)
     const type = f.sidebarRightTabs.register.mock.calls[0]?.[0]
     expect(type).toMatchObject({ id: TAB_ID, kind: TAB_KIND })
-    expect([en['tab.title'], zh['tab.title']]).toContain(type?.title())
+    expect([en['tab.title'], zh['tab.title']]).toContain(type?.title('sidebar://forge-panel'))
+    expect(type?.guide).toHaveLength(1)
+    expect([en['guide.title'], zh['guide.title']]).toContain(type?.guide?.[0]?.title())
+    expect([en['guide.description'], zh['guide.description']]).toContain(type?.guide?.[0]?.description?.())
     expect(f.sidebarRightTabs.register.mock.calls[1]?.[0]).toMatchObject({ id: CHANGES_ID, kind: CHANGES_KIND })
     expect(f.entry('sidebar.right.pane.tab', ForgeTab)).toMatchObject({ options: { key: TAB_ID }, locale: NS })
     expect(f.entry('sidebar.right.pane.tab.title', ForgeTabTitle)).toMatchObject({ options: { key: TAB_ID }, locale: NS })

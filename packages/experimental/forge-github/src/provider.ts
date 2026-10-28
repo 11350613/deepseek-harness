@@ -7,7 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-experimental-forge'
 import { GhOutputLimitError, GhTimeoutError, GhUnavailableError } from './gh.ts'
 import type { GhOutput, GhRunner } from './gh.ts'
-import { hasGraphqlFields, HEAD_QUERY, mapHeadResponse, mapSnapshotResponse, snapshotQuery } from './graphql.ts'
+import { CHECKS_QUERY, hasGraphqlFields, HEAD_QUERY, mapCheckPageResponse, mapHeadResponse, mapSnapshotResponse, snapshotQuery } from './graphql.ts'
 import { checkedRepository, parsePullRequestUrl, parseRemoteUrl } from './urls.ts'
 import { submitGitHubReview } from './review.ts'
 
@@ -217,7 +217,22 @@ export class GitHubProvider implements ForgeProvider {
     const query = snapshotQuery(refs)
     const output = await this.gh(['api', 'graphql', '--hostname', host, '-f', `query=${query.document}`], signal)
     const body = parseJson(output.stdout)
-    if (hasGraphqlFields(body)) return mapSnapshotResponse(body, query)
+    if (hasGraphqlFields(body)) return await mapSnapshotResponse(body, query, async (id, cursor) => {
+      signal.throwIfAborted()
+      let page: GhOutput
+      try {
+        page = await this.gh(['api', 'graphql', '--hostname', host,
+          '-f', `query=${CHECKS_QUERY}`, '-f', `id=${id}`, '-f', `cursor=${cursor}`], signal)
+      } catch (error) {
+        if (signal.aborted) throw signal.reason
+        if (error instanceof GhUnavailableError || error instanceof GhTimeoutError || error instanceof GhOutputLimitError) {
+          return { ok: false, failure: { code: 'unavailable', message: error.message } }
+        }
+        throw error
+      }
+      const value = parseJson(page.stdout)
+      return hasGraphqlFields(value) ? mapCheckPageResponse(value) : { ok: false, failure: responseFailure(page, value) }
+    })
     const failure = responseFailure(output, body)
     return new Map([...query.targets.values()].map(ref => [changeRequestKey(ref), failure] as const))
   }

@@ -31,7 +31,7 @@ import type { ReviewSelection } from './review.ts'
 import { parseChangesAddress, type ChangesSource } from './changes-address.ts'
 import type { createChangesStore } from './changes-store.ts'
 import { Counts, DiffFile, type DiffFileAction } from './DiffFile.tsx'
-import { FileTreePane } from './FileTreePane.tsx'
+import { FileTreePane, type FileTreePosition } from './FileTreePane.tsx'
 import { ChangedFilesMenu, type ChangedFilesProps, type ChangedFilesState } from './ChangedFiles.tsx'
 import { drawnLines, matchesHunks, textLines } from './diff-rows.ts'
 import { ChangeRequestGlyph } from './glyphs.tsx'
@@ -360,7 +360,7 @@ export function ChangesTab({
   const choices = useStore(store => store.byTab[tab.id])
   const [wanted, setWanted] = useState<string | null>(null)
   const [treeState, setTreeState] = useState<ChangedFilesState>({ query: '', collapsed: {}, selected: null })
-  const [treeVisible, setTreeVisible] = useState(true)
+  const [treePosition, setTreePosition] = useState<FileTreePosition>('left')
   const treeId = useId()
   const [chosen, setChosen] = useState<Readonly<Record<string, boolean>>>({})
   // Each navigation applies once; its file, if it names one, opens and scrolls into view.
@@ -673,10 +673,10 @@ export function ChangesTab({
             </button>
           </Tooltip>
           <span className={css.treeToggle}>
-            <Tooltip label={t(treeVisible ? 'diff.hideFileTree' : 'diff.showFileTree')} side="bottom">
-              <button type="button" className={css.tool} aria-label={t('diff.fileTree')} aria-expanded={treeVisible}
-                aria-pressed={treeVisible} aria-controls={treeId} disabled={files.length === 0}
-                onClick={() => { setTreeVisible(value => !value) }}>
+            <Tooltip label={t(treePosition === 'left' ? 'diff.moveFileTreeRight' : treePosition === 'right' ? 'diff.hideFileTree' : 'diff.showFileTreeLeft')} side="bottom">
+              <button type="button" className={css.tool} aria-label={t('diff.fileTree')} aria-expanded={treePosition !== 'hidden'}
+                aria-pressed={treePosition !== 'hidden'} aria-controls={treeId} disabled={files.length === 0}
+                onClick={() => { setTreePosition(value => value === 'left' ? 'right' : value === 'right' ? 'hidden' : 'left') }}>
                 <IconWorkspaceTreeOutlineRegular />
               </button>
             </Tooltip>
@@ -695,7 +695,7 @@ export function ChangesTab({
       {reviewForm}
       <div className={css.body}>
         {body}
-        {files.length > 0 && <FileTreePane {...navigator} id={treeId} open={treeVisible} />}
+        {files.length > 0 && <FileTreePane {...navigator} id={treeId} position={treePosition} />}
       </div>
     </div>
   )

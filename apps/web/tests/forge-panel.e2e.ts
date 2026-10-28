@@ -113,10 +113,10 @@ if (args[0] === 'auth' && args[1] === 'status') {
 }
 if (args[0] === 'api' && args[1] === 'graphql') {
   const query = args.find(arg => arg.startsWith('query=')).slice('query='.length)
-  const check = (name, conclusion, completedAt) => ({
-    __typename: 'CheckRun', name, status: 'COMPLETED', conclusion,
+  const check = (name, conclusion, completedAt, databaseId = 101) => ({
+    __typename: 'CheckRun', name, status: 'COMPLETED', conclusion, databaseId,
     detailsUrl: 'https://github.com/octo/demo/actions/runs/1', startedAt: '2026-10-09T00:00:00Z', completedAt,
-    checkSuite: { workflowRun: { workflow: { name: 'CI' } } },
+    checkSuite: { app: { id: 'github-actions' }, workflowRun: { event: 'pull_request', workflow: { id: 'ci', name: 'CI' } } },
   })
   const pulls = {
     7: {
@@ -124,9 +124,9 @@ if (args[0] === 'api' && args[1] === 'graphql') {
       updatedAt: '2026-10-09T00:00:00Z', closedAt: null, author: { login: 'octo' }, headRefName: 'feat', headRefOid: 'a'.repeat(40),
       baseRefName: 'main', additions: 128, deletions: 14, mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED', reviewDecision: 'REVIEW_REQUIRED',
       reviewThreads: { nodes: [{ isResolved: false }] },
-      commits: { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE', contexts: {
-        pageInfo: { hasNextPage: false },
-        nodes: [check('lint', 'SUCCESS', '2026-10-09T00:00:42Z'), check('test', 'FAILURE', '2026-10-09T00:02:07Z')],
+      commits: { nodes: [{ commit: { statusCheckRollup: { id: 'rollup-7', state: 'FAILURE', contexts: {
+        pageInfo: { hasNextPage: true, endCursor: 'checks-100' },
+        nodes: Array.from({ length: 100 }, (_, i) => check('lint', 'FAILURE', '2026-10-08T00:00:42Z', i + 1)),
       } } } }] },
     },
     9: {
@@ -134,10 +134,17 @@ if (args[0] === 'api' && args[1] === 'graphql') {
       isDraft: !state.ready, updatedAt: '2026-10-09T00:00:00Z', closedAt: state.mergedAt, author: { login: 'octo' },
       headRefName: 'feat/merge', headRefOid: state.head ?? 'b'.repeat(40), baseRefName: 'main', additions: 30, deletions: 2, mergeable: 'MERGEABLE',
       mergeStateStatus: state.ready ? 'CLEAN' : 'BLOCKED', reviewDecision: 'APPROVED', reviewThreads: { nodes: [] },
-      commits: { nodes: [{ commit: { statusCheckRollup: { state: 'SUCCESS', contexts: {
-        pageInfo: { hasNextPage: false }, nodes: [check('lint', 'SUCCESS', '2026-10-09T00:00:42Z')],
+      commits: { nodes: [{ commit: { statusCheckRollup: { id: 'rollup-9', state: 'SUCCESS', contexts: {
+        pageInfo: { hasNextPage: false, endCursor: null }, nodes: [check('lint', 'SUCCESS', '2026-10-09T00:00:42Z')],
       } } } }] },
     },
+  }
+  if (query.includes('node(id: $id)')) {
+    process.stdout.write(JSON.stringify({ data: { node: { contexts: {
+      pageInfo: { hasNextPage: false, endCursor: null },
+      nodes: [check('lint', 'SUCCESS', '2026-10-09T00:00:42Z'), check('test', 'FAILURE', '2026-10-09T00:02:07Z')],
+    } } } }))
+    process.exit(0)
   }
   const settings = {
     squashMergeAllowed: true, mergeCommitAllowed: true, rebaseMergeAllowed: true, viewerPermission: 'WRITE', viewerDefaultMergeMethod: 'SQUASH',
@@ -626,7 +633,12 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   const session = scaffold.ctx.sessions.get(sessionId)
   if (session === undefined) throw new Error('The Session must stay loaded')
   const header = page.locator('[data-forge-header]')
-  await header.click()
+  await page.getByRole('button', { name: '打开右侧边栏', exact: true }).click()
+  const guide = page.locator('[data-sidebar-right-guide]')
+  await guide.getByRole('button', { name: /^代码审查和变更/ }).waitFor()
+  await compareOrRefreshGolden(join(EXPECTED, 'review-guide.expected.md'),
+    await captureStableAria(page, '[data-sidebar-right-guide]', scaffold.workspaceCwd), MODE)
+  await guide.getByRole('button', { name: /^代码审查和变更/ }).click()
   // The New Session screen inspected the checkout before these changes, which came from outside the Session.
   await page.locator('[data-forge-panel]').getByRole('button', { name: '刷新状态', exact: true }).click()
   const card = page.locator('[data-forge-local]')
@@ -707,6 +719,13 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   await page.getByRole('button', { name: '全屏', exact: true }).click()
   await view.getByRole('navigation').getByRole('button', { name: 'src/panel.ts', exact: true }).waitFor()
   const fileTree = view.getByRole('navigation')
+  const treeIsLeft = async () => {
+    const tree = await fileTree.boundingBox()
+    const diff = await view.locator('[data-forge-changes-scroll]').boundingBox()
+    if (tree === null || diff === null) throw new Error('Tree and diff must be visible')
+    return tree.x < diff.x
+  }
+  expect(await treeIsLeft()).toBe(true)
   const directoryName = await fileTree.getByText('src', { exact: true }).boundingBox()
   const fileName = await fileTree.getByText('panel.ts', { exact: true }).boundingBox()
   if (directoryName === null || fileName === null) throw new Error('Tree entries must be visible')
@@ -715,10 +734,23 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   await fileTree.getByRole('textbox', { name: '筛选文件…' }).fill('')
   await fileTree.getByRole('button', { name: 'src', exact: true }).click()
   await view.getByRole('button', { name: '文件树', exact: true }).click()
+  expect(await treeIsLeft()).toBe(false)
+  expect(await fileTree.getByRole('button', { name: 'src', exact: true }).getAttribute('aria-expanded')).toBe('false')
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await fileTree.isVisible()).toBe(false)
+  expect(await view.getByRole('button', { name: '文件树', exact: true }).isVisible()).toBe(false)
+  await view.getByRole('button', { name: '全部 2 个文件', exact: true }).click()
+  await page.getByRole('menu').getByRole('textbox', { name: '筛选文件…' }).waitFor()
+  await page.keyboard.press('Escape')
+  await page.setViewportSize({ width: 1680, height: 1000 })
+  expect(await treeIsLeft()).toBe(false)
+  await view.getByRole('button', { name: '文件树', exact: true }).click()
   expect(await fileTree.isVisible()).toBe(false)
   await view.getByRole('button', { name: '文件树', exact: true }).click()
+  expect(await treeIsLeft()).toBe(true)
   expect(await fileTree.getByRole('button', { name: 'src', exact: true }).getAttribute('aria-expanded')).toBe('false')
   await fileTree.getByRole('textbox', { name: '筛选文件…' }).fill('src')
+  await view.getByRole('button', { name: '文件树', exact: true }).click()
   await view.getByRole('button', { name: '文件树', exact: true }).click()
   await view.getByRole('button', { name: '文件树', exact: true }).click()
   expect(await fileTree.getByRole('textbox', { name: '筛选文件…' }).inputValue()).toBe('src')
@@ -732,7 +764,7 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   if (handle === null) throw new Error('Tree resize handle must be visible')
   await page.mouse.move(handle.x + handle.width / 2, handle.y + 100)
   await page.mouse.down()
-  await page.mouse.move(handle.x - 80, handle.y + 100, { steps: 5 })
+  await page.mouse.move(handle.x + 80, handle.y + 100, { steps: 5 })
   await page.mouse.up()
   expect(Number(await resizeTree.getAttribute('aria-valuenow'))).toBeGreaterThan(originalWidth)
   await resizeTree.press('Home')
@@ -741,11 +773,25 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   const treeBounds = await fileTree.boundingBox()
   if (searchBounds === null || treeBounds === null) throw new Error('Tree search must be visible')
   expect(searchBounds.x + searchBounds.width).toBeLessThanOrEqual(treeBounds.x + treeBounds.width)
-  await resizeTree.press('ArrowLeft')
+  await resizeTree.press('ArrowRight')
   const resizedWidth = await resizeTree.getAttribute('aria-valuenow')
   await view.getByRole('button', { name: '文件树', exact: true }).click()
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
+  expect(await treeIsLeft()).toBe(false)
   expect(await resizeTree.getAttribute('aria-valuenow')).toBe(resizedWidth)
+  await resizeTree.press('ArrowLeft')
+  expect(Number(await resizeTree.getAttribute('aria-valuenow'))).toBe(Number(resizedWidth) + 20)
+  await resizeTree.press('ArrowRight')
+  const rightHandle = await resizeTree.boundingBox()
+  if (rightHandle === null) throw new Error('Right tree resize handle must be visible')
+  await page.mouse.move(rightHandle.x + rightHandle.width / 2, rightHandle.y + 100)
+  await page.mouse.down()
+  await page.mouse.move(rightHandle.x - 80, rightHandle.y + 100, { steps: 5 })
+  await page.mouse.up()
+  expect(Number(await resizeTree.getAttribute('aria-valuenow'))).toBeGreaterThan(Number(resizedWidth))
+  const rightWidth = await resizeTree.getAttribute('aria-valuenow')
+  await view.getByRole('button', { name: '文件树', exact: true }).click()
+  await view.getByRole('button', { name: '文件树', exact: true }).click()
+  expect(await resizeTree.getAttribute('aria-valuenow')).toBe(rightWidth)
   for (const side of ['old', 'new'] as const) {
     const firstLine = await panelFile.locator(`[data-review-code][data-${side}-line="2"]`).boundingBox()
     const lastLine = await panelFile.locator(`[data-review-code][data-${side}-line="4"]`).boundingBox()
@@ -805,8 +851,12 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   await page.keyboard.press('Escape')
   expect(await reviewDialog.count()).toBe(0)
   await view.getByRole('button', { name: '提交评审 (1)', exact: true }).click()
-  await reviewDialog.getByRole('textbox', { name: '评审总结…', exact: true }).fill('需要补充边界检查')
   await reviewDialog.getByRole('radio', { name: '请求更改', exact: true }).check()
+  await reviewDialog.getByText('请求更改时，请填写评审总结', { exact: true }).waitFor()
+  expect(await reviewDialog.getByRole('button', { name: '提交评审', exact: true }).isDisabled()).toBe(true)
+  await compareOrRefreshGolden(join(EXPECTED, 'review-summary-required.expected.md'),
+    await captureStableAria(page, '[role="dialog"][aria-label="提交评审"]', scaffold.workspaceCwd), MODE)
+  await reviewDialog.getByRole('textbox', { name: '评审总结…', exact: true }).fill('需要补充边界检查')
   await compareOrRefreshGolden(join(EXPECTED, 'submit-review.expected.md'),
     await captureStableAria(page, '[role="dialog"][aria-label="提交评审"]', scaffold.workspaceCwd), MODE)
   await reviewDialog.getByRole('button', { name: '提交评审', exact: true }).click()
@@ -915,7 +965,7 @@ it.skipIf(MODE === 'record')('retains a wrapped code line and tree width across 
   await code.waitFor()
   for (const width of [240, 320]) {
     if (width === 320) {
-      for (let step = 0; step < 4; step += 1) await separator.press('ArrowLeft')
+      for (let step = 0; step < 4; step += 1) await separator.press('ArrowRight')
       await beforeFile.getByRole('button', { name: '收起 before-0.ts', exact: true }).click()
     }
     await layout()
