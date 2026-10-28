@@ -28,7 +28,7 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
     const result = await actions.save(source, mode)
     lifetime.signal.throwIfAborted()
     if (result.status === 'cancelled') return
-    ctx.menus.notify(
+    ctx.contextMenus.notify(
       t(result.status === 'requested' ? 'menu.downloadStarted' : mode === 'download' ? 'menu.downloaded' : 'menu.saved'),
       true,
       result.status !== 'saved' ? undefined : {
@@ -44,9 +44,9 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
   }
   const copy = async (source: FileActionSource): Promise<void> => {
     await actions.copyImage(source)
-    ctx.menus.notify(t('menu.copied'), true)
+    ctx.contextMenus.notify(t('menu.copied'), true)
   }
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'file-actions.file', target: 'file', order: 200,
     resolve: async ({ sessionId, path }, signal) => {
       let absolutePath: string | undefined
@@ -82,7 +82,7 @@ export function registerFileMenus(ctx: Context, actions: FileActions, t: (key: F
       ]
     },
   }), 'file actions: file menu')
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'file-actions.image', target: 'image', order: 100,
     resolve: (target) => {
       const { sessionId, path } = target

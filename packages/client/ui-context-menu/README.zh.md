@@ -25,23 +25,23 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-Web 应用 bundle 挂载此客户端插件。外部客户端插件在 `dsh.client.inject` 声明本包，导入 `/client` 类型，并注入 `menus` 服务。`resolutionTimeoutMs` 限制每个提供方的准备时长（默认 1000ms）；超时后取消并忽略该提供方，显示失败提示。
+Web 应用 bundle 挂载此客户端插件。外部客户端插件在 `dsh.client.inject` 声明本包，导入 `/client` 类型，并注入 `contextMenus` 服务。`resolutionTimeoutMs` 限制每个提供方的准备时长（默认 1000ms）；超时后取消并忽略该提供方，显示失败提示。
 
-普通 React 控件将 [`util/context-menu`](../../util/context-menu/README.zh.md) 的 `contextMenuTrigger(open)` 绑定到实际 DOM 元素。回调向 `ctx.menus.open()` 提供显式目标；DOM 属性不作为目标元数据解释。嵌套控件可以阻止处理，Portal 在实际渲染元素上绑定。特殊编辑器和 Canvas 可直接调用 `open()`。
+插件通过 `ctx.slots.provideRoot` 向每个 Slot 作用域注入 `useContextMenu`。组件调用一次 `const { getTriggerProps } = useContextMenu()`，再将 `getTriggerProps(target, handlers?)` 展开到各个触发元素上。该工厂是普通函数，可以在循环中调用；它统一处理右键、Shift+F10、ContextMenu 键、视口坐标及无滚动聚焦。已有处理器先运行，`preventDefault()` 保留其处理权，并防止组合或嵌套绑定重复处理。重复、输入法组合及无关按键保持原状。传入 `undefined` 保留原生行为，也可传入目标解析函数，在手势开始时读取业务状态。解析后的对象会在焦点变化前捕获。普通子组件通过 props 或现有 delegate 接收事件 props 或工厂，无需额外 React Context。特殊编辑器和 Canvas 可直接调用 `ctx.contextMenus.open()`。
 
 ### 注册操作
 
-在贡献插件中调用 `ctx.effect(() => ctx.menus.register({ id, target, order, resolve }))`。`resolve` 接收捕获的目标和取消信号；返回本地化操作，包含稳定 ID、可选图标、禁用状态、子菜单和执行回调。贡献项先按 `order`、再按 ID 排序。同类目标的贡献 ID 重复会导致注册失败；操作路径重复会拒绝该提供方的结果。发布前会逐段编码 ID。
+在贡献插件中调用 `ctx.effect(() => ctx.contextMenus.register({ id, target, order, resolve }))`。`resolve` 接收捕获的目标和取消信号；返回本地化操作，包含稳定 ID、可选图标、禁用状态、子菜单和执行回调。贡献项先按 `order`、再按 ID 排序。同类目标的贡献 ID 重复会导致注册失败；操作路径重复会拒绝该提供方的结果。发布前会逐段编码 ID。
 
 动作可通过可选 `commandId` 关联已有快捷键命令。浮层订阅 `ctx.shortcuts.catalog`，跟随已配置、移除和重置的绑定更新；子菜单和底部动作采用相同展示。此关联不会调度命令：选择菜单项只调用该动作捕获的 `run` 回调。菜单插件依赖 `shortcuts` 服务。
 
 贡献可通过 `observe(target)` 声明权限、成员状态或本地化标签的数据源。数据源更新时，针对同一捕获目标重新解析该贡献并替换回调；过期的异步准备会被取消。关闭菜单和卸载插件都会释放所有订阅。
 
-通过对 `@deepseek-ai/dsh-client-ui-context-menu/client` 的声明合并扩展 `MenuTargetMap`，即可增加目标类别，再通过 `ctx.menus.open({ kind, value }, { x, y })` 打开。目标值使用不可变、可 JSON 序列化的标识与元数据。执行回调捕获该值，并在操作前重新检查可变资源。新注册项在下次打开时生效。注销会移除可见操作并取消待处理的元数据查询。
+通过对 `@deepseek-ai/dsh-client-ui-context-menu/client` 的声明合并扩展 `ContextMenuTargetMap`，即可增加目标类别，再通过 `ctx.contextMenus.open({ kind, value }, { x, y })` 打开。目标值使用不可变、可 JSON 序列化的标识与元数据。执行回调捕获该值，并在操作前重新检查可变资源。新注册项在下次打开时生效。注销会移除可见操作并取消待处理的元数据查询。
 
-`ctx.menus.resolve(target)` 为其他渲染器提供独立菜单实例。订阅不可变操作视图，选择已发布的 ID，并在所属界面关闭时释放。视图仅包含展示字段。回调保留在注册表中，最多执行一次。关闭和替换菜单会取消元数据查询，已选中操作则自行管理执行与取消。提供方或操作拒绝时由持久的覆盖层提示；操作的本地化 `failureLabel` 提供具体的恢复建议。
+`ctx.contextMenus.resolve(target)` 为其他渲染器提供独立菜单实例。订阅不可变操作视图，选择已发布的 ID，并在所属界面关闭时释放。视图仅包含展示字段。回调保留在注册表中，最多执行一次。关闭和替换菜单会取消元数据查询，已选中操作则自行管理执行与取消。提供方或操作拒绝时由持久的覆盖层提示；操作的本地化 `failureLabel` 提供具体的恢复建议。
 
-`ctx.menus.notify(text, success, action?)` 可通过共享 Toast 附加本地化文字操作。操作提供 `label`、`run` 和 `failureLabel`；点击后先关闭提示再执行，失败时显示对应文案。已关闭或被替换的提示不能再次执行其操作。
+`ctx.contextMenus.notify(text, success, action?)` 可通过共享 Toast 附加本地化文字操作。操作提供 `label`、`run` 和 `failureLabel`；点击后先关闭提示再执行，失败时显示对应文案。已关闭或被替换的提示不能再次执行其操作。
 
 共享弹窗等待全部贡献项完成或超时后才显示。同一目标在四个 CSS 像素以内重复触发会关闭菜单；更远的触发以独立淡入淡出替换菜单。`ready` 向自定义渲染器提供同一个准备完成时点。操作将 `icon?: ReactNode` 直接传给共享 Menu。贡献插件提供图标元素，或用 `<img>` 包装应用图标；registry 不序列化或映射图标。结构化操作的图标按分隔线组对齐；组件贡献保留自己的布局。普通关闭保留弹窗 80ms，替换保留 10ms；打开至少等待 20ms，再用 40ms 淡入。减少动态效果偏好会禁用淡入淡出。
 

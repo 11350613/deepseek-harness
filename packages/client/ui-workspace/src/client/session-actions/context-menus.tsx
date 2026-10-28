@@ -3,7 +3,7 @@ import { IconPinFillRegular, IconPinOutlineRegular, IconUnarchiveOutlineRegular,
 import type { Context } from '@deepseek-ai/cordis'
 import type { RemoteEndpoint } from '@deepseek-ai/dsh-api-remote-access/client'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
-import type { MenuContribution, MenuTargetMap } from '@deepseek-ai/dsh-client-ui-context-menu/client'
+import type { MenuContribution, ContextMenuTargetMap } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type {
   ArchiveSessionInjected, ForkSessionInjected, PinSessionInjected, RenameSessionInjected, SessionIdInjected,
 } from '../contract/slots.ts'
@@ -24,7 +24,7 @@ export function registerSessionMenus(ctx: Context, actions: Actions): void {
     endpoints: readonly RemoteEndpoint[],
     resolve: MenuContribution<'session'>['resolve'],
   ): void => {
-    ctx.effect(() => ctx.menus.register({
+    ctx.effect(() => ctx.contextMenus.register({
       id: `session.${id}`, target: 'session', order,
       observe: ({ sessionId }) => [
         ctx.workspaces.list, ctx.locale,
@@ -33,9 +33,9 @@ export function registerSessionMenus(ctx: Context, actions: Actions): void {
       resolve,
     }), `ui-workspace: ${id} menu`)
   }
-  const allowed = (target: MenuTargetMap['session'], action: RemoteEndpoint): boolean =>
+  const allowed = (target: ContextMenuTargetMap['session'], action: RemoteEndpoint): boolean =>
     ctx.remoteAccess.source('session', target.sessionId, action).getSnapshot()
-  const archived = (target: MenuTargetMap['session']): boolean =>
+  const archived = (target: ContextMenuTargetMap['session']): boolean =>
     ctx.workspaces.list.getSnapshot().archivedSessionIds.includes(target.sessionId)
   register('pin', 100, ['workspace/pinSession', 'workspace/unpinSession'], (target) => {
     const pinned = ctx.workspaces.list.getSnapshot().pinnedSessionIds.includes(target.sessionId)

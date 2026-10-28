@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import type { MouseEventHandler } from 'react'
 import { createPortal } from 'react-dom'
 import { IconCloseOutlineRegular } from './icons/index.tsx'
 import css from './ImageLightbox.module.css'
@@ -22,16 +21,16 @@ export interface ImageLightboxLabels {
  * @param props.src - the original image URL.
  * @param props.alt - the image's alt text.
  * @param props.labels - dialog and close-control strings.
- * @param props.onContextMenu - optional original-image context gesture.
+ * @param props.contextMenuProps - optional original-image gesture bindings.
  * @param props.onClose - dismiss callback owned by the opener.
  * @returns the modal preview dialog.
  */
-export function ImageLightbox({ src, alt, labels, onClose, onContextMenu }: {
+export function ImageLightbox({ src, alt, labels, onClose, contextMenuProps }: {
   src: string
   alt: string
   labels: ImageLightboxLabels
   onClose: () => void
-  onContextMenu?: MouseEventHandler<HTMLImageElement> | undefined
+  contextMenuProps?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'> | undefined
 }) {
   const closeRef = useRef<HTMLButtonElement | null>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
@@ -61,7 +60,7 @@ export function ImageLightbox({ src, alt, labels, onClose, onContextMenu }: {
     >
       <div className={css.stage}>
         <div className={css.mask} aria-hidden="true" onMouseDown={onClose} />
-        <img className={css.image} src={src} alt={alt} onContextMenu={onContextMenu} />
+        <img className={css.image} src={src} alt={alt} {...contextMenuProps} />
         <button ref={closeRef} type="button" className={css.close} aria-label={labels.close} onClick={onClose}>
           <IconCloseOutlineRegular size={16} />
         </button>

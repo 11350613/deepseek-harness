@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Menu, MenuItemButton } from '../src/Menu.tsx'
@@ -72,7 +73,7 @@ it('aligns data groups, footers and submenus independently without modifying slo
 
 it('keeps a menu-only reference focusable without inventing an activation action', () => {
   const open = vi.fn()
-  const view = render(<ReferenceChip appearance="file" label="Reference" title="File reference" openContextMenu={open} />)
+  const view = render(<ReferenceChip appearance="file" label="Reference" title="File reference" contextMenuProps={contextMenuHook(open)().getTriggerProps({ kind: 'image', value: { url: 'file' } })} />)
   const chip = view.getByText('Reference')
   expect(chip.tabIndex).toBe(0)
   expect(chip.tagName).toBe('SPAN')
@@ -84,7 +85,7 @@ it('keeps a menu-only reference focusable without inventing an activation action
 it('keeps reference activation separate from selection and repeated clicks', () => {
   const activate = vi.fn()
   const open = vi.fn()
-  const view = render(<ReferenceChip appearance="file" label="Reference" title="Reference" onActivate={activate} openContextMenu={open} />)
+  const view = render(<ReferenceChip appearance="file" label="Reference" title="Reference" onActivate={activate} contextMenuProps={contextMenuHook(open)().getTriggerProps({ kind: 'image', value: { url: 'file' } })} />)
   const chip = view.getByRole('button')
   fireEvent.click(chip, { detail: 2 })
   const selection = document.getSelection()!

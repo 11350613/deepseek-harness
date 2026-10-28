@@ -87,7 +87,7 @@ export type { SidebarRightOpenTab } from './tab-inventory.ts'
 const NS = 'sidebarRight'
 
 /** Required browser services: the slot registry, the frame's panel actions, copy, and the resource model. */
-export const inject = ['menus', 'slots', 'layout', 'locale', 'resources', 'sessions', 'uiSession', 'shortcuts']
+export const inject = ['contextMenus', 'slots', 'layout', 'locale', 'resources', 'sessions', 'uiSession', 'shortcuts']
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -136,7 +136,7 @@ export function apply(ctx: ClientContext): void {
       closeWithFocus: (sessionId, paneId, close) => { closeWithPaneFocus(document, sessionId, paneId, close) },
     },
   )
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'sidebar.close', target: 'tab', order: 100,
     resolve: ({ sessionId, paneId, tab }) => {
       const tabId = tab.id
@@ -215,7 +215,7 @@ export function apply(ctx: ClientContext): void {
         } }
       },
     }
-    const injected: Omit<SidebarRightInjected, 'keyedHooks' | 'occurrence' | 'closeTab' | 'openTabMenu' | 'measureRoom'> = {
+    const injected: Omit<SidebarRightInjected, 'keyedHooks' | 'occurrence' | 'closeTab' | 'measureRoom'> = {
       syncPresentation({ shown, track, fullscreen }) {
         if (shown) layout.openRightbar(track, fullscreen)
         else layout.closeRightbar()
@@ -225,7 +225,7 @@ export function apply(ctx: ClientContext): void {
       toggleFullscreen: () => { const target = controller.commandTarget(); if (target !== undefined) controller.toggleFullscreen(target) },
       openTab: (kind, options) => { controller.openTab(kind, options) },
       hooks: {
-        menuTarget: ctx.menus.active,
+        menuTarget: ctx.contextMenus.active,
         shortcuts: ctx.shortcuts.catalog,
         tabTypes: { subscribe: listener => tabs.subscribe(listener), getSnapshot: () => tabs.entries() },
       },
@@ -251,7 +251,6 @@ export function apply(ctx: ClientContext): void {
         store,
         inject: (sessionId): SidebarRightInjected => ({
           ...injected,
-          openTabMenu: (tab, paneId, point) => { ctx.menus.open({ kind: 'tab', value: { sessionId, paneId, tab } }, point) },
           measureRoom: (canSplitPane) => { measure(sessionId, canSplitPane) },
           closeTab: (tabId) => {
             try { controller.closeIn(sessionId, tabId) }

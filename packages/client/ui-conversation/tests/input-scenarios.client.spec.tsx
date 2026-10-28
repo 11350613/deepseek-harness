@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 /**
  * Scenario-chain integration (scenarios A/C/D/H/I): the real per-session
  * InputTriggerController pipeline over a real session scope (Client Sessions over
@@ -168,7 +169,7 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
       items: [], archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
       baselinesReady: true, recentWorkspaceId: undefined,
     })),
-    ...allowAllAccess,
+    ...allowAllAccess, useContextMenu: contextMenuHook(),
     useProjection: (() => undefined),
     useConversation: bindSnapshotSelector(createSnapshotStore(conversationSnapshot())),
     useInput: bindSnapshotSelector(shell.state),

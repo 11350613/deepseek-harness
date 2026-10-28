@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
 import type { ComponentProps } from 'react'
@@ -52,20 +53,20 @@ function realDoubleClick(el: Element): void {
 
 function SessionNodeItem({ renderSlot = renderNoRowEntries, onRenameRequest = () => {}, openSessionMenu = vi.fn(),
   useMenuTarget = select => select(null), useSessionAccess = allowAllAccess.useSessionAccess, ...props }: Omit<
-    SessionNodeItemProps, 'renderSlot' | 'onRenameRequest' | 'openSessionMenu' | 'useMenuTarget' | 'useSessionAccess'
-  > & Partial<Pick<SessionNodeItemProps, 'renderSlot' | 'onRenameRequest' | 'openSessionMenu' | 'useMenuTarget' | 'useSessionAccess'>>) {
+    SessionNodeItemProps, 'renderSlot' | 'onRenameRequest' | 'openSessionMenu' | 'useMenuTarget' | 'useSessionAccess' | 'useContextMenu'
+  > & Partial<Pick<SessionNodeItemProps, 'renderSlot' | 'onRenameRequest' | 'openSessionMenu' | 'useMenuTarget' | 'useSessionAccess' | 'useContextMenu'>>) {
   return <SessionNodeItemComponent {...props} renderSlot={renderSlot} onRenameRequest={onRenameRequest}
-    openSessionMenu={openSessionMenu} useMenuTarget={useMenuTarget} useSessionAccess={useSessionAccess} />
+    useContextMenu={props.useContextMenu ?? contextMenuHook((target, point) => { if (target.kind === 'session') openSessionMenu(target.value.sessionId, target.value.displayTitle, point) })} openSessionMenu={openSessionMenu} useMenuTarget={useMenuTarget} useSessionAccess={useSessionAccess} />
 }
 
 // Direct header specs hold every access answer unless the case refuses one.
 function ProjectRowItem({
   useRemoteAccess = allowAllAccess.useRemoteAccess, useWorkspaceAccess = allowAllAccess.useWorkspaceAccess,
   openWorkspaceMenu = vi.fn(), useMenuTarget = select => select(null), ...props
-}: Omit<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'openWorkspaceMenu' | 'useMenuTarget'>
-  & Partial<Pick<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'openWorkspaceMenu' | 'useMenuTarget'>>) {
+}: Omit<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'openWorkspaceMenu' | 'useMenuTarget' | 'useContextMenu'>
+  & Partial<Pick<ProjectRowItemProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'openWorkspaceMenu' | 'useMenuTarget' | 'useContextMenu'>>) {
   return <ProjectRowItemComponent {...props} useRemoteAccess={useRemoteAccess} useWorkspaceAccess={useWorkspaceAccess}
-    openWorkspaceMenu={openWorkspaceMenu} useMenuTarget={useMenuTarget} />
+    useContextMenu={props.useContextMenu ?? contextMenuHook((target, point) => { if (target.kind === 'workspace') openWorkspaceMenu(target.value.workspaceId, target.value.path, target.value.displayTitle, point) })} openWorkspaceMenu={openWorkspaceMenu} useMenuTarget={useMenuTarget} />
 }
 
 /** Half detection reads the row rect; jsdom rects are all-zero by default. */

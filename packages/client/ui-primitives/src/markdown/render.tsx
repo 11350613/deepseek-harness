@@ -1,4 +1,3 @@
-import { menuPoint, contextMenuTrigger } from '@deepseek-ai/dsh-util-context-menu'
 /**
  * Direct mdast→React markdown renderer. Replaces the react-markdown /
  * remark-rehype pipeline with one switch over parsed nodes so streaming can
@@ -210,7 +209,7 @@ export interface MarkdownFileMentions {
    */
   resolve(value: string): {
     open: () => void
-    openMenu?: (point: { x: number; y: number }) => void
+    contextMenuProps?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>
     label: string
     title: string
   } | undefined
@@ -361,7 +360,7 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
               title={mention.title}
               aria-label={mention.label}
               onClick={mention.open}
-              {...contextMenuTrigger(mention.openMenu)}
+              {...mention.contextMenuProps}
             >
               <LinkIconMedium kind={classifyLinkPath(value)} className={css.linkIcon} />
               {value}
@@ -591,15 +590,13 @@ function MarkdownAnchor({ href, glyph, children }: {
   readonly glyph: boolean
   readonly children: ReactNode[]
 }): ReactNode {
-  const { openExternalLink, openContextMenu } = useMarkdownDelegate()
+  const { openExternalLink, getContextMenuProps } = useMarkdownDelegate()
   const external = ['http:', 'https:'].includes(new URL(href).protocol)
   const open = external ? openExternalLink : undefined
   return (
     <a
       href={href}
-      {...contextMenuTrigger(!external || openContextMenu === undefined ? undefined : (point) => {
-        openContextMenu({ kind: 'url', url: href }, point)
-      })}
+      {...external ? getContextMenuProps?.({ kind: 'url', url: href }) : {}}
       {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
       onClick={open === undefined ? undefined : (event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -627,7 +624,7 @@ function MarkdownFileLink({ file, glyph, children }: {
   readonly glyph: boolean
   readonly children: ReactNode[]
 }): ReactNode {
-  const { openFile, fileImages, openContextMenu } = useMarkdownDelegate()
+  const { openFile, fileImages, getContextMenuProps } = useMarkdownDelegate()
   const [load] = useState(nextImageLoad)
   if (openFile === undefined) return <>{children}</>
   // Pure-image anchors already contain their preview and keep one navigation target.
@@ -639,9 +636,7 @@ function MarkdownFileLink({ file, glyph, children }: {
       type="button"
       className={clsx(css.fileMention, css.fileLink)}
       title={src === undefined ? file.path : undefined}
-      {...contextMenuTrigger(openContextMenu === undefined ? undefined : (point) => {
-        openContextMenu({ kind: 'file', ...file }, point)
-      })}
+      {...getContextMenuProps?.({ kind: 'file', ...file })}
       onClick={() => { openFile(file.path, file.line === undefined ? undefined : { line: file.line }) }}
     >
       {glyph && <LinkIconMedium kind={classifyLinkPath(file.path)} className={css.linkIcon} />}
@@ -698,21 +693,16 @@ function LoadedMarkdownImage({ src, alt, destination, preview }: {
   destination: string
   preview: ReturnType<typeof useMarkdownDelegate>['fileImages']
 }): ReactNode {
-  const { openContextMenu } = useMarkdownDelegate()
+  const { getContextMenuProps } = useMarkdownDelegate()
   const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState(false)
   const close = useCallback(() => { setOpen(false) }, [])
   if (failed) return <span className={css.imageAlt}>{preview === undefined ? '' : `${preview.labels.failed} · `}{alt || destination}</span>
-  const onContextMenu: import('react').MouseEventHandler<HTMLImageElement> | undefined = openContextMenu === undefined ? undefined : (event) => {
-    event.preventDefault(); event.stopPropagation()
-    const file = parseFileLink(destination)
-    openContextMenu({ kind: 'image', url: src, ...(file === undefined ? {} : { path: file.path }) },
-      menuPoint(event))
-  }
-  const imageProps = { className: css.image, src, alt, onContextMenu, onError: () => { setFailed(true) },
-    loading: 'lazy' as const, decoding: 'async' as const, referrerPolicy: 'no-referrer' as const }
-  if (preview === undefined) return <img {...imageProps} />
   const file = parseFileLink(destination)
+  const trigger = getContextMenuProps?.({ kind: 'image', url: src, ...(file === undefined ? {} : { path: file.path }) })
+  const imageProps = { className: css.image, src, alt, onError: () => { setFailed(true) },
+    loading: 'lazy' as const, decoding: 'async' as const, referrerPolicy: 'no-referrer' as const }
+  if (preview === undefined) return <img {...imageProps} {...trigger} />
   const localFileName = file?.path.split(/[\\/]/u).at(-1)
   const urlFileName = destination.split('/').at(-1)?.split(/[?#]/u)[0]
   const exportName = localFileName || urlFileName || 'image'
@@ -724,9 +714,10 @@ function LoadedMarkdownImage({ src, alt, destination, preview }: {
   />
   return <>
     <button type="button" className={css.imageButton} title={preview.labels.open}
+      {...trigger}
       aria-label={alt ? `${preview.labels.open}: ${alt}` : preview.labels.open}
       onClick={() => { setOpen(true) }}>{img}</button>
-    {open && <ImageLightbox src={src} alt={alt} labels={preview.labels} onClose={close} onContextMenu={onContextMenu} />}
+    {open && <ImageLightbox src={src} alt={alt} labels={preview.labels} onClose={close} contextMenuProps={trigger} />}
   </>
 }
 

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -42,7 +43,7 @@ const useSessionStatus: TriggerContentProps['useSessionStatus'] = selector => se
 const kit = {
   useSessions: unusedHook, useSessionStatus,
   usePanelInfo, useSessionRetainInfo: () => undefined, useResource, useWorkspaces: unusedHook,
-  ...allowAllAccess,
+  ...allowAllAccess, useContextMenu: contextMenuHook(),
 }
 
 describe('Desktop collapsed update badge', () => {

@@ -42,8 +42,8 @@ export interface PaneCallbacks {
   /** Whether the embedder popup is preparing or visible; suppresses tab tooltips. */
   readonly tabMenuOpen?: boolean | undefined
   /** Override the kit popup; the embedder owns rendering and dismissal. */
-  readonly openTabMenu?: ((tab: import('../contract/types.ts').TabRecord, paneId: PaneId, point: { x: number; y: number }) => void) | undefined
-  /** Extra rows for the kit popup; ignored when openTabMenu is supplied. */
+  readonly getTabMenuProps?: ((tab: import('../contract/types.ts').TabRecord, paneId: PaneId, handlers?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) => Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) | undefined
+  /** Extra rows for the kit popup; ignored when getTabMenuProps is supplied. */
   readonly renderTabMenuItems: TabMenuExtras | undefined
   /** The pane whose strip hosts the embedder's surface-wide controls. */
   readonly chromePaneId: PaneId

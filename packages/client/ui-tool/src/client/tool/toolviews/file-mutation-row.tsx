@@ -31,7 +31,7 @@ function contentKilobytes(block: FileMutationRowProps['block']): number | null {
  * settlement, with the applied diff available once the call settles.
  */
 export function FileMutationRow({
-  toolName, block, cwd, home, openFile, openContextMenu, inspect, useDisclosure, t,
+  toolName, block, cwd, home, openFile, getContextMenuProps, inspect, useDisclosure, t,
 }: FileMutationRowProps) {
   const model = toolRowModel(toolName, block, cwd, home)
   const diff = diffCardModel(block)
@@ -39,7 +39,7 @@ export function FileMutationRow({
   const size = kilobytes === null ? null : t('tool.preparing.content', { kilobytes })
   return (
     <ToolRow
-      onOpenContextMenu={openContextMenu}
+      getContextMenuProps={getContextMenuProps}
       useDisclosure={useDisclosure}
       t={t}
       variant={model.variant}

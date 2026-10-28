@@ -2,21 +2,25 @@
 /** Explicit file actions preserve their destination, availability, and independent failure state. */
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { contextMenuHook, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { PresentedFileCard } from '../src/client/PresentedFileCard.tsx'
 import { en, zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
-const props = () => ({
-  cwd: undefined,
-  file: { path: 'out/report.pdf', description: 'Final report', seq: 4, index: 1 },
-  host: { name: 'remote-desktop', available: true, fileManager: 'finder' as const },
-  phase: undefined,
-  onPreview: vi.fn(),
-  onMenu: vi.fn(),
-  actions: <button type="button">Native file action</button>,
-  t: makeTranslate(en),
-})
+const props = () => {
+  const onMenu = vi.fn()
+  return {
+    cwd: undefined,
+    file: { path: 'out/report.pdf', description: 'Final report', seq: 4, index: 1 },
+    host: { name: 'remote-desktop', available: true, fileManager: 'finder' as const },
+    phase: undefined,
+    onPreview: vi.fn(),
+    onMenu, contextMenuProps: contextMenuHook((_target, point) => { onMenu(point) })()
+      .getTriggerProps({ kind: 'image', value: { url: 'unused' } }),
+    actions: <button type="button">Native file action</button>,
+    t: makeTranslate(en),
+  }
+}
 it('localizes reveal failures and restores the description when progress clears', () => {
   const p = props()
   const view = render(<PresentedFileCard {...p} phase="revealError" t={makeTranslate(zh)} />)

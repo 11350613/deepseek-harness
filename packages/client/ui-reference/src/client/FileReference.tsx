@@ -24,7 +24,7 @@ type FileReferenceProps = UserTextNodeProps<'file'> & InjectFace<FileReferenceIn
  * @returns an inline chip and, after a navigation failure, its body-portaled dialog.
  */
 export function FileReference({ node, raw, interactive, openFile, t }: FileReferenceProps) {
-  const { openContextMenu } = useMarkdownDelegate()
+  const { getContextMenuProps } = useMarkdownDelegate()
   const [failedPath, setFailedPath] = useState<string | null>(null)
   const { path, label } = node.data
   const close = () => { setFailedPath(null) }
@@ -42,8 +42,8 @@ export function FileReference({ node, raw, interactive, openFile, t }: FileRefer
       appearance="file"
       label={label}
       title={raw}
-      {...!interactive || openContextMenu === undefined ? {} : {
-        openContextMenu: (point) => { openContextMenu({ kind: 'file', path, base: 'workspace' }, point) },
+      {...!interactive || getContextMenuProps === undefined ? {} : {
+        contextMenuProps: getContextMenuProps({ kind: 'file', path, base: 'workspace' }),
       }}
       {...interactive ? { onActivate: open } : {}}
     />

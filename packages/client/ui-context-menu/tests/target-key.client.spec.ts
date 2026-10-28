@@ -3,7 +3,7 @@ import { menuTargetKey } from '../src/client/target-key.ts'
 import type { MenuTarget } from '../src/client/types.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-context-menu/client' {
-  interface MenuTargetMap { nested: { id: string; data: { a: number; b: readonly (string | null)[] } } }
+  interface ContextMenuTargetMap { nested: { id: string; data: { a: number; b: readonly (string | null)[] } } }
 }
 
 it('compares JSON targets independently of object key insertion order while preserving arrays', () => {

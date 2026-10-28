@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 
 import type { ProcessGroupData } from '../src/client/contract/process-groups.ts'
 import type { InboxState } from '@deepseek-ai/dsh-agent/types'
@@ -492,7 +493,7 @@ function makeHarness(
   const SessionProviderStub: ChatViewSlotProps['SessionProvider'] = ({ children }) => <>{children}</>
   const props: HarnessStandardProps = {
     fileDrag,
-    openContextMenu: vi.fn(),
+    resolveContextMenuTarget: vi.fn(() => ({ kind: 'image' as const, value: { url: 'unused' } })),
     renderFactorySlot,
     usePanelInfo: selector => selector({ activePanelId: null }),
     sessionId: SID,
@@ -506,6 +507,7 @@ function makeHarness(
     useTrajectory: (() => { throw new Error('unused') }),
     useSessions: emptySessions(),
     useSessionRetainInfo: () => undefined,
+    useContextMenu: contextMenuHook(),
     useResource,
     useSessionStatus: bindSnapshotSelector(
       createSnapshotStore<SessionStatusSnapshot>(new Map()),
@@ -4716,5 +4718,5 @@ it('does not infer menu targets from links or data attributes inside a plugin fl
   expect(fireEvent.contextMenu(view.getByRole('button', { name: 'Undeclared file' }))).toBe(true)
   fireEvent.contextMenu(view.getByRole('button', { name: 'Custom target' }))
   expect(custom).toHaveBeenCalledOnce()
-  expect(h.props.openContextMenu).not.toHaveBeenCalled()
+  expect(h.props.resolveContextMenuTarget).not.toHaveBeenCalled()
 })

@@ -43,7 +43,7 @@ export function registerContextMenus(
       return undefined
     }
   }
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'open-in-app.workspace', target: 'workspace', order: 200,
     resolve: async ({ path }, signal) => {
       await directories.load()
@@ -57,7 +57,7 @@ export function registerContextMenus(
         } } }]
     },
   }), 'open-in-app: Workspace context menu')
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'open-in-app.directory', target: 'directory', order: 100,
     resolve: async ({ sessionId, path }, signal) => {
       await paths.load()
@@ -69,12 +69,12 @@ export function registerContextMenus(
           run: () => open(absolutePath, 'reveal') },
         { id: 'copyPath', icon: <IconCopyOutlineRegular />, label: t('menu.copyDirectoryPath'), failureLabel: t('menu.copyFailed'), run: async () => {
           await navigator.clipboard.writeText(absolutePath)
-          ctx.menus.notify(t('menu.copied'), true)
+          ctx.contextMenus.notify(t('menu.copied'), true)
         } },
       ]
     },
   }), 'open-in-app: directory context menu')
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'open-in-app.file', target: 'file', order: 100,
     resolve: async (target, signal) => {
       const { sessionId, path, line, paneId } = target
@@ -102,12 +102,12 @@ export function registerContextMenus(
           run: async () => {
             const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
             await navigator.clipboard.writeText(absolutePath ?? resolveWorkspacePath(cwd, path))
-            ctx.menus.notify(t('menu.copied'), true)
+            ctx.contextMenus.notify(t('menu.copied'), true)
           } },
       ]
     },
   }), 'open-in-app: file context menu')
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'open-in-app.url', target: 'url', order: 100,
     resolve: ({ sessionId, url }) => [
       { id: 'sidebar', icon: <IconPanelLeftOutlineRegular />, label: t('menu.sidebar'), disabled: ctx.sidebarRightTabs.get('browser') === undefined,
@@ -115,11 +115,11 @@ export function registerContextMenus(
       { id: 'external', label: t('menu.external'),
         run: () => { window.open(url, '_blank', 'noopener,noreferrer') } },
       { id: 'copy', icon: <IconCopyOutlineRegular />, failureLabel: t('menu.copyFailed'), label: t('menu.copyLink'), run: async () => {
-        await navigator.clipboard.writeText(url); ctx.menus.notify(t('menu.copied'), true)
+        await navigator.clipboard.writeText(url); ctx.contextMenus.notify(t('menu.copied'), true)
       } },
     ],
   }), 'open-in-app: URL context menu')
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'open-in-app.image', target: 'image', order: 200,
     resolve: async (target, signal) => {
       const { sessionId, path } = target

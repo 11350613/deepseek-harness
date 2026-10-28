@@ -15,13 +15,13 @@ const WEB_TITLE_KEYS = {
 } as const
 
 /** Lets users expand a completed web search or fetch result. */
-export function WebRow({ toolName, block, openContextMenu, inspect, useDisclosure, t }: WebRowProps) {
+export function WebRow({ toolName, block, getContextMenuProps, inspect, useDisclosure, t }: WebRowProps) {
   const model = toolRowModel(toolName, block)
   const web = webCardModel(block)
   const icon = toolName === 'web_fetch' ? <IconBrowseOutlineRegular size={14} /> : <IconGlobeOutlineRegular size={14} />
   return (
     <ToolRow
-      onOpenContextMenu={openContextMenu}
+      getContextMenuProps={getContextMenuProps}
       useDisclosure={useDisclosure}
       t={t}
       variant={model.variant}

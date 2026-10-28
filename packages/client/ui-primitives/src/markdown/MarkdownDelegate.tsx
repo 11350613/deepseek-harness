@@ -18,7 +18,7 @@ export type MarkdownMenuTarget =
 /** Navigation capabilities supplied by the nearest Markdown owner. */
 export interface MarkdownDelegate {
   /** Open an object menu without executing its normal activation. */
-  readonly openContextMenu?: ((target: MarkdownMenuTarget, point: { x: number; y: number }) => void) | undefined
+  readonly getContextMenuProps?: ((target: MarkdownMenuTarget) => Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) | undefined
   /**
    * Image previews for decoded local paths in this owner's workspace. The renderer
    * appends a per-mount `load` query parameter to `api/file` route URLs.
@@ -57,10 +57,10 @@ export function MarkdownDelegateProvider({
   openExternalLink,
   openFile,
   fileImages,
-  openContextMenu,
+  getContextMenuProps,
 }: MarkdownDelegateProviderProps): ReactNode {
-  const delegate = useMemo(() => ({ openExternalLink, openFile, fileImages, openContextMenu }),
-    [openExternalLink, openFile, fileImages, openContextMenu])
+  const delegate = useMemo(() => ({ openExternalLink, openFile, fileImages, getContextMenuProps }),
+    [openExternalLink, openFile, fileImages, getContextMenuProps])
   return (
     <MarkdownDelegateContext.Provider value={delegate}>
       {children}

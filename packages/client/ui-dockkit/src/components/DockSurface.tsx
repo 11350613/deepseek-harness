@@ -67,8 +67,8 @@ export interface DockSurfaceProps {
   /** Whether the embedder popup is preparing or visible; suppresses tab tooltips. */
   readonly tabMenuOpen?: boolean | undefined
   /** Override the kit popup; the embedder owns rendering and dismissal. */
-  readonly openTabMenu?: ((tab: TabRecord, paneId: PaneId, point: { x: number; y: number }) => void) | undefined
-  /** Extra rows for the kit popup; ignored when openTabMenu is supplied. */
+  readonly getTabMenuProps?: ((tab: TabRecord, paneId: PaneId, handlers?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) => Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) | undefined
+  /** Extra rows for the kit popup; ignored when getTabMenuProps is supplied. */
   readonly renderTabMenuItems?: TabMenuExtras
   /**
    * Surface-wide controls, drawn at the far end of the top-right pane's tab
@@ -175,7 +175,7 @@ function sameSizes(a: readonly number[], b: readonly number[]): boolean {
 /** The split tree and the gestures over it. */
 function Surface({
   state, canSplit, canAddTab, canCloseTab, intents, labels, renderTab, renderTabTitle, renderTabMenuItems,
-  openTabMenu, tabMenuOpen, chrome, onRoom,
+  getTabMenuProps, tabMenuOpen, chrome, onRoom,
   draw,
   dropZones = 'edges', minPaneFraction = MIN_PANE_FRACTION, hideSplitWhenBlocked = false,
 }: DockSurfaceProps & { readonly draw: (callbacks: PaneCallbacks, preview: SizePreview | undefined) => ReactNode }): ReactNode {
@@ -297,7 +297,7 @@ function Surface({
     renderTab,
     renderTabTitle,
     renderTabMenuItems,
-    openTabMenu, tabMenuOpen,
+    getTabMenuProps, tabMenuOpen,
     chromePaneId: topRightPaneId(state),
     chrome,
   }

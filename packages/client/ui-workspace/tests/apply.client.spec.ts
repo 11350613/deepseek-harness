@@ -67,7 +67,7 @@ async function bench(access: 'fake' | 'static' = 'fake') {
   })
   const menuRegistry = new MenuRegistry(vi.fn())
   onTestFinished(() => { menuRegistry.dispose() })
-  ctx.provide('menus', { register: menuRegistry.register.bind(menuRegistry), resolve: menuRegistry.resolve.bind(menuRegistry), active: createSnapshotStore(null), open: vi.fn(), close: vi.fn() } as never)
+  ctx.provide('contextMenus', { register: menuRegistry.register.bind(menuRegistry), resolve: menuRegistry.resolve.bind(menuRegistry), active: createSnapshotStore(null), open: vi.fn(), close: vi.fn() } as never)
   ctx.provide('uiConversation', {})
   await ctx.plugin(SlotRegistry).await()
   const accessSource = vi.fn((_kind: string, _id: string, _action: string): HostObservable<boolean> => ALLOWED)
@@ -210,7 +210,7 @@ function faceOf(registration: StoredEntry): object {
 /** Select the registered data action, preserving the same captured row owner as pointer triggers. */
 function sessionMenuActions(ctx: Context) {
   const select = (id: string, sessionId: SessionId, displayTitle = ''): void => {
-    const menu = ctx.menus.resolve({ kind: 'session', value: { sessionId, displayTitle } })
+    const menu = ctx.contextMenus.resolve({ kind: 'session', value: { sessionId, displayTitle } })
     expect(menu.source.getSnapshot().some(item => item.id === id)).toBe(true)
     menu.select(id)
   }
@@ -237,7 +237,7 @@ describe('ui-workspace apply', () => {
   })
 
   it('declares the services it drives', () => {
-    expect(inject).toEqual(['menus',
+    expect(inject).toEqual(['contextMenus',
       'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts', 'remoteAccess',
     ])
   })
@@ -935,33 +935,33 @@ it('captures Workspace menu requests, rechecks mutable access, and withdraws reg
   const browser = faceOf(b.slots.entries('sidebar.workspaces')[0]!) as WorkspaceBrowserInjected
   const target = { kind: 'workspace' as const, value: { workspaceId: 'alpha' as WorkspaceId, path: '/projects/alpha', displayTitle: 'Alpha' } }
   browser.openWorkspaceMenu(target.value.workspaceId, target.value.path, 'Alpha', { x: 20, y: 30 })
-  expect(vi.spyOn(b.ctx.menus, 'open')).toHaveBeenLastCalledWith(target, { x: 20, y: 30 })
-  const active = b.ctx.menus.active as ReturnType<typeof createSnapshotStore<import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget | null>>
+  expect(vi.spyOn(b.ctx.contextMenus, 'open')).toHaveBeenLastCalledWith(target, { x: 20, y: 30 })
+  const active = b.ctx.contextMenus.active as ReturnType<typeof createSnapshotStore<import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget | null>>
   active.set(target)
   browser.openWorkspaceMenu(target.value.workspaceId, target.value.path, 'Alpha', { x: 20, y: 30 }, 'toggle')
-  expect(vi.spyOn(b.ctx.menus, 'close')).toHaveBeenCalledOnce()
-  const menu = b.ctx.menus.resolve(target)
+  expect(vi.spyOn(b.ctx.contextMenus, 'close')).toHaveBeenCalledOnce()
+  const menu = b.ctx.contextMenus.resolve(target)
   await menu.ready
   expect(menu.source.getSnapshot().map(item => item.id)).toEqual(['workspace.rename/rename', 'workspace.delete/delete'])
   menu.select('workspace.rename/rename')
   expect(browser.hooks.workspaceActionRequest.getSnapshot()).toEqual({ action: 'rename', workspaceId: 'alpha', displayTitle: 'Alpha', storedTitle: 'alpha' })
   browser.settleWorkspaceAction()
-  const removed = b.ctx.menus.resolve(target)
+  const removed = b.ctx.contextMenus.resolve(target)
   await removed.ready
   b.setWorkspaces(workspaceState([]))
   removed.select('workspace.delete/delete')
   expect(browser.hooks.workspaceActionRequest.getSnapshot()).toBeNull()
   b.setWorkspaces(workspaceState([workspace('alpha', [])]))
-  const denied = b.ctx.menus.resolve(target)
+  const denied = b.ctx.contextMenus.resolve(target)
   await denied.ready
   b.accessSource.mockReturnValueOnce(createSnapshotStore(false))
   denied.select('workspace.delete/delete')
   expect(browser.hooks.workspaceActionRequest.getSnapshot()).toBeNull()
-  const deletion = b.ctx.menus.resolve(target)
+  const deletion = b.ctx.contextMenus.resolve(target)
   await deletion.ready
   deletion.select('workspace.delete/delete')
   expect(browser.hooks.workspaceActionRequest.getSnapshot()?.action).toBe('delete')
-  const pending = b.ctx.menus.resolve(target)
+  const pending = b.ctx.contextMenus.resolve(target)
   await pending.ready
   await fiber.dispose()
   expect(pending.source.getSnapshot()).toEqual([])

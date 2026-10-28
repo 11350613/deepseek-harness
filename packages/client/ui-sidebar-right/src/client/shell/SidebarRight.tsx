@@ -101,8 +101,6 @@ export interface SidebarRightInjected {
   readonly openTab: (kind: string, options?: SidebarRightOpenTabOptions) => void
   /** Close through the resource owner's cleanup handler. */
   readonly closeTab: (tabId: TabId) => void
-  /** Open a captured tab's context menu. */
-  readonly openTabMenu: (tab: TabRecord, paneId: PaneId, point: { x: number; y: number }) => void
   /** Split through the same controller as keyboard commands. */
   readonly splitPane: (paneId: PaneId) => void
   /** Toggle the dock panel using its current display mode. */
@@ -136,7 +134,7 @@ interface PanelProps {
   readonly renderSlot: Children['renderSlot']
   readonly openTab: SidebarRightInjected['openTab']
   readonly closeTab: SidebarRightInjected['closeTab']
-  readonly openTabMenu: SidebarRightInjected['openTabMenu']
+  readonly getTabMenuProps: NonNullable<import('@deepseek-ai/dsh-client-ui-dockkit').DockSurfaceProps['getTabMenuProps']>
   readonly tabMenuOpen: boolean
   readonly splitPane: SidebarRightInjected['splitPane']
   readonly toggleFullscreen: SidebarRightInjected['toggleFullscreen']
@@ -349,7 +347,7 @@ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<H
           renderTabTitle={titlesFor(panel)}
           active={panel.active}
           keepMounted={tab => types.find(type => type.kind === tab.kind)?.keepMounted === true}
-          openTabMenu={panel.openTabMenu} tabMenuOpen={panel.tabMenuOpen}
+          getTabMenuProps={panel.getTabMenuProps} tabMenuOpen={panel.tabMenuOpen}
           chrome={<PanelChrome
             sessionId={sessionId} fullscreen={fullscreen} actions={actions} t={t}
             shortcuts={panel.shortcuts} toggleFullscreen={panel.toggleFullscreen}
@@ -370,9 +368,12 @@ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<H
  */
 export function RightbarSeat({
   sessionId, width, viewportWidth, canShow, useStore, actions, t, renderSlot, syncPresentation, measureRoom, reportAutoFullscreen,
-  openTab, closeTab, openTabMenu, useMenuTarget, useTabTypes, useTabNavigation, occurrence, retainTab,
+  openTab, closeTab, useContextMenu, useMenuTarget, useTabTypes, useTabNavigation, occurrence, retainTab,
   active, useShortcuts, splitPane, toggleFullscreen,
 }: RightbarSeatProps): ReactNode {
+  const { getTriggerProps } = useContextMenu()
+  const getTabMenuProps: PanelProps['getTabMenuProps'] = (tab, paneId, handlers) =>
+    getTriggerProps({ kind: 'tab', value: { sessionId, tab, paneId } }, handlers)
   // One store instance per session, so this map holds this session's surface.
   const tabMenuOpen = useMenuTarget(target => target?.kind === 'tab' && target.value.sessionId === sessionId)
   const shortcuts = useShortcuts(entries => entries)
@@ -437,7 +438,7 @@ export function RightbarSeat({
 
   if (surface === undefined) return null
   const panel: PanelProps = {
-    sessionId, actions, t, renderSlot, surface, openTab, closeTab, openTabMenu, tabMenuOpen, useTabTypes, useTabNavigation,
+    sessionId, actions, t, renderSlot, surface, openTab, closeTab, getTabMenuProps, tabMenuOpen, useTabTypes, useTabNavigation,
     useStore, occurrence,
     fullscreen, autoFullscreen, reportRoom, active, retainTab, shortcuts, splitPane, toggleFullscreen,
   }

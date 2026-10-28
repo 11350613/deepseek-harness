@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MarkdownDelegateProvider } from '../src/index.ts'
@@ -211,7 +212,8 @@ describe('Markdown file links', () => {
 
 it('captures link targets and line numbers without activating them; linked images take priority', () => {
   const openFile = vi.fn(), openExternalLink = vi.fn(), openContextMenu = vi.fn()
-  const view = render(<MarkdownDelegateProvider {...{ openFile, openExternalLink, openContextMenu }}>
+  const view = render(<MarkdownDelegateProvider {...{ openFile, openExternalLink }}
+    getContextMenuProps={contextMenuHook(openContextMenu)().getTriggerProps}>
     <MarkdownText text={'[file](src/main.ts#L42) [web](https://example.com/a?q=1#part) [![picture](https://example.com/original.gif)](https://example.com/target)'} />
   </MarkdownDelegateProvider>)
   fireEvent.contextMenu(view.getByRole('button', { name: 'file' }), { clientX: 2, clientY: 3 })
@@ -227,9 +229,13 @@ it('captures link targets and line numbers without activating them; linked image
 
 it('passes keyboard-positioned produced-file menus and local image identities to their owners', () => {
   const openMenu = vi.fn(), openContextMenu = vi.fn()
-  const view = render(<MarkdownDelegateProvider openContextMenu={openContextMenu}>
+  const view = render(<MarkdownDelegateProvider getContextMenuProps={contextMenuHook(openContextMenu)().getTriggerProps}>
     <MarkdownText text={'`report.svg` ![local](out/report.svg)'}
-      fileMentions={{ resolve: () => ({ title: 'out/report.svg', label: 'Report', open: vi.fn(), openMenu }) }}
+      fileMentions={{ resolve: () => ({
+        title: 'out/report.svg', label: 'Report', open: vi.fn(),
+        contextMenuProps: contextMenuHook((_target, point) => { openMenu(point) })()
+          .getTriggerProps({ kind: 'image', value: { url: 'unused' } }),
+      }) }}
       pathImages={{ resolve: () => 'blob:local' }} />
   </MarkdownDelegateProvider>)
   fireEvent.contextMenu(view.getByRole('button', { name: 'Report' }), { clientX: 5, clientY: 6 })

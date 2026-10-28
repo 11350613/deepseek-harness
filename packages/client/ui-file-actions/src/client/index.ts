@@ -24,7 +24,7 @@ export function apply(ctx: Context): void {
   const actions = new BrowserFileActions(desktop)
   ctx.provide('fileActions', actions)
   ctx.effect(() => () => { actions.dispose() }, 'file actions: lifetime')
-  ctx.inject(['menus', 'locale', 'remote', 'remote.workspaceFiles', 'remote.session'], (child) => {
+  ctx.inject(['contextMenus', 'locale', 'remote', 'remote.workspaceFiles', 'remote.session'], (child) => {
     child.effect(() => child.locale.register('fileActions', { zh, en, ja, es, fr, de, ru, pt }), 'file actions: locale')
     registerFileMenus(child, actions, child.locale.bind('fileActions'))
   })

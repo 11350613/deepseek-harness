@@ -75,7 +75,7 @@ async function boot(shortcuts: Partial<Shortcuts> = {}) {
   const resources = { pin: vi.fn<(address: string, signal: AbortSignal) => void>() }
   const menus = new MenuRegistry(vi.fn())
   onTestFinished(() => { menus.dispose() })
-  ctx.provide('menus', { register: menus.register.bind(menus), open: vi.fn() } as never)
+  ctx.provide('contextMenus', { register: menus.register.bind(menus), open: vi.fn() } as never)
   ctx.provide('slots', slots as never)
   ctx.provide('locale', locale as never)
   ctx.provide('shortcuts', { runtime: 'web', register: () => () => {},

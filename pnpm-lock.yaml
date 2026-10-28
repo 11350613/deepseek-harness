@@ -3807,9 +3807,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-trajectory':
         specifier: workspace:*
         version: link:../ui-trajectory
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@deepseek-ai/dsh-util-file-drag':
         specifier: workspace:*
         version: link:../../util/file-drag
@@ -3967,9 +3964,6 @@ importers:
       '@deepseek-ai/dsh-tool-executor-ptc':
         specifier: workspace:*
         version: link:../../core/tool-executor-ptc
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@deepseek-ai/dsh-util-values':
         specifier: workspace:*
         version: link:../../util/values
@@ -4087,6 +4081,9 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
 
   packages/client/ui-conversation:
     dependencies:
@@ -4190,9 +4187,6 @@ importers:
       '@deepseek-ai/dsh-tool-todo':
         specifier: workspace:*
         version: link:../../todo/tool-todo
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@deepseek-ai/dsh-util-crypto':
         specifier: workspace:*
         version: link:../../util/crypto
@@ -4323,9 +4317,6 @@ importers:
       '@deepseek-ai/dsh-tool-present':
         specifier: workspace:*
         version: link:../../deliverables/tool-present
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@deepseek-ai/dsh-util-values':
         specifier: workspace:*
         version: link:../../util/values
@@ -4416,9 +4407,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-primitives':
         specifier: workspace:*
         version: link:../ui-primitives
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -5236,9 +5224,6 @@ importers:
       '@deepseek-ai/dsh-util-code-language':
         specifier: workspace:*
         version: link:../../util/code-language
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@deepseek-ai/dsh-util-file-drag':
         specifier: workspace:*
         version: link:../../util/file-drag
@@ -6231,9 +6216,6 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: workspace:*
         version: link:../../core/session
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@deepseek-ai/dsh-util-workspace-path':
         specifier: workspace:*
         version: link:../../util/workspace-path
@@ -6333,9 +6315,6 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@deepseek-ai/dsh-util-workspace-path':
         specifier: workspace:*
         version: link:../../util/workspace-path
@@ -6784,9 +6763,6 @@ importers:
       '@deepseek-ai/dsh-user-questions':
         specifier: workspace:*
         version: link:../../interaction/user-questions
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@deepseek-ai/dsh-util-values':
         specifier: workspace:*
         version: link:../../util/values
@@ -7100,9 +7076,6 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
-      '@deepseek-ai/dsh-util-context-menu':
-        specifier: workspace:*
-        version: link:../../util/context-menu
       '@deepseek-ai/dsh-util-values':
         specifier: workspace:*
         version: link:../../util/values
@@ -10477,6 +10450,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-commands':
         specifier: workspace:*
         version: link:../../client/ui-commands
+      '@deepseek-ai/dsh-client-ui-context-menu':
+        specifier: workspace:*
+        version: link:../../client/ui-context-menu
       '@deepseek-ai/dsh-client-ui-conversation':
         specifier: workspace:*
         version: link:../../client/ui-conversation
@@ -16932,6 +16908,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-chat':
         specifier: workspace:*
         version: link:../../client/ui-chat
+      '@deepseek-ai/dsh-client-ui-context-menu':
+        specifier: workspace:*
+        version: link:../../client/ui-context-menu
       '@deepseek-ai/dsh-client-ui-conversation':
         specifier: workspace:*
         version: link:../../client/ui-conversation
@@ -17314,18 +17293,6 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
-
-  packages/util/context-menu:
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:~
-        version: link:../../../vendor/cordis
-      react:
-        specifier: ^18.2.0
-        version: 18.3.1
-      react-dom:
-        specifier: ^18.2.0
-        version: 18.3.1(react@18.3.1)
 
   packages/util/crypto:
     devDependencies:

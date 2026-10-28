@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { contextMenuTrigger } from '@deepseek-ai/dsh-util-context-menu'
 import { MarkdownDelegateProvider, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 
 afterEach(cleanup)
@@ -9,10 +9,10 @@ afterEach(cleanup)
 it('leaves undeclared plugin links alone and binds only explicitly rendered Markdown targets', () => {
   const open = vi.fn()
   const custom = vi.fn()
-  const view = render(<MarkdownDelegateProvider openContextMenu={open} openFile={() => {}}>
+  const view = render(<MarkdownDelegateProvider getContextMenuProps={contextMenuHook(open)().getTriggerProps} openFile={() => {}}>
     <a href="https://example.com/plugin">Plugin link</a>
     <MarkdownText text="[File](docs/file.ts#L42)" labels={{ code: { copyLabel: 'Copy', copiedLabel: 'Copied' }, footnotes: 'Footnotes' }} />
-    <button {...contextMenuTrigger((point) => { custom({ kind: 'pluginDocument', id: 'one' }, point) })}>Plugin target</button>
+    <button {...contextMenuHook(custom)().getTriggerProps({ kind: 'pluginDocument', id: 'one' })}>Plugin target</button>
   </MarkdownDelegateProvider>)
   expect(fireEvent.contextMenu(view.getByRole('link', { name: 'Plugin link' }))).toBe(true)
   expect(open).not.toHaveBeenCalled()

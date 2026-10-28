@@ -13,7 +13,7 @@ function bench() {
   onTestFinished(() => ctx.fiber.dispose())
   const registry = new MenuRegistry(vi.fn())
   onTestFinished(() => { registry.dispose() })
-  ctx.provide('menus', { register: registry.register.bind(registry) } as never)
+  ctx.provide('contextMenus', { register: registry.register.bind(registry) } as never)
   const locale = new LocaleRuntime(ctx)
   ctx.provide('locale', locale)
   locale.register('workspace', { en, zh }); locale.setLocale('en')

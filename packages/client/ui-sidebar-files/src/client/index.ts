@@ -50,7 +50,7 @@ const NS = 'sidebarFiles'
  * Required browser services: the tab registry, the keyed seat, the Remote
  * carrier and its namespace, and copy.
  */
-export const inject = ['menus', 'slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote', 'remote.workspaceFiles']
+export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote', 'remote.workspaceFiles']
 
 /**
  * Client plugin body: register the type, its dictionaries, its body, and its chip title.
@@ -87,8 +87,6 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     {
       name: 'sidebar.right.pane.tab', key: FILES_ID, locale: NS, store, inject: (sessionId, actions): FilesBodyInjected => ({ ...inject(sessionId, actions),
-        openContextMenu: (kind, path, paneId, point) => { ctx.menus.open(kind === 'directory'
-          ? { kind, value: { sessionId, path } } : { kind: 'file', value: { sessionId, path, paneId } }, point) },
       }),
       children: { 'sidebar.right.tab.files.actions': { kind: 'list', scope: 'session' } },
     },

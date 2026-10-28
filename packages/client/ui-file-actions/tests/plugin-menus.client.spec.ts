@@ -13,7 +13,7 @@ it('contributes file and image operations without open-in-app and withdraws them
   const ctx = new Context()
   const failure = vi.fn(), notify = vi.fn()
   const registry = new MenuRegistry(failure)
-  ctx.provide('menus', { register: registry.register.bind(registry), notify } as never)
+  ctx.provide('contextMenus', { register: registry.register.bind(registry), notify } as never)
   const registerLocale = vi.fn(() => () => {})
   ctx.provide('locale', { register: registerLocale, bind: () => (key: string) => key } as never)
   const readBytes = vi.fn(async () => ({ ok: true as const, value: { data: [1, 2, 3] } }))

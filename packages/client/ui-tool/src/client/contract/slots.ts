@@ -16,7 +16,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /**
      * Keyed Tool view dispatched by wire name, including custom tools.
      * Register with `key: '<tool name>'`; a typo never renders.
-     *
      * Occupied keys replace the view; unclaimed keys use the generic row. Owner
      * phase data includes `name` and lazy `args`; preparing arguments may be incomplete.
      */
@@ -67,7 +66,7 @@ export interface ToolCallCommonProps {
   /** Open an argument path at its optional requested line. */
   openFile: (path: string, options?: OpenFileOptions) => void
   /** Session-bound menu capability passed by the Chat owner. */
-  openContextMenu?: ChatNodeOwnerProps['openContextMenu']
+  getContextMenuProps?: ChatNodeOwnerProps['getContextMenuProps']
   /** Chat-supplied, Gateway-authorized loader for durable images; Tool views do not manage attachment URLs. */
   loadImage: MessageImageLoader
   /** Inspect this call in the trajectory view when available. */

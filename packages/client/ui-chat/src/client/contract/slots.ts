@@ -60,6 +60,7 @@ export interface TurnTailOwnerProps {
   turn: TurnLocation
   seq: number
   openFile: (path: string) => void
+  getContextMenuProps?: MarkdownDelegate['getContextMenuProps']
 }
 
 /** Owner currency of finalized-assistant actions. */
@@ -231,7 +232,7 @@ export interface ChatNodeOwnerProps {
   cwd?: string | undefined
   openFile: (path: string, options?: OpenFileOptions) => void
   /** Object-menu callback bound to the originating Session and path base. */
-  openContextMenu?: MarkdownDelegate['openContextMenu']
+  getContextMenuProps?: MarkdownDelegate['getContextMenuProps']
   inspectCall: ((callId: ToolCallId) => void) | undefined
   forkAt: (seq: number) => void
   /** Session-authorized image loader supplied by the Chat view. */
@@ -317,8 +318,8 @@ export interface PerformanceUsageInjected {
 export interface ChatViewInjected {
   /** File preparation and failure callbacks owned by the file-drag plugin. */
   readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions
-  /** Open the captured reference without navigating or changing Session selection. */
-  openContextMenu: NonNullable<MarkdownDelegate['openContextMenu']>
+  /** Resolve the reference against this Session and its current path base when the gesture begins. */
+  resolveContextMenuTarget: (target: import('@deepseek-ai/dsh-client-ui-primitives').MarkdownMenuTarget) => import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget
   /** Dispatch one gesture to the Conversation plugin registry. */
   dispatchInteraction: (gesture: TextInteractionGesture) => string | null
   hooks: {
@@ -362,7 +363,7 @@ export type ChatFlowDataInjected = Pick<ChatViewInjected, 'keyedHooks'> & {
 
 /** Ordered rows and reconciled local echoes rendered inside one Chat viewport. */
 export interface ChatFlowOwnerProps extends Pick<ChatNodeOwnerProps,
-  'cwd' | 'openFile' | 'openContextMenu' | 'inspectCall' | 'forkAt' | 'loadImage' | 'fileMentions'> {
+  'cwd' | 'openFile' | 'getContextMenuProps' | 'inspectCall' | 'forkAt' | 'loadImage' | 'fileMentions'> {
   readonly entries: readonly RenderEntry[]
   readonly pendingInputs: readonly (PendingSubmission | InboxState['next-step'][number])[]
   readonly lastInputTurn: number | undefined

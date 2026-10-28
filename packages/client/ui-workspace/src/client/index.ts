@@ -11,7 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
  * own `single` directory-flow child hole for the composed picker package's
  * client half. WorkspaceBrowser additionally declares the two Session row
  * action lists. Built-in Session menu actions contribute structured data to
- * ctx.menus, while external React entries retain the legacy Slot. Dialogs and
+ * ctx.contextMenus, while external React entries retain the legacy Slot. Dialogs and
  * the row-action notice register in `shell.overlay` (see the contract module doc). It also declares two
  * Session-row seats: the leading decoration a row renders only while its own
  * primary state is idle, and the section the row's hover card renders between
@@ -101,7 +101,7 @@ const NS = 'workspace'
  * provides a waitable service. apply therefore depends on each slot
  * declaration through `slots.inject()` instead of assuming order.
  */
-export const inject = ['menus',
+export const inject = ['contextMenus',
   'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts', 'remoteAccess',
 ]
 
@@ -269,12 +269,12 @@ export function apply(ctx: Context): void {
     if (workspace === undefined || !ctx.remoteAccess.source('workspace', workspaceId, `workspace/${action}`).getSnapshot()) return
     workspaceActionRequest.set({ action, workspaceId, displayTitle, storedTitle: workspace.title })
   }
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'workspace.rename', target: 'workspace', order: 100,
     resolve: ({ workspaceId, displayTitle }) => ctx.remoteAccess.source('workspace', workspaceId, 'workspace/rename').getSnapshot()
       ? [{ id: 'rename', label: ctx.locale.bind(NS)('rename'), icon: createElement(IconEditOutlineRegular), run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'rename') } }] : [],
   }), 'workspace: rename menu action')
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'workspace.delete', target: 'workspace', order: 300,
     resolve: ({ workspaceId, displayTitle }) => ctx.remoteAccess.source('workspace', workspaceId, 'workspace/delete').getSnapshot()
       ? [{ id: 'delete', label: ctx.locale.bind(NS)('delete.workspace'), icon: createElement(IconTrashOutlineRegular), danger: true, separatorBefore: true,
@@ -282,15 +282,15 @@ export function apply(ctx: Context): void {
   }), 'workspace: delete menu action')
   const browserInjected = (): WorkspaceBrowserInjected => ({
     openWorkspaceMenu: (workspaceId, path, displayTitle, point, mode) => {
-      const target = ctx.menus.active.getSnapshot()
-      if (mode === 'toggle' && target?.kind === 'workspace' && target.value.workspaceId === workspaceId) ctx.menus.close()
-      else ctx.menus.open({ kind: 'workspace', value: { workspaceId, path, displayTitle } }, point)
+      const target = ctx.contextMenus.active.getSnapshot()
+      if (mode === 'toggle' && target?.kind === 'workspace' && target.value.workspaceId === workspaceId) ctx.contextMenus.close()
+      else ctx.contextMenus.open({ kind: 'workspace', value: { workspaceId, path, displayTitle } }, point)
     },
     settleWorkspaceAction: () => { workspaceActionRequest.set(null) },
     openSessionMenu: (sessionId, displayTitle, point, mode) => {
-      const target = ctx.menus.active.getSnapshot()
-      if (mode === 'toggle' && target?.kind === 'session' && target.value.sessionId === sessionId) ctx.menus.close()
-      else ctx.menus.open({ kind: 'session', value: { sessionId, displayTitle } }, point)
+      const target = ctx.contextMenus.active.getSnapshot()
+      if (mode === 'toggle' && target?.kind === 'session' && target.value.sessionId === sessionId) ctx.contextMenus.close()
+      else ctx.contextMenus.open({ kind: 'session', value: { sessionId, displayTitle } }, point)
     },
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
@@ -311,7 +311,7 @@ export function apply(ctx: Context): void {
     requestAddWorkspace: shortcutControls.add,
     closeAddWorkspace: shortcutControls.closeAdd,
     setDirectoryBusy: shortcutControls.directoryBusy,
-    hooks: { workspaceActionRequest, menuTarget: ctx.menus.active, directoryFlow: browserFlowSource, hostInfo,
+    hooks: { workspaceActionRequest, menuTarget: ctx.contextMenus.active, directoryFlow: browserFlowSource, hostInfo,
       workspaceShortcuts: shortcutControls.state, shortcuts: ctx.shortcuts.catalog },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({

@@ -24,7 +24,7 @@ it.each([
   locale.register(NS, { en, zh }); locale.setLocale('en')
   const registry = new MenuRegistry(vi.fn())
   onTestFinished(() => { registry.dispose() })
-  ctx.provide('menus', { register: registry.register.bind(registry) } as never)
+  ctx.provide('contextMenus', { register: registry.register.bind(registry) } as never)
   const sessionId = SessionId('captured')
   const list = createSnapshotStore<SessionListState>({ ids: [sessionId], byId: {
     [sessionId]: { id: sessionId, ...(cwd === undefined ? {} : { cwd }), displayTitle: 'Captured', running: false, blank: false, updatedAt: 1, retainedBy: {} },

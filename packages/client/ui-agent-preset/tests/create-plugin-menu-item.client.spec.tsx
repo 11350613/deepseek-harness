@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { useState, type ComponentProps } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -29,7 +30,7 @@ function view(roster: Partial<AgentPresetSettingsState> = {}, inMenu = false) {
     useAgentPresets: bindSnapshotSelector(agentPresets),
     usePanelInfo: unusedHook, useSessions: unusedHook, useSessionStatus: unusedHook,
     useSessionRetainInfo: unusedHook, useWorkspaces: unusedHook, useResource: unusedHook,
-    ...allowAllAccess,
+    ...allowAllAccess, useContextMenu: contextMenuHook(),
     load, startCreatorDraft, onDismiss,
   }
   function TestMenu() {

@@ -1,4 +1,3 @@
-import { menuPoint } from '@deepseek-ai/dsh-util-context-menu'
 /** Strict per-session header/body content inserted into the resident conversation layout. */
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -108,8 +107,9 @@ function equalBreadcrumbs(left: readonly Breadcrumb[], right: readonly Breadcrum
  */
 export function ConversationSessionHeader({
   sessionId, hideChrome, useSessions, useConversationViews, useStore,
-  renderSlot, open, openSessionMenu, selectView, setPinned, t, useEntryPins, useEntryActions,
+  renderSlot, open, useContextMenu, selectView, setPinned, t, useEntryPins, useEntryActions,
 }: ConversationSessionHeaderProps) {
+  const { getTriggerProps } = useContextMenu()
   const tabs = useConversationViews(value => value)
   const selectedId = useStore(s => s.view)
   const active = resolveActiveView(tabs, selectedId)
@@ -177,10 +177,7 @@ export function ConversationSessionHeader({
                     ...last ? {} : { openTitle: () => { open(summary.id) } },
                   }
                   return (
-                    <span key={summary.id} className={css.crumbSeg} onContextMenu={(event) => {
-                      event.preventDefault(); event.stopPropagation()
-                      openSessionMenu(summary.id, summary.displayTitle, menuPoint(event))
-                    }}>
+                    <span key={summary.id} className={css.crumbSeg} {...getTriggerProps({ kind: 'session', value: { sessionId: summary.id, displayTitle: summary.displayTitle } })}>
                       {index > 0 && <span className={css.crumbSep}>/</span>}
                       {lineage
                         ? summary.subagent

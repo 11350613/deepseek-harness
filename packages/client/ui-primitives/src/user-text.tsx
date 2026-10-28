@@ -1,7 +1,6 @@
 /** Inline text and reference presentation; business rules supply resolved JSON data and actions. */
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
-import { contextMenuTrigger } from '@deepseek-ai/dsh-util-context-menu'
 import { ReferenceIconRegular, type ReferenceIconKind } from './ReferenceIcon.tsx'
 import css from './user-text.module.css'
 import markdownCss from './markdown/MarkdownText.module.css'
@@ -23,8 +22,8 @@ export function UserTextRun({ text }: UserTextRunProps): ReactNode {
 /** Presentation selected by a reference renderer, independent of its matching grammar. */
 export interface ReferenceChipProps {
   readonly appearance: ReferenceIconKind | 'skill' | 'command'
-  /** Explicit object-menu callback; absent for display-only references. */
-  readonly openContextMenu?: (point: { x: number; y: number }) => void
+  /** Explicit object-menu gesture bindings; absent for display-only references. */
+  readonly contextMenuProps?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>
   readonly label: string
   readonly title: string
   /** Absent for display-only references and previews. */
@@ -38,26 +37,24 @@ export interface ReferenceChipProps {
  * @returns an inline label, or a keyboard-accessible button when activation is supplied.
  */
 export function ReferenceChip({
-  appearance, label, title, onActivate, openContextMenu,
+  appearance, label, title, onActivate, contextMenuProps,
 }: ReferenceChipProps): ReactNode {
   const slash = appearance === 'skill' || appearance === 'command'
   const contents = <>
     {!slash && <ReferenceIconRegular kind={appearance} size={16} className={css.refIcon} />}
     {label}
   </>
-  const menu = contextMenuTrigger(openContextMenu)
   const className = clsx(css.refChip, slash && css.slashChip)
   return onActivate === undefined
     ? <span
-      {...menu}
-      tabIndex={openContextMenu === undefined ? undefined : 0}
+      {...contextMenuProps}
       className={className}
       data-ref-chip={appearance}
       title={title}
     >{contents}</span>
     : <button
       type="button"
-      {...menu}
+      {...contextMenuProps}
       className={clsx(className, markdownCss.fileMention)}
       data-ref-chip={appearance}
       title={title}

@@ -14,7 +14,7 @@ import { MessageImages, MessageImagesContent } from './MessageImages.tsx'
 type MessageImagesInjected = SlotFactoryMap['conversation.images.content']['inject']
 
 /** Slot registry required by the attachment presentation plugin. */
-export const inject = ['slots', 'fileDrag', 'menus']
+export const inject = ['slots', 'fileDrag']
 
 /**
  * Register composer attachments and the shared gallery with its domain adapters.
@@ -25,7 +25,6 @@ export function apply(ctx: ClientContext): void {
     name: 'conversation.images.content', scope: 'root', locale: 'conversation',
     inject: (): MessageImagesInjected => ({
       fileDrag: ctx.fileDrag.actions,
-      openImageMenu: (source, point) => { ctx.menus.open({ kind: 'image', value: source }, point) },
     }),
   }, MessageImagesContent)
   ctx.slots.inject('conversation.input.attachments', () => ctx.slots.register({

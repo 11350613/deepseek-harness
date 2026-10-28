@@ -4,9 +4,27 @@ import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PaneId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
+import type { HTMLAttributes } from 'react'
+
+/** DOM handlers bound to an explicit object; existing handlers can prevent menu activation. */
+export type ContextMenuTriggerProps = Pick<HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>
+
+/** Functions supplied by the globally injected useContextMenu hook. */
+export interface ContextMenuBindings {
+  /**
+   * Bind an object or deferred business target to one element. This is an ordinary function, safe in loops.
+   * @param target - Object captured when the gesture runs; undefined retains native behavior.
+   * @param handlers - Existing handlers run first and can cancel with preventDefault().
+   * @returns Combined pointer and keyboard handlers plus a keyboard focus stop.
+   */
+  getTriggerProps: (target: MenuTarget | (() => MenuTarget) | undefined, handlers?: ContextMenuTriggerProps) => ContextMenuTriggerProps
+}
+
+/** Read menu gesture bindings owned by the current menu plugin lifetime. */
+export type UseContextMenu = () => ContextMenuBindings
 
 /** External plugins extend this map with their own target families. */
-export interface MenuTargetMap {
+export interface ContextMenuTargetMap {
   session: { readonly sessionId: SessionId; readonly displayTitle: string }
   file: { readonly sessionId: SessionId; readonly path: string; readonly line?: number; readonly paneId?: PaneId }
   directory: { readonly sessionId: SessionId; readonly path: string }
@@ -22,7 +40,9 @@ export interface MenuTargetMap {
 }
 
 /** Captured target; changing selection never changes an open menu's target. */
-export type MenuTarget = { [K in keyof MenuTargetMap]: { readonly kind: K; readonly value: MenuTargetMap[K] } }[keyof MenuTargetMap]
+export type MenuTarget = {
+  [K in keyof ContextMenuTargetMap]: { readonly kind: K; readonly value: ContextMenuTargetMap[K] }
+}[keyof ContextMenuTargetMap]
 /** Pointer position in CSS pixels; keyboard gestures use the trigger's bottom edge. */
 export interface MenuPoint { readonly x: number; readonly y: number }
 /** Client presentation fields; callbacks stay in the registry. */
@@ -48,7 +68,7 @@ export interface MenuAction extends Omit<MenuActionView, 'children'> {
   readonly run?: () => void | Promise<void>
 }
 /** A namespaced contribution, ordered within its target family. */
-export interface MenuContribution<K extends keyof MenuTargetMap> {
+export interface MenuContribution<K extends keyof ContextMenuTargetMap> {
   readonly id: string
   readonly target: K
   readonly order: number
@@ -57,13 +77,13 @@ export interface MenuContribution<K extends keyof MenuTargetMap> {
    * @param target - clicked object.
    * @returns sources owned by the contributing feature; unsubscribed on dismissal or unload.
    */
-  observe?(target: MenuTargetMap[K]): readonly ObservableSnapshot<unknown>[]
+  observe?(target: ContextMenuTargetMap[K]): readonly ObservableSnapshot<unknown>[]
   /**
    * @param target - clicked object.
    * @param signal - aborted on dismissal, plugin unload, or a newer observed preparation.
    * @returns available actions.
    */
-  resolve(target: MenuTargetMap[K], signal: AbortSignal): readonly MenuAction[] | Promise<readonly MenuAction[]>
+  resolve(target: ContextMenuTargetMap[K], signal: AbortSignal): readonly MenuAction[] | Promise<readonly MenuAction[]>
 }
 /** Independent menu occurrence used by custom renderers and embedded menus. */
 export interface MenuResolution {
@@ -88,7 +108,7 @@ export interface ContextMenus {
    * @param contribution - target provider.
    * @returns unregister.
    */
-  register<K extends keyof MenuTargetMap>(contribution: MenuContribution<K>): () => void
+  register<K extends keyof ContextMenuTargetMap>(contribution: MenuContribution<K>): () => void
   /**
    * Open the single shared popup.
    * @param target - captured object.

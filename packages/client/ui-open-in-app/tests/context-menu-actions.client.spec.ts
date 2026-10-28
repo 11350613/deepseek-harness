@@ -48,7 +48,7 @@ async function boot() {
   const directories = new OpenInAppController(directoryFetch)
   const paths = new OpenInAppPathController(remote)
   ctx.provide('remote', remote as never)
-  ctx.provide('menus', { register: registry.register.bind(registry), notify } as never)
+  ctx.provide('contextMenus', { register: registry.register.bind(registry), notify } as never)
   ctx.provide('sessions', { list: sessions } as never)
   ctx.provide('fileActions', fileActions as never)
   ctx.provide('sidebarRight', sidebar as never)

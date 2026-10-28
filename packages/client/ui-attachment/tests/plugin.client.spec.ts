@@ -21,7 +21,7 @@ async function bench() {
     await ctx.fiber.dispose()
   })
   ctx.provide('sessions', sessions)
-  ctx.provide('menus', { open: vi.fn() } as never)
+  ctx.provide('contextMenus', { open: vi.fn() } as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
   await ctx.plugin(SlotRegistry).await()
   ctx.slots.register({
@@ -50,7 +50,7 @@ describe('attachment plugin', () => {
 
   it('registers all entries and removes them with the plugin fiber', async () => {
     const { ctx, fiber, register, registerFactory, readFileDrag } = await bench()
-    expect(inject).toEqual(['slots', 'fileDrag', 'menus'])
+    expect(inject).toEqual(['slots', 'fileDrag'])
     expect(registerFactory.mock.calls[0]?.[0]).toMatchObject({
       name: 'conversation.images.content', scope: 'root', locale: 'conversation',
     })

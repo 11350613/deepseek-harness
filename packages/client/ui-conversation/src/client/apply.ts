@@ -59,7 +59,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Services required by the Conversation plugin. */
 export const inject = [
-  'menus',
   'slots', 'sessions', 'fileUpload', 'uiSession', 'uiWorkspace', 'locale', 'configForms',
 ]
 
@@ -452,7 +451,6 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     inject: (sessionId: SessionId, actions: BoundActions<typeof conversationStore>): ConversationSessionHeaderInjected => ({
       hooks: { conversationViews, entryPins: viewPins.unpinned, entryActions: viewActions },
       setPinned: viewPins.setPinned,
-      openSessionMenu: (sessionId, displayTitle, point) => { ctx.menus.open({ kind: 'session', value: { sessionId, displayTitle } }, point) },
       open: (id) => { workspaceNavigation.openSession(id) },
       selectView: (view) => {
         activateView(sessionId, view)

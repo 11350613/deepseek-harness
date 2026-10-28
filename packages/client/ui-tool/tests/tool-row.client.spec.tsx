@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useDisclosure } from '@deepseek-ai/dsh-client-ui-chat/src/client/chat/use-disclosure.ts'
 import { cleanup, fireEvent, render } from '@testing-library/react'
@@ -332,7 +333,7 @@ describe('ToolRow', () => {
 
   it('declares file and URL menus without losing line numbers or toggling the row', () => {
     const open = vi.fn(), openFile = vi.fn()
-    const view = render(<ToolRow onOpenContextMenu={open} {...rowProps} variant="read" summary="file.ts:42" filePath="/workspace/file.ts" filePathLine={42} onOpenFile={openFile} />)
+    const view = render(<ToolRow getContextMenuProps={contextMenuHook(open)().getTriggerProps} {...rowProps} variant="read" summary="file.ts:42" filePath="/workspace/file.ts" filePathLine={42} onOpenFile={openFile} />)
     const file = view.getByRole('button', { name: 'file.ts:42' })
     file.getBoundingClientRect = () => new DOMRect(10, 20, 100, 20)
     fireEvent.contextMenu(file, { clientX: 30, clientY: 40 })
@@ -343,7 +344,7 @@ describe('ToolRow', () => {
     ])
     expect(view.container.querySelector('[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false')
     expect(openFile).not.toHaveBeenCalled()
-    view.rerender(<ToolRow onOpenContextMenu={open} {...rowProps} summary="Website" href="https://example.com?q=1#part" />)
+    view.rerender(<ToolRow getContextMenuProps={contextMenuHook(open)().getTriggerProps} {...rowProps} summary="Website" href="https://example.com?q=1#part" />)
     const link = view.getByRole('link')
     fireEvent.contextMenu(link, { clientX: 40, clientY: 50 })
     expect(open).toHaveBeenLastCalledWith({ kind: 'url', url: 'https://example.com?q=1#part' }, { x: 40, y: 50 })

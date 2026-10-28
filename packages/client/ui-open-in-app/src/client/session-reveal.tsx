@@ -18,7 +18,7 @@ export function registerSessionReveal(
   t: PropsLocale<'open-in-app'>['t'],
   report: OpenInAppToastSource['report'],
 ): void {
-  ctx.effect(() => ctx.menus.register({
+  ctx.effect(() => ctx.contextMenus.register({
     id: 'open-in-app.reveal', target: 'session', order: 500,
     observe: () => [controller.apps, ctx.sessions.list, ctx.locale],
     resolve: ({ sessionId }) => {

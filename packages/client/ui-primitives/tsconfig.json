@@ -22,9 +22,6 @@
     },
     {
       "path": "../../util/file-drag"
-    },
-    {
-      "path": "../../util/context-menu"
     }
   ]
 }

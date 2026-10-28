@@ -94,7 +94,7 @@ describe('Workspace header actions under the page access snapshot', () => {
       expect(screen.queryByRole('button', { name: '在“Project”中新建会话' })).toBeNull()
       expect(screen.getByRole('button', { name: '工作区“Project”的操作' })).toBeTruthy()
       const target = { kind: 'workspace' as const, value: { workspaceId: WORKSPACE, path: '/projects/project', displayTitle: 'Project' } }
-      const deniedMenu = runtime.ctx.menus.resolve(target)
+      const deniedMenu = runtime.ctx.contextMenus.resolve(target)
       await deniedMenu.ready
       expect(deniedMenu.source.getSnapshot()).toEqual([])
       deniedMenu.dispose()
@@ -114,7 +114,7 @@ describe('Workspace header actions under the page access snapshot', () => {
       expect(screen.getByRole('button', { name: '工作区“Project”的操作' })).toBeTruthy()
       expect(screen.getByRole('treeitem').getAttribute('draggable')).toBe('true')
 
-      const grantedMenu = runtime.ctx.menus.resolve(target)
+      const grantedMenu = runtime.ctx.contextMenus.resolve(target)
       await grantedMenu.ready
       expect(grantedMenu.source.getSnapshot().map(item => item.id)).toEqual(['workspace.rename/rename'])
       act(() => { access.replace({ type: 'baseline', owner: false, grants: [] }) })

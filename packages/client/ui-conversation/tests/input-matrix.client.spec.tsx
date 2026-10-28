@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 /**
  * Impact-matrix projection tests (row by row): what each
  * phase projects onto the InputBar — enter routing, visuals (command chip /
@@ -66,7 +67,7 @@ function mountBar(shell: SessionInputShell, over?: { running?: boolean; disabled
       items: [], archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
       baselinesReady: true, recentWorkspaceId: undefined,
     })),
-    ...allowAllAccess,
+    ...allowAllAccess, useContextMenu: contextMenuHook(),
     useProjection: (() => undefined),
     useConversation: bindSnapshotSelector(createSnapshotStore(conversationSnapshot())),
     useInput: bindSnapshotSelector(shell.state),

@@ -1,4 +1,3 @@
-import { menuPoint } from '@deepseek-ai/dsh-util-context-menu'
 /**
  * Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
  * all data and callbacks arrive via props. Hover swaps (folder->chevron,
@@ -231,7 +230,7 @@ type ProjectRowItemProps = {
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
   home?: string | undefined
   t: RowTranslate
-} & Pick<WorkspaceBrowserProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'openWorkspaceMenu' | 'useMenuTarget'>
+} & Pick<WorkspaceBrowserProps, 'useRemoteAccess' | 'useWorkspaceAccess' | 'openWorkspaceMenu' | 'useMenuTarget' | 'useContextMenu'>
 
 /** Which of one header row's actions the caller's access snapshot allows. */
 interface ProjectRowAccess {
@@ -280,8 +279,9 @@ function WorkspaceProjectRow({ workspaceId, ...props }: ProjectRowItemProps & { 
 
 function ProjectRow({
   group, containsCurrentDescendant = false, onToggle, onCreate, drag: offeredDrag, home, newShortcut, t, access,
-  openWorkspaceMenu, useMenuTarget,
+  openWorkspaceMenu, useMenuTarget, useContextMenu,
 }: ProjectRowItemProps & { access: ProjectRowAccess }) {
+  const { getTriggerProps } = useContextMenu()
   const drag = access.reorder ? offeredDrag : undefined
   const row = group
   // The ungrouped bucket has no workspace title: its label is dictionary copy.
@@ -298,11 +298,7 @@ function ProjectRow({
       role="treeitem"
       aria-expanded={row.expanded}
       onClick={onToggle}
-      onContextMenu={(event) => {
-        if (row.workspaceId === undefined || row.cwd === undefined) return
-        event.preventDefault(); event.stopPropagation()
-        openWorkspaceMenu(row.workspaceId, row.cwd, label, menuPoint(event))
-      }}
+      {...getTriggerProps(workspaceMenuTarget === undefined ? undefined : { kind: 'workspace', value: { ...workspaceMenuTarget, displayTitle: label } })}
       draggable={drag !== undefined}
       onDragStart={drag === undefined
         ? undefined
@@ -599,8 +595,10 @@ export function SearchResultItem({
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRenameRequest, renderSlot, openSessionMenu, useMenuTarget, onReveal, drag, home, useSessionAccess, t,
+  node, currentId, now, onOpen, onRenameRequest, renderSlot, openSessionMenu, useMenuTarget,
+  useContextMenu, onReveal, drag, home, useSessionAccess, t,
 }: {
+  useContextMenu: WorkspaceBrowserProps['useContextMenu']
   openSessionMenu: WorkspaceBrowserProps['openSessionMenu']
   useMenuTarget: WorkspaceBrowserProps['useMenuTarget']
   node: SessionNode
@@ -622,6 +620,7 @@ export function SessionNodeItem({
   | 'sidebar.session.row.leading'
   | 'sidebar.session.row.hover'
 >) {
+  const { getTriggerProps } = useContextMenu()
   const row = node
   const title = displayTitle(node, t)
   const selected = node.id === currentId
@@ -666,18 +665,14 @@ export function SessionNodeItem({
       aria-selected={selected}
       aria-description={row.archived ? t('toast.archivedNotOpenable') : undefined}
       tabIndex={0}
-      onContextMenu={(event) => {
-        if (row.blank) return
-        event.preventDefault(); event.stopPropagation()
-        openSessionMenu(node.id, row.title, menuPoint(event))
-      }}
+
       onClick={() => { onOpen(node.id) }}
-      onKeyDown={(event) => {
+      {...getTriggerProps(row.blank ? undefined : { kind: 'session', value: { sessionId: node.id, displayTitle: row.title } }, { onKeyDown: (event) => {
         if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
         event.preventDefault()
         onOpen(node.id)
-      }}
+      } })}
       onPointerEnter={marquee.enter}
       onPointerLeave={() => { if (!menuOpen) marquee.leave() }}
       draggable={draggable}

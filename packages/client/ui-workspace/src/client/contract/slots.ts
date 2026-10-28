@@ -23,7 +23,7 @@
  * contract and the same occupant.
  *
  * WorkspaceBrowser declares the Session hover-button list. Its built-in
- * pin and archive entries share callbacks with the structured ctx.menus
+ * pin and archive entries share callbacks with the structured ctx.contextMenus
  * contributions. The Session menu adapter owns the legacy
  * `sidebar.workspaces.session.menu.item` Slot for external React entries;
  * they receive the captured row identity and render together before Archive.
@@ -53,7 +53,7 @@ import type {} from './toast.ts'
 import type { createWorkspaceViewStore } from '../stores.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-context-menu/client' {
-  interface MenuTargetMap {
+  interface ContextMenuTargetMap {
     /** Registered Workspace header; path and title belong to the clicked row. */
     workspace: { readonly workspaceId: WorkspaceId; readonly path: string; readonly displayTitle: string }
   }
@@ -163,7 +163,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /**
      * Legacy external Session menu rows, in ascending `order`, rendered
      * together before the built-in Archive action. Built-in actions use
-     * ctx.menus; Slot priority cannot replace them. Each entry renders a
+     * ctx.contextMenus; Slot priority cannot replace them. Each entry renders a
      * `role="menuitem"` button, owns its visibility and localized label,
      * and dismisses through `useMenuOpenState`. The shared menu supplies
      * keyboard navigation and focus return.

@@ -37,7 +37,7 @@ kind: "package-reference"
 
 已发送的普通文件附件保留草稿中的[文件卡片圆角](../../../docs/ui-radius.zh.md#radius-scale)。
 
-引用组件通过带作用域的 Markdown delegate 声明右键目标。工具文件控件通过消息流和节点 Slot 显式接收 `openContextMenu`。两者均使用记录的路径，而不是显示标签。Chat 补齐 Session 与路径上下文，不解释插件 DOM 属性或未声明的链接。Shift+F10 和菜单键打开焦点引用的菜单；图片与可编辑控件保留自己的处理器。
+引用组件通过带作用域的 Markdown delegate 声明右键目标。工具文件控件通过消息流和节点 Slot 显式接收 `getContextMenuProps`。两者均使用记录的路径，而不是显示标签。Chat 补齐 Session 与路径上下文，不解释插件 DOM 属性或未声明的链接。Shift+F10 和菜单键打开焦点引用的菜单；图片与可编辑控件保留自己的处理器。
 
 原生消息图片使用独立的用户与输出位置。`conversation.chat.user.content` Factory 声明 `conversation.chat.user.images`，由 `UserContent` 渲染；Assistant 节点注册声明 `conversation.chat.message.images`，由 `AssistantMarkdown` 渲染。两者通过显式 props 接收图片来源、授权 `loadImage` 和布局参数。官方 `MessageImages` 条目调用共享的 root 作用域 `conversation.images.content` Factory。每个位置均可独立替换，无需复制画廊实现。
 

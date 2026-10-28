@@ -12,14 +12,20 @@ import { createMenuStore } from './store.ts'
 import { dictionaries } from './locales.ts'
 import { MenuOverlay } from './View.tsx'
 import type { ContextMenus, MenuResolution, MenuTarget } from './types.ts'
+import { createContextMenuBindings } from './trigger.ts'
 
-export type { ContextMenus, MenuTarget, MenuTargetMap, MenuPoint, MenuAction, MenuActionView, MenuContribution, MenuResolution } from './types.ts'
+export type { ContextMenus, MenuTarget, ContextMenuTargetMap, MenuPoint, MenuAction, MenuActionView, MenuContribution, MenuResolution } from './types.ts'
+export type { ContextMenuBindings, ContextMenuTriggerProps, UseContextMenu } from './types.ts'
 export { createMenuStore } from './store.ts'
 
 declare module '@deepseek-ai/cordis' {
-  interface Context { /** Extensible context menus for explicit clicked objects. */ menus: ContextMenus }
+  interface Context { /** Extensible context menus for explicit clicked objects. */ contextMenus: ContextMenus }
 }
 declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface GlobalStandardProps {
+    /** Menu bindings for explicit objects, available in every Slot scope. */
+    useContextMenu: import('./types.ts').UseContextMenu
+  }
   interface SlotMap {
     /** Optional React rows for existing extension positions; data contributions need no renderer. */
     'contextMenu.content': { kind: 'keyed'; scope: 'root'; owner: { target: MenuTarget; dismiss: () => void } }
@@ -76,7 +82,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     closeTimer = setTimeout(() => { instance.actions.close() }, replacing ? MENU_TRANSITION_MS.replace : MENU_TRANSITION_MS.dismiss)
   }
   const close = (): void => { dismiss(false) }
-  const menus: ContextMenus = {
+  const contextMenus: ContextMenus = {
     active: targetSource,
     register: input => registry.register(input), resolve: target => registry.resolve(target), notify, close,
     open: (target, point) => {
@@ -107,7 +113,9 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       })
     },
   }
-  ctx.provide('menus', menus)
+  ctx.provide('contextMenus', contextMenus)
+  const bindings = createContextMenuBindings((target, point) => { contextMenus.open(target, point) }, () => !disposed)
+  ctx.slots.provideRoot({ props: { useContextMenu: () => bindings } })
   ctx.effect(() => {
     const outside = (event: PointerEvent): void => {
       if (event.button === 2 || (event.target instanceof Element && event.target.closest('[role="menu"], [data-context-menu-trigger]'))) return
@@ -121,20 +129,12 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     }
     document.addEventListener('pointerdown', outside)
     document.addEventListener('contextmenu', context)
-    const keyboard = (event: KeyboardEvent): void => {
-      escape(event)
-      if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey
-        || !(event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)
-        || !(event.target instanceof HTMLElement)) return
-      const gesture = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
-      if (!event.target.dispatchEvent(gesture)) { event.preventDefault(); event.stopImmediatePropagation() }
-    }
-    window.addEventListener('keydown', keyboard, true)
+    window.addEventListener('keydown', escape, true)
     return () => {
       disposed = true; cancelOpening(); clearTimeout(closeTimer); registry.dispose(); instance.actions.close()
       document.removeEventListener('pointerdown', outside)
       document.removeEventListener('contextmenu', context)
-      window.removeEventListener('keydown', keyboard, true)
+      window.removeEventListener('keydown', escape, true)
     }
   }, 'context menu: lifetime')
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({

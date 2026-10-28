@@ -71,9 +71,6 @@
     },
     {
       "path": "../ui-context-menu"
-    },
-    {
-      "path": "../../util/context-menu"
     }
   ]
 }

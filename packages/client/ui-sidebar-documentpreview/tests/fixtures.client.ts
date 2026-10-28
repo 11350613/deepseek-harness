@@ -7,6 +7,7 @@
  * read, behind one documented cast, so the specs exercise the components and
  * not the slot runtime.
  */
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { ResourceRegistry } from '../../resources/src/client/resources.ts'
@@ -164,6 +165,7 @@ export function harness(script: Record<number, RemoteResult<WorkspaceFileText>> 
     }),
     sessionId: SESSION,
     useResource,
+    useContextMenu: contextMenuHook(),
     useStore: hookOf(instance),
     actions: instance.actions,
     loadPage: face.loadPage,

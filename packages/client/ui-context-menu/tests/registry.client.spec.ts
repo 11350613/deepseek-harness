@@ -4,7 +4,7 @@ import { MenuRegistry } from '../src/client/registry.ts'
 import type { MenuAction } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 
 declare module '@deepseek-ai/dsh-client-ui-context-menu/client' {
-  interface MenuTargetMap { extension: { readonly id: string } }
+  interface ContextMenuTargetMap { extension: { readonly id: string } }
 }
 const target = { kind: 'extension' as const, value: { id: 'clicked' } }
 

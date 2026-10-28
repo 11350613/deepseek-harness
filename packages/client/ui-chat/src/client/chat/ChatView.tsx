@@ -60,9 +60,13 @@ const MOTION_TAIL_MS = 800
  */
 export function ChatView({
   useSession, useChat, useConversation, useSessions, renderSlot,
-  sessionId, openFile, openExternalLink, openContextMenu, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
+  sessionId, openFile, openExternalLink, resolveContextMenuTarget, useContextMenu,
+  loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
   usePresentation, useProjection, useInteractionIds, dispatchInteraction, t, fileDrag,
 }: ChatViewSlotProps) {
+  const { getTriggerProps } = useContextMenu()
+  const getContextMenuProps = useCallback<NonNullable<import('@deepseek-ai/dsh-client-ui-primitives').MarkdownDelegate['getContextMenuProps']>>(
+    target => getTriggerProps(() => resolveContextMenuTarget(target)), [getTriggerProps, resolveContextMenuTarget])
   const order = useChat(s => s.order)
   const groupedEntries = useConversation(snapshot => snapshot.views.grouped('chat')?.entries)
   const entries = useMemo<readonly RenderEntry[]>(() => groupedEntries
@@ -231,14 +235,14 @@ export function ChatView({
               </div>
             )}
             <MarkdownDelegateProvider
-              openContextMenu={openContextMenu}
+              getContextMenuProps={getContextMenuProps}
               openFile={requestOpenFile}
               openExternalLink={openExternalLink}
               fileImages={fileImages}
             >
               {renderSlot('conversation.chat.flow', {
                 entries, pendingInputs, lastInputTurn, deferCollapse,
-                cwd, openFile: requestOpenFile, openContextMenu, inspectCall, forkAt, loadImage, fileMentions,
+                cwd, openFile: requestOpenFile, getContextMenuProps, inspectCall, forkAt, loadImage, fileMentions,
               }, { hookContext: flowContext })}
             </MarkdownDelegateProvider>
             <div ref={interactionSurfaceRef} className={css.textInteraction} data-text-interaction-surface=""

@@ -1,4 +1,3 @@
-import { menuPoint } from '@deepseek-ai/dsh-util-context-menu'
 /**
  * One pane: its tab strip (drag source, drop target, split control) and the
  * active tab's body with the dock preview overlay. Presentational; every gesture
@@ -304,6 +303,13 @@ export function TabStrip({ state, pane, callbacks, offsets }: TabStripProps): Re
           // A pane's lone unclosable chip is a label, not a choice: there is
           // no other tab to select against and nothing to do to it.
           const quiet = !closable && pane.tabs.length === 1
+          const onKeyDown = (event: import('react').KeyboardEvent<HTMLElement>) => {
+            if (event.target !== event.currentTarget) return
+            if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return
+            const next = chipToFocus(event.key, pane.tabs, tabId)
+            if (next !== undefined) { event.preventDefault(); focusChip(next); return }
+            if (selects(event.key)) { event.preventDefault(); activate(tabId) }
+          }
           return (
             <Fragment key={tabId}>
               {(index > 0 || stripIndex === index) && (
@@ -351,30 +357,13 @@ export function TabStrip({ state, pane, callbacks, offsets }: TabStripProps): Re
                   event.stopPropagation()
                   activate(tabId)
                 }}
-                onKeyDown={(event) => {
-                  // Keys on the chip's nested close control are that control's.
-                  if (event.target !== event.currentTarget) return
-                  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return
-                  const next = chipToFocus(event.key, pane.tabs, tabId)
-                  if (next !== undefined) {
-                    event.preventDefault()
-                    focusChip(next)
-                    return
-                  }
-                  if (selects(event.key)) {
-                    event.preventDefault()
-                    activate(tabId)
-                  }
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  if (callbacks.openTabMenu !== undefined) {
-                    callbacks.openTabMenu(tab, pane.id, menuPoint(event))
-                    return
-                  }
-                  const anchor = event.currentTarget
-                  setMenu(current => current?.tabId === tabId ? undefined : { tabId, anchor })
+                {...callbacks.getTabMenuProps?.(tab, pane.id, { onKeyDown, tabIndex: selected ? 0 : -1 }) ?? {
+                  onKeyDown,
+                  onContextMenu: (event) => {
+                    event.preventDefault(); event.stopPropagation()
+                    const anchor = event.currentTarget
+                    setMenu(current => current?.tabId === tabId ? undefined : { tabId, anchor })
+                  },
                 }}
               >
                 <TabTitle>{callbacks.renderTabTitle?.(tab) ?? tab.title}</TabTitle>

@@ -11,7 +11,7 @@ import type { RenderResult } from '@testing-library/react'
 import { onTestFinished, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { contextMenuHook, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SidebarRightTabActions } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { filesFace } from '../src/client/face.ts'
@@ -76,6 +76,7 @@ function harness(cwd: string | null, refreshShortcut?: ReturnType<FilesBodyProps
     close: vi.fn<SidebarRightTabActions['close']>(),
   }
   const sessions = { byId: cwd === null ? {} : { [SESSION]: { cwd } } } as unknown as SessionListState
+  const openMenu = vi.fn()
   const shared = {
     // A page tab's address is the shell's to mint; the body never reads it.
     useTabInfo: () => ({
@@ -89,7 +90,7 @@ function harness(cwd: string | null, refreshShortcut?: ReturnType<FilesBodyProps
       },
     }),
     renderSlot: () => null,
-    openContextMenu: vi.fn(),
+    openMenu, useContextMenu: contextMenuHook(openMenu),
     sessionId: SESSION,
     useSessions: <S,>(sel: (s: SessionListState) => S) => sel(sessions),
     useStore: hookOf(instance),

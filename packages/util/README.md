@@ -42,7 +42,6 @@ Each package provides one primitive or one data set; open a package page for how
 | [`lazy-require/`](lazy-require/README.md) | Loads CommonJS-compatible Host dependencies on first use with caller-relative resolution |
 | [`native-command/`](native-command/README.md) | Runs host-native commands directly, never through a shell string |
 | [`workspace-path/`](workspace-path/README.md) | Provides browser-safe Workspace path and display helpers |
-| [`context-menu/`](context-menu/README.md) | Adapts pointer and keyboard gestures to explicit context-menu callbacks |
 | [`code-language/`](code-language/README.md) | Maps a filename suffix to the syntax-highlighting language that the Code preview, diff review, and the read card render |
 | [`output-retention/`](output-retention/README.md) | Bounds model-facing output and reports exact omission metadata |
 | [`time/`](time/README.md) | Parses strict instants, local calendars, and caller-reported IANA zones, and holds a millisecond span |

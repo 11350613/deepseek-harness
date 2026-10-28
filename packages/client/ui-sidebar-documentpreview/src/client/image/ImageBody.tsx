@@ -1,4 +1,3 @@
-import { menuPoint } from '@deepseek-ai/dsh-util-context-menu'
 /** Complete image bytes rendered in a shared zoom viewport. */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { DraggableImage } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -30,7 +29,6 @@ type ImageMediaType = typeof IMAGE_MEDIA_TYPES[keyof typeof IMAGE_MEDIA_TYPES]
 /** Image-only operations injected alongside the shared zoom lifecycle. */
 export interface ImageBodyInjected extends ZoomInjected {
   readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions
-  readonly openImageMenu: (path: string, url: string, mediaType: string, point: { x: number; y: number }) => void
 }
 
 /** Standard document props plus the image renderer's dictionary. */
@@ -64,6 +62,7 @@ export function imageMediaType(path: string): ImageMediaType | undefined {
  * @returns a rounded image fitted or scaled at its intrinsic aspect ratio.
  */
 export function ImageBody(props: ImageBodyProps): ReactNode {
+  const { getTriggerProps } = props.useContextMenu()
   const { content, resourceAddress, t } = props
   const { tab } = props.useTabInfo()
   const preference = props.useStore(state => state.byTab[tab.id] ?? DEFAULT_ZOOM)
@@ -106,7 +105,7 @@ export function ImageBody(props: ImageBodyProps): ReactNode {
   }
   return <LoadedImage
     fileDrag={props.fileDrag}
-    openImageMenu={(point) => { props.openImageMenu(path, source.url, mediaType, point) }}
+    contextMenuProps={getTriggerProps({ kind: 'image', value: { sessionId: props.sessionId, path, url: source.url, mediaType } })}
     resourceAddress={resourceAddress}
     key={source.url}
     url={source.url}
@@ -123,9 +122,9 @@ export function ImageBody(props: ImageBodyProps): ReactNode {
 
 /** SVG stays in the browser's static image mode because its bytes only reach an img Blob URL. */
 function LoadedImage({
-  url, name, file, resourceAddress, preference, onPreference, labels, signal, scrollportRef, t, fileDrag, openImageMenu,
+  url, name, file, resourceAddress, preference, onPreference, labels, signal, scrollportRef, t, fileDrag, contextMenuProps,
 }: {
-  readonly openImageMenu: (point: { x: number; y: number }) => void
+  readonly contextMenuProps: import('@deepseek-ai/dsh-client-ui-context-menu/client').ContextMenuTriggerProps
   readonly fileDrag: ImageBodyInjected['fileDrag']
   readonly url: string
   readonly name: string
@@ -161,10 +160,7 @@ function LoadedImage({
         style={{ '--document-zoom-width': `${width ?? 0}px` } as CSSProperties} hidden={state !== 'ready'}>
         <DraggableImage
           fileDrag={fileDrag}
-          onContextMenu={(event) => {
-            event.preventDefault(); event.stopPropagation()
-            openImageMenu(menuPoint(event))
-          }}
+          {...contextMenuProps}
           resourceAddress={resourceAddress}
           ref={attachImage}
           className={css.image}

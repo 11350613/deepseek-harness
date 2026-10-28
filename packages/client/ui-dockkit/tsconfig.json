@@ -13,9 +13,6 @@
     },
     {
       "path": "../ui-primitives"
-    },
-    {
-      "path": "../../util/context-menu"
     }
   ]
 }

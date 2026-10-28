@@ -67,18 +67,19 @@ describe('ToolCallTree', () => {
       subCalls: [root('child', { name: 'custom_child', argsRaw: '{}' })] }
     const opened = vi.fn()
     const sessionId = 'captured-session'
-    const openContextMenu: NonNullable<ToolTreeProps['openContextMenu']> = (target, point) => {
-      opened(sessionId, target, point)
+    const getContextMenuProps: NonNullable<ToolTreeProps['getContextMenuProps']> = (target) => {
+      opened(sessionId, target)
+      return {}
     }
-    render(<ToolCallTree {...props(block, undefined, owners)} openContextMenu={openContextMenu} />)
+    render(<ToolCallTree {...props(block, undefined, owners)} getContextMenuProps={getContextMenuProps} />)
     expect(owners).toHaveLength(2)
     for (const owner of owners) {
-      expect(owner.openContextMenu).toBe(openContextMenu)
-      owner.openContextMenu?.({ kind: 'file', path: '/workspace/captured.ts', line: 42, base: 'workspace' }, { x: 10, y: 20 })
+      expect(owner.getContextMenuProps).toBe(getContextMenuProps)
+      owner.getContextMenuProps?.({ kind: 'file', path: '/workspace/captured.ts', line: 42, base: 'workspace' })
     }
     expect(opened).toHaveBeenCalledTimes(2)
     expect(opened).toHaveBeenLastCalledWith(sessionId,
-      { kind: 'file', path: '/workspace/captured.ts', line: 42, base: 'workspace' }, { x: 10, y: 20 })
+      { kind: 'file', path: '/workspace/captured.ts', line: 42, base: 'workspace' })
   })
 
   it('dispatches only the parent and changed child among 100 sibling calls', () => {

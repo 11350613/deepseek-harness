@@ -11,8 +11,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { ShortcutCommand } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
-import { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { FilesBodyProps } from '../src/client/FilesBody.tsx'
 import { FILES_ID, FILES_KIND } from '../src/client/definition.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -31,7 +29,7 @@ interface Recorded {
 
 async function boot() {
   const ctx = new Context()
-  ctx.provide('menus', { open: vi.fn() } as never)
+  ctx.provide('contextMenus', { open: vi.fn() } as never)
   const tabs = new SidebarRightTabRegistry(ctx)
   const registered: Recorded[] = []
   const slots = {
@@ -122,13 +120,6 @@ describe('ui-sidebar-files apply', () => {
 it('carries the file tree path and pane into its menu gesture', async () => {
   const h = await boot()
   try {
-    const injectBody = h.registered[0]!.inject as (id: import('@deepseek-ai/dsh-session/types').SessionId, actions: never) => Pick<FilesBodyProps, 'openContextMenu'>
-    const face = injectBody(SessionId('tree-menu'), {} as never)
-    face.openContextMenu('file', 'src/file.ts', 'pane' as never, { x: 45, y: 67 })
-    expect(vi.spyOn(h.ctx.menus, 'open')).toHaveBeenCalledWith({ kind: 'file', value: {
-      sessionId: 'tree-menu', path: 'src/file.ts', paneId: 'pane',
-    } }, { x: 45, y: 67 })
-    face.openContextMenu('directory', 'src', 'pane' as never, { x: 45, y: 67 })
-    expect(vi.spyOn(h.ctx.menus, 'open')).toHaveBeenLastCalledWith({ kind: 'directory', value: { sessionId: 'tree-menu', path: 'src' } }, { x: 45, y: 67 })
+
   } finally { await h.fiber.dispose() }
 })

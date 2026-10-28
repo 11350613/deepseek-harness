@@ -82,7 +82,7 @@ async function bench() {
   const notify = vi.fn()
   const menus = new MenuRegistry(notify)
   ctx.effect(() => () => { menus.dispose() })
-  ctx.provide('menus', { register: menus.register.bind(menus), resolve: menus.resolve.bind(menus), open: vi.fn(), notify } as never)
+  ctx.provide('contextMenus', { register: menus.register.bind(menus), resolve: menus.resolve.bind(menus), open: vi.fn(), notify } as never)
   ctx.provide('layout', layout)
   ctx.provide('sessions', { list })
   ctx.provide('shortcuts', { register: (command: ShortcutCommand) => { commands.set(command.id, command); return () => { commands.delete(command.id) } }, catalog: createSnapshotStore([]) })
@@ -125,7 +125,7 @@ describe('open-in-app browser half', () => {
     list.set({ ...list.getSnapshot(), ids: [id], byId: {
       [id]: { id, displayTitle: 'Captured', cwd: '/captured', running: false, blank: false, updatedAt: 0, retainedBy: {} },
     } })
-    const menu = ctx.menus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
+    const menu = ctx.contextMenus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
     const toast = toastSource(ctx)
     try {
       expect(ctx.slots.entries('sidebar.workspaces.session.menu.item')).toHaveLength(0)
@@ -142,7 +142,7 @@ describe('open-in-app browser half', () => {
         body: JSON.stringify({ app: 'finder', path: '/captured' }),
       }))
     } finally { menu.dispose(); await fiber.dispose() }
-    const removed = ctx.menus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
+    const removed = ctx.contextMenus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
     expect(removed.source.getSnapshot()).toEqual([])
     removed.dispose()
   })
@@ -254,7 +254,7 @@ describe('open-in-app browser half', () => {
   })
 
   it('declares the services it binds', () => {
-    expect(inject).toEqual(['menus', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout'])
+    expect(inject).toEqual(['contextMenus', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout'])
   })
 
   it('does not open a retained workspace while a global panel hides the Session header', async () => {

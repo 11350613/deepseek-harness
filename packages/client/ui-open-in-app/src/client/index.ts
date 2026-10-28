@@ -46,7 +46,7 @@ export type { OpenPathActionProps, OpenPathInjected } from './OpenPathAction.tsx
 export type { OpenPathEmptyActionProps } from './OpenPathEmptyAction.tsx'
 
 /** Required services: sessions, layout selection, the slot registry, copy, Remote calls, and shortcuts. */
-export const inject = ['menus', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout']
+export const inject = ['contextMenus', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout']
 
 /**
  * Client plugin body: register dictionaries, workspace directory controls, and

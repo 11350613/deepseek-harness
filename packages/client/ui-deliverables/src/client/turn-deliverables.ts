@@ -274,7 +274,7 @@ export { basename } from '../presented.ts'
  * @param openFile - The chat view's file opener.
  * @param label - Localizes the accessible open-label for a resolved path.
  * @param operations - successful mutations whose literal arguments may name the same canonical targets.
- * @param openMenu - optional context action for the resolved original path.
+ * @param getMenuProps - optional gesture bindings for the resolved original path.
  * @returns The resolver MarkdownText consumes; the full path rides `title`,
  * the same disambiguator the row's chips carry.
  */
@@ -283,7 +283,7 @@ export function producedFileMentions(
   openFile: (path: string) => void,
   label: (path: string) => string,
   operations: readonly Pick<ProducedPath, 'path' | 'argumentPath'>[] = [],
-  openMenu?: (path: string, point: { x: number; y: number }) => void,
+  getMenuProps?: (path: string) => NonNullable<ReturnType<MarkdownFileMentions['resolve']>>['contextMenuProps'],
 ): MarkdownFileMentions {
   return {
     resolve(value) {
@@ -293,8 +293,9 @@ export function producedFileMentions(
       }
       const path = matches.size === 1 ? matches.values().next().value : undefined
       if (path === undefined) return undefined
+      const contextMenuProps = getMenuProps?.(path)
       return { open: () => { openFile(path) }, label: label(path), title: path,
-        ...(openMenu === undefined ? {} : { openMenu: (point: { x: number; y: number }) => { openMenu(path, point) } }) }
+        ...(contextMenuProps === undefined ? {} : { contextMenuProps }) }
     },
   }
 }

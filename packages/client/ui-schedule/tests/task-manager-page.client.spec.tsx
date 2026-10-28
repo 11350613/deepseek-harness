@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, isInaccessible, render, screen, waitFor, within } from '@testing-library/react'
@@ -175,7 +176,7 @@ function mount(
     useSessionStatus: select => select(new Map()),
     useSessionRetainInfo: () => undefined,
     useResource: () => { throw new Error('The task manager does not load document resources') },
-    ...allowAllAccess,
+    ...allowAllAccess, useContextMenu: contextMenuHook(),
     onDelete: vi.fn<TaskManagerPageProps['onDelete']>(async () => 'deleted'),
     onRetry: vi.fn(async () => {}),
     onNewTask: vi.fn(),
@@ -1838,7 +1839,7 @@ describe('Task manager details', () => {
       usePanelInfo={unread}
       useSessions={unread}
       useWorkspaces={unread}
-      useResource={unread}
+      useContextMenu={contextMenuHook()} useResource={unread}
       useSessionStatus={unread}
       useSessionRetainInfo={unread}
       {...allowAllAccess}

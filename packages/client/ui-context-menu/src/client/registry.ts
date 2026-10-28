@@ -1,12 +1,12 @@
 /** Ordered menu resolution with cancellation and contribution-owned action lifetimes. */
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { MenuAction, MenuActionView, MenuContribution, MenuResolution, MenuTarget, MenuTargetMap } from './types.ts'
+import type { MenuAction, MenuActionView, MenuContribution, MenuResolution, MenuTarget, ContextMenuTargetMap } from './types.ts'
 
 interface Provider {
   readonly id: string
   readonly order: number
-  readonly kind: keyof MenuTargetMap
+  readonly kind: keyof ContextMenuTargetMap
   readonly lifetime: AbortController
   observe(target: MenuTarget): readonly ObservableSnapshot<unknown>[]
   resolve(target: MenuTarget, signal: AbortSignal): readonly MenuAction[] | Promise<readonly MenuAction[]>
@@ -24,14 +24,14 @@ export class MenuRegistry {
    * @param input - provider definition.
    * @returns removal of this contribution and its pending resolutions.
    */
-  register<K extends keyof MenuTargetMap>(input: MenuContribution<K>): () => void {
+  register<K extends keyof ContextMenuTargetMap>(input: MenuContribution<K>): () => void {
     if (this.disposed) throw new Error('Menu registry is disposed')
     const key = `${encodeURIComponent(input.target)}/${encodeURIComponent(input.id)}`
     if (this.providers.has(key)) throw new Error(`Duplicate menu contribution: ${key}`)
     const provider: Provider = {
       id: input.id, kind: input.target, order: input.order, lifetime: new AbortController(),
-      observe: target => input.observe?.(target.value as MenuTargetMap[K]) ?? [],
-      resolve: (target, signal) => input.resolve(target.value as MenuTargetMap[K], signal),
+      observe: target => input.observe?.(target.value as ContextMenuTargetMap[K]) ?? [],
+      resolve: (target, signal) => input.resolve(target.value as ContextMenuTargetMap[K], signal),
     }
     this.providers.set(key, provider)
     return () => {

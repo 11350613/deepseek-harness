@@ -204,8 +204,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.images.content': {
       scope: 'root'
       props: MessageImagesContentInput
-      inject: { readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions
-        openImageMenu?(this: void, source: import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTargetMap['image'], point: { x: number; y: number }): void }
+      inject: { readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions }
       locale: 'conversation'
     }
   }
@@ -477,7 +476,6 @@ export interface ConversationViewActionsOwnerProps {
 /** Business callbacks injected into the strict Session header. */
 export interface ConversationSessionHeaderInjected {
   /** Open the clicked title's actions. */
-  openSessionMenu(sessionId: SessionId, displayTitle: string, point: { x: number; y: number }): void
   /** Package-owned View roster source bound only for the Conversation header. */
   readonly hooks: {
     readonly conversationViews: ObservableSnapshot<readonly ViewTab[]>
