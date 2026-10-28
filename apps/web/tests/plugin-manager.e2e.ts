@@ -268,8 +268,8 @@ describe('web e2e: plugin manager', () => {
       await bar.getByRole('tablist').waitFor()
       await add.focus()
       for (const [width, icons, narrowTabs, wraps] of [
-        [1280, false, false, false], [600, true, false, false],
-        [470, true, true, false], [390, true, true, true], [300, true, true, true],
+        [1280, false, false, false], [544, true, false, false],
+        [414, true, true, false], [334, true, true, true], [244, true, true, true],
       ] as const) {
         await probe.setViewportSize({ width, height: 480 })
         await body.evaluate((element) => { element.scrollTop = 180 })
