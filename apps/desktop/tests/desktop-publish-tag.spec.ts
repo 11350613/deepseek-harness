@@ -3,13 +3,13 @@ import { publishDesktopTag } from '../scripts/desktop-publish-tag.ts'
 
 const commit = 'a'.repeat(40)
 const tag = (sha = commit) => ({ object: { type: 'commit', sha } })
-function transport(replies: Array<{ status: number; body?: object; headers?: Record<string, string> }>) {
+function transport(replies: Array<{ status: number; body?: object; rawBody?: string; headers?: Record<string, string> }>) {
   const calls: Array<{ url: string; init: RequestInit | undefined }> = []
   const request: typeof fetch = async (url, init) => {
     calls.push({ url: typeof url === 'string' ? url : url instanceof URL ? url.href : url.url, init })
     const reply = replies.shift()
     if (!reply) throw new Error('unexpected HTTP request')
-    return new Response(JSON.stringify(reply.body ?? {}), { status: reply.status, headers: reply.headers ?? {} })
+    return new Response(reply.rawBody ?? JSON.stringify(reply.body ?? {}), { status: reply.status, headers: reply.headers ?? {} })
   }
   return { calls, request }
 }
@@ -78,5 +78,15 @@ it('does not echo arbitrary GitHub response text or unrecognized request IDs', a
 
 it('still rejects a competing tag on a different commit', async () => {
   const http = transport([{ status: 404 }, { status: 422 }, { status: 200, body: tag('b'.repeat(40)) }])
-  await expect(publishDesktopTag('owner/repo', '1.2.3', commit, 'fixture-token', http.request)).rejects.toThrow('refusing to move')
+  await expect(publishDesktopTag('owner/repo', '1.2.3', commit, 'fixture-token', http.request)).rejects.toThrow('creation failed (HTTP 422)')
+})
+
+it('retains creation context for a non-JSON rejection', async () => {
+  const http = transport([{ status: 404 }, { status: 422, rawBody: 'not JSON', headers: { 'x-github-request-id': 'ABCD:1234' } }, { status: 404 }])
+  await expect(publishDesktopTag('owner/repo', '1.2.3', commit, 'fixture-token', http.request)).rejects.toThrow('creation failed (HTTP 422; GitHub request ABCD:1234)')
+})
+
+it('retains creation context when the follow-up request fails', async () => {
+  const http = transport([{ status: 404 }, { status: 422, headers: { 'x-github-request-id': 'ABCD:1234' } }])
+  await expect(publishDesktopTag('owner/repo', '1.2.3', commit, 'fixture-token', http.request)).rejects.toThrow('creation failed (HTTP 422; GitHub request ABCD:1234); follow-up tag lookup failed')
 })

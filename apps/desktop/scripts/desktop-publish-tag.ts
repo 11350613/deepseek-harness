@@ -48,7 +48,6 @@ export async function publishDesktopTag(
     let detail: unknown
     try { detail = await response.json() } catch (error) {
       // Non-JSON error responses still retain the original HTTP status and request ID.
-      detail = undefined
     }
     const rulesRejected = typeof detail === 'object' && detail !== null && 'message' in detail
       && typeof detail.message === 'string' && detail.message.startsWith('Repository rule violations found')
@@ -62,7 +61,9 @@ export async function publishDesktopTag(
       await reconciled.body?.cancel()
       throw new Error(`${failure}; follow-up tag lookup returned HTTP ${reconciled.status}; ${guidance}`)
     }
-    await matches(reconciled)
+    try { await matches(reconciled) } catch (cause) {
+      throw new Error(`${failure}; follow-up tag verification failed; inspect the existing tag before retrying`, { cause })
+    }
     return 'present'
   }
   await response.body?.cancel()

@@ -26,7 +26,9 @@ for (const platform of ['macos', 'windows'] as const) {
         await writeFile(output, JSON.stringify(config))
         await expect(readDesktopPublishConfig(root, preset)).resolves.toEqual(config)
         await writeFile(output, JSON.stringify({ ...config, bucket: undefined }))
-        await expect(readDesktopPublishConfig(root, preset)).rejects.toThrow()
+        const failure = readDesktopPublishConfig(root, preset)
+        await expect(failure).rejects.toHaveProperty('name', 'ZodError')
+        await expect(failure).rejects.toHaveProperty('issues.0.path', ['bucket'])
       } finally { await rm(root, { recursive: true, force: true }) }
     })
   }
