@@ -1,8 +1,10 @@
 /** Final application bytes and source identity survive packaging; invalid inputs never reach publication. */
 import { execFileSync } from 'node:child_process'
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { execa } from 'execa'
 import { create } from 'tar'
 import { expect, it, onTestFinished } from 'vitest'
 import { CUA_APPLICATION, CUA_ARCHITECTURES, CUA_MANIFEST, cuaApplicationDigest, readCuaApplication, sealCuaApplication, stageCuaHelperPayload, verifyCuaHelperPayload } from './payload.ts'
@@ -57,6 +59,48 @@ it.skipIf(process.platform === 'win32')('verifies staged and repacked provider b
   writeFileSync(join(application, 'Contents/MacOS/dsh-cua-native'), 'changed after signing')
   await create({ file: tarball, cwd: f.root, gzip: true, portable: true }, ['package'])
   await expect(verifyCuaHelperTarball(tarball, identity)).rejects.toThrow('digest')
+})
+
+it.skipIf(process.platform === 'win32')('keeps npm tarball bytes when reusing a helper and changes them after re-signing', async ({ signal }) => {
+  const f = fixture()
+  const require = createRequire(import.meta.url)
+  const pnpm = join(dirname(require.resolve('pnpm')), 'bin/pnpm.cjs')
+  const pack = async (label: string, mtime: Date): Promise<Buffer> => {
+    const packageRoot = join(f.root, label, 'provider')
+    const output = join(f.root, label, 'packed')
+    mkdirSync(join(packageRoot, 'lib'), { recursive: true })
+    mkdirSync(output)
+    stageCuaHelperPayload(f.payload, packageRoot, identity)
+    writeFileSync(join(packageRoot, 'package.json'), JSON.stringify({
+      name: '@deepseek-ai/dsh-experimental-cua-macos', version: identity.version, type: 'module',
+      files: ['lib/index.js', 'native/bin', CUA_MANIFEST],
+    }))
+    writeFileSync(join(packageRoot, 'lib/index.js'), 'export const provider = "fixture";\n')
+    for (const entry of readdirSync(packageRoot, { recursive: true, withFileTypes: true })) {
+      if (entry.isFile()) utimesSync(join(entry.parentPath, entry.name), mtime, mtime)
+    }
+    const result = await execa(process.execPath, [pnpm, '--dir', packageRoot, 'pack', '--pack-destination', output], {
+      cwd: packageRoot, env: { CI: 'true' }, cancelSignal: signal, killDescendants: true, reject: false,
+    })
+    expect(result.isCanceled).toBe(false)
+    expect(result.signal).toBeUndefined()
+    expect(result.exitCode, result.stderr).toBe(0)
+    const tarball = join(output, 'deepseek-ai-dsh-experimental-cua-macos-1.0.0.tgz')
+    await verifyCuaHelperTarball(tarball, identity)
+    return readFileSync(tarball)
+  }
+  const first = await pack('first', new Date('2001-01-01T00:00:00Z'))
+  const reused = await pack('reused', new Date('2026-01-01T00:00:00Z'))
+  expect(statSync(join(f.root, 'first/provider/cua-helper.json')).mtimeMs)
+    .not.toBe(statSync(join(f.root, 'reused/provider/cua-helper.json')).mtimeMs)
+  expect(reused.equals(first)).toBe(true)
+
+  const application = readCuaApplication(f.directory).application
+  writeFileSync(join(application, 'Contents/_CodeSignature/CodeResources'), 'another signing timestamp')
+  f.manifest.applications[0]!.bundle = sealCuaApplication(f.directory, application)
+  writeFileSync(join(f.payload, CUA_MANIFEST), JSON.stringify(f.manifest))
+  const rebuilt = await pack('rebuilt', new Date('2026-01-01T00:00:00Z'))
+  expect(rebuilt.equals(first)).toBe(false)
 })
 
 it.skipIf(process.platform === 'win32').each(['version', 'commit', 'architecture', 'missing', 'extra', 'permissions', 'symlink'] as const)('rejects %s damage before staging', (damage) => {

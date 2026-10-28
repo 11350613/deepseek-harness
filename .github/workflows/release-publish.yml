@@ -119,6 +119,17 @@ jobs:
           tar -xzf dist/cua-helper/cua-helper.tgz -C dist/cua-helper/extracted
           pnpm exec tsx scripts/cua-helper/stage.ts --from dist/cua-helper/extracted
 
+      - name: Record CUA source and publication retry instructions
+        env:
+          CUA_RUN_ID: ${{ inputs.cua_run_id || github.run_id }}
+          CUA_RUN_ATTEMPT: ${{ steps.retained-cua.outputs.attempt || github.run_attempt }}
+        run: |
+          {
+            printf 'CUA helper: run `%s`, attempt `%s`.\n\n' "$CUA_RUN_ID" "$CUA_RUN_ATTEMPT"
+            printf '%s\n\n' 'npm 部分发布失败时，只重跑 Publish to npm job，复用原 dsh-npm-tarballs；不要重跑全部 job。'
+            printf '若需新建发布运行，填写 `cua_run_id=%s`、`cua_run_attempt=%s`，并使用相同源码 commit 和版本。\n' "$CUA_RUN_ID" "$CUA_RUN_ATTEMPT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Pack release tarballs
         run: pnpm run release:pack --family dsh --out dist/npm
 
