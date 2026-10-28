@@ -12,7 +12,7 @@ Status: implemented
 
 [`dsh-experimental-client-ui-forge`](../../../../packages/experimental/client-ui-forge/README.zh.md) 是一个双端包。宿主端的 `forgePanel` Remote 把面板为一个 Session 展示的全部内容组装成一条流式状态；forge 注册表与绑定服务只保留各自的领域操作。客户端包括一个右侧边栏标签页、一个显示或隐藏它的 Session 标题栏按钮、一个新会话选项、一张位于输入框上方的创建卡片、一个 toast，以及[会话列表中的图标与悬浮卡片部分](2026-10-20-forge-session-list.zh.md)。所有界面都把已绑定的条目称为变更请求（forge 注册表的术语），不随代码托管平台的叫法变化。[forge 套件](../../../../packages/experimental/forge-bundle/README.zh.md)把面板、forge 注册表、GitHub 提供方、绑定服务与一个隔离的 worktree 服务作为插件页中默认禁用的一个条目发布。
 
-Remote 通过 Session 的子进程提供方、在 Session 的只读沙箱策略下检查检出，因此它读到的与 Session 命令看到的相同，且无法写入。检查读取顶层目录、Git 目录与公共 Git 目录、分支或缩写的 HEAD 提交、上游与远端，以及分支相对于其分叉点的变更规模。它在 Session 被关注时、每个 `working-directory/change`、`tool/result` 与 `sandbox/mode` 事件之后以及刷新时运行，一次只运行一个，最多再追加一次。
+Remote 通过 Session 的子进程提供方，按其[解析出的权限与查询限制](../bug-fix/2026-10-28-forge-git-session-permissions.zh.md)检查检出，因此它读到的与 Session 命令看到的相同。检查读取顶层目录、Git 目录与公共 Git 目录、分支或缩写的 HEAD 提交、上游与远端，以及分支相对于其分叉点的变更规模。它在 Session 被关注时、每个 `working-directory/change`、`tool/result` 与 `sandbox/mode` 事件之后以及刷新时运行，一次只运行一个，最多再追加一次。
 
 状态轮询跟随面板订阅：只有该 Session 的某个界面挂载时才监听其绑定，注册表停止轮询无人监听的变更请求。每张卡片保留最近一次轮询得到的快照，因此短暂的失败不会让标题与编号消失。Session 只有一个打开的变更请求时，它的卡片默认展开；有多个时全部折叠；用户第一次展开或收起卡片后，以用户的选择为准。
 
@@ -89,4 +89,4 @@ Session 所在的 worktree 可能在 Session 之外被删除。每次检查都�
 
 ## Consequences
 
-面板只在打开时显示当前状态；没有任何界面挂载时检查结束不会有通知。Session 之外的改动要等到刷新或下一个工具结果才会出现。只有一个远端时，每次检查最多在 Session 的执行环境中启动十一个短暂的 Git 进程；为寻找分叉点每多尝试一个远端，就多启动两个。只有在第一步之前提出请求的 Session 才会有 worktree，失败或被取消的尝试可能留下它的分支或检出。Agent 正在运行一轮或其他维护任务时进入的消息不会被暂留，因此它的 worktree 在第一轮之内创建，已删除的 worktree 也不会被检查。消息等待期间，Agent 以空闲状态处于维护任务中：输入框不提供停止，等待 Agent 空闲的调用方也会一并等待。恢复会丢失从未提交的修改。要求合并队列的基准分支无法从面板合并。同时启用 Git Worktrees 时会存在两个互不影响的 worktree 服务；模型的工具看不到面板的服务。本地或变更请求的 diff 超过 `maxDiffBytes`，或被托管平台拒绝时，不显示任何文件。展开变更请求中未变更的行时，每个文件只从托管平台读取一次。
+面板只在打开时显示当前状态；没有任何界面挂载时检查结束不会有通知。Session 之外的改动要等到刷新或下一个工具结果才会出现。只有一个远端时，每次检查最多在 Session 的执行环境中启动十二个短暂的 Git 进程；为寻找分叉点每多尝试一个远端，就多启动两个。只有在第一步之前提出请求的 Session 才会有 worktree，失败或被取消的尝试可能留下它的分支或检出。Agent 正在运行一轮或其他维护任务时进入的消息不会被暂留，因此它的 worktree 在第一轮之内创建，已删除的 worktree 也不会被检查。消息等待期间，Agent 以空闲状态处于维护任务中：输入框不提供停止，等待 Agent 空闲的调用方也会一并等待。恢复会丢失从未提交的修改。要求合并队列的基准分支无法从面板合并。同时启用 Git Worktrees 时会存在两个互不影响的 worktree 服务；模型的工具看不到面板的服务。本地或变更请求的 diff 超过 `maxDiffBytes`，或被托管平台拒绝时，不显示任何文件。展开变更请求中未变更的行时，每个文件只从托管平台读取一次。

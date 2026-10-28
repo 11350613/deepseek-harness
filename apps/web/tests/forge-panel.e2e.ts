@@ -221,7 +221,7 @@ interface PanelLaunch {
  * @returns the scaffold, page, and checkout.
  */
 async function launchPanel(failureShot: string, scenario: 'normal' | 'follow-up' | 'reference' = 'normal',
-  options: { desktop?: 'darwin' | 'win32'; branch?: string; hasTouch?: boolean } = {}): Promise<PanelLaunch> {
+  options: { desktop?: 'darwin' | 'win32'; branch?: string; hasTouch?: boolean; missingSandbox?: boolean } = {}): Promise<PanelLaunch> {
   const { desktop } = options
   const resources: { scaffold?: WebScaffold; browser?: Browser } = {}
   const root = await mkdtemp(join(tmpdir(), 'dsh-forge-panel-'))
@@ -240,7 +240,8 @@ async function launchPanel(failureShot: string, scenario: 'normal' | 'follow-up'
   const panelText = `${Array.from({ length: 20 }, (_, index) => panelLine(index + 1, 'new')).join('\n')}\n`
   await writeFile(join(root, 'contents.json'), JSON.stringify({ [`src/panel.ts@${HEAD7}`]: panelText }))
   const overlay = join(root, 'forge.patch.yml')
-  await writeFile(overlay, `- id: forge-github\n  config: ${JSON.stringify({ ghCommand: gh })}\n`)
+  await writeFile(overlay, `- id: forge-github\n  config: ${JSON.stringify({ ghCommand: gh })}\n`
+    + (options.missingSandbox ? `- id: sandbox\n  config: ${JSON.stringify({ runnerCommand: [join(root, 'missing-sandbox')], runnerFailureSignatures: ['sandbox startup failed'] })}\n` : ''))
   const override = join(root, 'replay.override.json')
   // The borrowed scenario records one model call, so index 1 appends the reply to the follow-up.
   if (scenario === 'follow-up') await writeFile(override, JSON.stringify({ patches: [{ at: 1, entry: { kind: 'chunks', chunks: textReply(FOLLOW_UP_REPLY) } }] }))
@@ -370,6 +371,41 @@ function worktreeRecords(events: readonly SessionEvent[]): unknown[] {
     return record?.type === 'plugin:client-ui-forge/worktree' ? [record.data] : []
   })
 }
+
+it.skipIf(MODE === 'record')('reads local Git with full access when the sandbox runner cannot start', async () => {
+  const { scaffold, page, project, tripwire } = await launchPanel('web-e2e-forge-permissions', 'normal', { missingSandbox: true })
+  await git(project, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+  await git(project, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+  await writeFile(join(project, 'README.md'), 'demo\nchanged\n')
+  const { settled } = await sendPrompt(page, scaffold)
+  const sessionId = await settled
+  await page.getByText('LIGHTHOUSE', { exact: true }).waitFor()
+  await page.locator('[data-forge-header]').click()
+  const panel = page.locator('[data-forge-panel]')
+  await panel.getByText('无法读取 Git 信息', { exact: true }).waitFor({ timeout: 20_000 })
+
+  const permission = page.locator('button[aria-label^="访问模式"]').first()
+  await permission.click()
+  await page.getByRole('menuitem', { name: '完全权限', exact: true }).click()
+  const confirmation = page.getByRole('dialog', { name: '确认启用完全权限？' })
+  await confirmation.getByRole('checkbox', { name: '我已了解风险，并愿意继续' }).check()
+  await confirmation.getByRole('button', { name: '启用完全权限' }).click()
+  const local = page.locator('[data-forge-local]')
+  await local.getByRole('button', { name: '查看本会话的变更：1 个文件，新增 1 行，删除 0 行', exact: true }).waitFor({ timeout: 20_000 })
+  await compareOrRefreshGolden(join(EXPECTED, 'full-access.expected.md'), await captureStableAria(page, '[data-forge-local]', scaffold.workspaceCwd), MODE)
+  await local.getByRole('button', { name: '查看本会话的变更：1 个文件，新增 1 行，删除 0 行', exact: true }).click()
+  await page.locator('[data-forge-diff-file="README.md"]').getByText('changed', { exact: true }).waitFor()
+
+  await permission.click()
+  await page.getByRole('menuitem', { name: '工作区内修改', exact: true }).click()
+  if (!await panel.isVisible()) await page.locator('[data-forge-header]').click()
+  await panel.getByText('无法读取 Git 信息', { exact: true }).waitFor({ timeout: 20_000 })
+  await expect.poll(async () => (await readPersistedEvents(scaffold, sessionId))
+    .filter(event => event.type === 'sandbox/mode').map(event => event.data.mode).slice(-2))
+    .toEqual(['danger-full-access', 'workspace-write'])
+  expect(tripwire.pageErrors).toEqual([])
+  expect(tripwire.warnings).toEqual([])
+})
 
 it.skipIf(MODE === 'record')('automatically shows a numbered PR when gh JSON omits its URL', async () => {
   const { scaffold, page, project, tripwire } = await launchPanel('web-e2e-forge-numbered-reference', 'reference')

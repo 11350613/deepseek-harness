@@ -1367,7 +1367,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote async localDiff(session: Session, scope: ForgeLocalScope, signal: AbortSignal): Promise<ForgeLocalDiff>',
-        description: 'Read the changes one scope covers in the checkout of the Session\'s current directory, with Git confined to the Session\'s read-only sandbox.',
+        description: 'Read the changes one scope covers in the checkout of the Session\'s current directory, with Git using the Session\'s sandbox policy.',
         parameters: [{ name: 'session', description: 'Session whose checkout is read.' }, { name: 'scope', description: 'which changes to read.' }, { name: 'signal', description: 'request cancellation.' }],
         returns: 'the files, the base of the `branch` scope, and the untracked files left out.',
         throws: ['`forgePanel/not-a-checkout` outside a checkout; `forgePanel/no-fork-point` for the `branch` scope of a checkout without one; `forgePanel/diff-too-large` over `maxDiffBytes`; the Git error when Git fails.'],

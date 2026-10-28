@@ -2,7 +2,7 @@
  * Local changes of a Session's checkout: where the `branch` scope forks, the
  * patch of one scope with its untracked files, the new-side text of one file,
  * and the size of the `branch` scope for the panel's card. Git runs through
- * the confined runner; untracked and working-tree files are read through
+ * the Session's Git runner; untracked and working-tree files are read through
  * `ctx.fs`, both within `maxDiffBytes`.
  */
 
@@ -42,8 +42,22 @@ export class NoForkPoint extends Error {
   override name = 'NoForkPoint'
 }
 
-/** Literal paths, no external diff driver or text conversion, rename detection, and fixed `a/` and `b/` prefixes. */
-const DIFF = ['-c', 'core.quotePath=false', 'diff', '--no-ext-diff', '--no-textconv', '--no-color', '-M', '--src-prefix=a/', '--dst-prefix=b/'] as const
+/** No executable diff helpers or submodule working-tree inspection; preserve recorded submodule commit changes. */
+const DIFF = ['-c', 'core.quotePath=false', 'diff', '--no-ext-diff', '--no-textconv', '--submodule=short', '--ignore-submodules=dirty', '--no-color', '-M', '--src-prefix=a/', '--dst-prefix=b/'] as const
+
+/** Disable configured content conversion for one diff without modifying repository configuration. */
+async function diffFilterOverrides(git: Git): Promise<Readonly<Record<string, string>>> {
+  const configured = await bounded(git('filters', ['config', '--null', '--name-only', '--get-regexp', '^filter\\.'], [0, 1]))
+  const overrides: Record<string, string> = {}
+  for (const key of configured.stdout.split('\0')) {
+    if (!key.endsWith('.clean') && !key.endsWith('.process')) continue
+    const driver = key.slice(0, key.lastIndexOf('.'))
+    overrides[`${driver}.clean`] = ''
+    overrides[`${driver}.process`] = ''
+    overrides[`${driver}.required`] = 'false'
+  }
+  return overrides
+}
 
 /** Characters Git inspects for a NUL character before it calls content binary. */
 const BINARY_PROBE = 8000
@@ -74,7 +88,8 @@ export async function forkPoint(git: Git, inspection: Inspection, created: Forge
 }
 
 /**
- * Read the changes one scope covers in the checkout at `root`.
+ * Read changes at `root` without configured content conversion or submodule
+ * working-tree inspection; filtered working-tree bytes can differ from stored blobs.
  * @param ctx - context that provides `fs`, `subprocess`, `sandbox`, and `sandboxPolicy`.
  * @param config - Git and size limits.
  * @param session - Session whose sandbox policy and execution world apply.
@@ -107,7 +122,8 @@ export async function localDiff(
     /* v8 ignore next -- closed ForgeLocalScope union exhaustiveness guard */
     default: return assertNever(scope, 'ForgeLocalScope.kind')
   }
-  const tracked = parseDiff((await bounded(git('diff', [...DIFF, ...range, '--']))).stdout)
+  const overrides = await diffFilterOverrides(git)
+  const tracked = parseDiff((await bounded(git('diff', [...DIFF, ...range, '--'], undefined, overrides))).stdout)
   if (scope.kind === 'staged') return { base: null, files: tracked, omitted: 0 }
   const untracked = await untrackedFiles(ctx, config, git, root, signal)
   return { base: fork === null || scope.kind !== 'branch' ? null : fork.label, files: [...tracked, ...untracked.files], omitted: untracked.omitted }
@@ -171,7 +187,8 @@ export async function localChanges(
   const git = gitIn(ctx, config, session, root, signal)
   const fork = await forkPoint(git, inspection, created)
   if (fork === null) return null
-  const numstat = await git('numstat', ['-c', 'core.quotePath=false', 'diff', '--no-ext-diff', '--no-textconv', '--numstat', '-z', '-M', fork.commit, '--'])
+  const overrides = await diffFilterOverrides(git)
+  const numstat = await git('numstat', [...DIFF, '--numstat', '-z', fork.commit, '--'], undefined, overrides)
   const listing = gitIn(ctx, { ...config, maxOutputBytes: config.maxDiffBytes }, session, root, signal)
   const untracked = await untrackedFiles(ctx, config, listing, root, signal)
   return {

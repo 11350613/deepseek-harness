@@ -904,7 +904,7 @@ Serves the forge panel. Following a Session inspects the checkout of its current
 
 /**
  * Read the changes one scope covers in the checkout of the Session's
- * current directory, with Git confined to the Session's read-only sandbox.
+ * current directory, with Git using the Session's sandbox policy.
  * @param session - Session whose checkout is read.
  * @param scope - which changes to read.
  * @param signal - request cancellation.

@@ -606,6 +606,23 @@ describe('forgePanel change request diffs', () => {
 })
 
 describe('forgePanel worktree blockers', () => {
+  it('recovers checkout inspection when the Session switches to full access on a host without a sandbox', async () => {
+    const { repo } = await project()
+    const opened = await open(repo)
+    opened.sandbox.failure = new Error('sandbox unavailable')
+    const follower = reader(opened)
+    await follower.until(state => state.checkout.state === 'failed')
+
+    setSandboxMode(opened.session, 'danger-full-access')
+    const full = await follower.next(ready)
+    expect(full.checkout).toMatchObject({ state: 'ready', checkout: { root: repo, branch: 'main' } })
+
+    setSandboxMode(opened.session, 'workspace-write')
+    await expect(follower.next(state => state.checkout.state === 'failed')).resolves.toMatchObject({
+      checkout: { state: 'failed', message: 'sandbox unavailable' },
+    })
+  })
+
   it('reinspects when the sandbox mode changes, and blocks a worktree while the Session is read-only', async () => {
     const { repo } = await project()
     const opened = await open(repo)
