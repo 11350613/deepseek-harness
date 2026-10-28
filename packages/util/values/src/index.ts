@@ -102,8 +102,8 @@ function walkJsonValue(value: unknown, detach: boolean): JsonValue | true | unde
         const target = detach ? [] as JsonValue[] : undefined
         if (target !== undefined) assign(target)
         let indices: number[] | undefined
-        if (typeof length !== 'number') {
-          // Preserve the single subtraction and reverse schedule of coercible Proxy lengths.
+        if (!Number.isInteger(length)) {
+          // Capture indices with one subtraction for fractional or coercible Proxy lengths.
           indices = []
           for (let index = length - 1; index >= 0; index--) indices.push(index)
         }
@@ -131,7 +131,7 @@ function walkJsonValue(value: unknown, detach: boolean): JsonValue | true | unde
       const index = frame.index++
       parent = frame
       if (frame.kind === 'array') {
-        const key = frame.indices === undefined ? index : frame.indices[frame.length - index - 1]
+        const key = frame.indices === undefined ? index : frame.indices[frame.indices.length - index - 1]
         /* v8 ignore next -- the loop is bounded by the captured index count. */
         if (key === undefined) return undefined
         if (!Object.prototype.hasOwnProperty.call(frame.source, key)) return undefined

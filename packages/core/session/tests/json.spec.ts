@@ -13,7 +13,7 @@ function objectWithForgedIntrinsicPrototype(revoked = false): Record<string, unk
   return Object.assign(Object.create(prototype) as Record<string, unknown>, { value: 1 })
 }
 
-describe('snapshotJsonValue', () => {
+describe('snapshotJsonValue and isJsonValue', () => {
   it('copies the complete JSON scalar vocabulary and rejects unsupported scalars', () => {
     const unsupportedFunction = (): void => {}
 
@@ -188,6 +188,26 @@ describe('snapshotJsonValue', () => {
       expect(result).toEqual(mode === 'snapshot' ? expected : expected !== undefined)
       expect(coercions).toBe(2)
     }
+  })
+
+  it.each([false, true])('does not read an array slot outside a fractional Proxy length, throwing slot=%s', (throwing) => {
+    let reads = 0
+    const source = new Proxy([42], {
+      get(target, key): unknown {
+        if (key === 'length') return 1 - Number.EPSILON / 2
+        if (key === '0') {
+          reads += 1
+          if (throwing) throw new Error('array slot must not be read')
+        }
+        const value: unknown = Reflect.get(target, key)
+        return value
+      },
+    })
+
+    expect(JSON.stringify(source)).toBe('[]')
+    expect(snapshotJsonValue(source)).toEqual([])
+    expect(isJsonValue(source)).toBe(true)
+    expect(reads).toBe(0)
   })
 
   it('detaches every occurrence of a shared child in a wide array', () => {
