@@ -1,0 +1,3 @@
+- text: main
+- checkbox "新建工作树"
+- text: 新建工作树

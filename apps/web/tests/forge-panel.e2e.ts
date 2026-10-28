@@ -328,7 +328,7 @@ async function requestReleaseWorktree(failureShot: string, followUp = false): Pr
   const { page } = launched
   const option = page.locator('[data-forge-worktree]')
   await option.waitFor({ timeout: 20_000 })
-  await option.getByRole('checkbox', { name: '工作树', exact: true }).check()
+  await option.getByRole('checkbox', { name: '新建工作树', exact: true }).check()
   await option.getByRole('button', { name: '基于 main', exact: true }).click()
   await page.getByRole('menuitem', { name: 'release', exact: true }).click()
   await option.getByRole('button', { name: '基于 release', exact: true }).waitFor()
@@ -626,9 +626,9 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   await local.locator('[data-forge-diff-file="notes.md"]').getByText('新文件 · 未提交', { exact: true }).waitFor()
   const readme = local.locator('[data-forge-diff-file="README.md"]')
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
-  await readme.getByRole('button', { name: '复制路径: README.md', exact: true }).click()
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('README.md')
   await page.evaluate(() => navigator.clipboard.writeText('unchanged'))
+  await readme.locator('[data-forge-file-label]').click()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('unchanged')
   await readme.locator('[data-forge-path-spacer]').click()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('unchanged')
   await readme.getByRole('button', { name: '6 行未变更', exact: true }).click()
@@ -654,14 +654,15 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   await panelFile.getByRole('button', { name: '6 行未变更', exact: true }).click()
   await panelFile.getByText('export const n6 = 6', { exact: true }).first().waitFor({ timeout: 20_000 })
   await panelFile.getByRole('button', { name: '2 行未变更', exact: true }).waitFor()
-  await panelFile.getByRole('button', { name: '复制路径: src/panel.ts', exact: true }).click()
+  await panelFile.getByRole('button', { name: 'panel.ts 的更多操作', exact: true }).click()
+  await page.getByRole('menuitem', { name: '复制路径', exact: true }).click()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('src/panel.ts')
   const docsFile = view.locator('[data-forge-diff-file="docs/panel.md"]')
   await docsFile.getByRole('button', { name: '收起 panel.md', exact: true }).click()
   await page.setViewportSize({ width: 1280, height: 500 })
   const scrollport = view.locator('[data-forge-changes-scroll]')
   await scrollport.evaluate((element) => { element.scrollTop = 100; element.dispatchEvent(new Event('scroll')) })
-  await panelFile.getByRole('button', { name: '复制路径: src/panel.ts', exact: true }).click()
+  await panelFile.locator('[data-forge-file-label]').click()
   const position = await scrollport.evaluate(element => element.scrollTop)
   expect(position).toBeGreaterThan(0)
   const originalFile = await panelFile.elementHandle()
@@ -697,6 +698,100 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
 })
 
 
+it.skipIf(MODE === 'record')('keeps localized status columns separate and long file lists inside one vertical scroller', async () => {
+  const { scaffold, page, project, tripwire } = await launchPanel('web-e2e-forge-layout')
+  await page.locator('[data-forge-current-branch]').waitFor()
+  await compareOrRefreshGolden(join(EXPECTED, 'worktree-option.expected.md'),
+    await captureStableAria(page, '[data-forge-worktree]', scaffold.workspaceCwd), MODE)
+  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => page.locator('[data-forge-worktree]')
+    .evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(390)
+  await page.setViewportSize({ width: 1680, height: 1000 })
+  await git(project, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+  await git(project, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+  await mkdir(join(project, 'src'))
+  await Promise.all(Array.from({ length: 60 }, (_, index) => writeFile(join(project, 'src', `file-${index}.ts`), `export const value = ${index}\n`)))
+  const { settled } = await sendPrompt(page, scaffold)
+  const session = scaffold.ctx.sessions.get(await settled)
+  if (session === undefined) throw new Error('The Session must stay loaded')
+  scaffold.ctx.forgeSession.track(session, PULL)
+  await page.locator('[data-forge-header]').click()
+  const panel = page.locator('[data-forge-panel]')
+  await panel.getByRole('button', { name: '刷新状态', exact: true }).click()
+  const local = panel.locator('[data-forge-local]')
+  await local.locator('button[aria-expanded]').click()
+  await expect.poll(() => local.locator('li').count(), { timeout: 20_000 }).toBe(60)
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 700 })
+    const outerScrollers = await panel.evaluate((element) => {
+      const scrollers: string[] = []
+      for (let ancestor = element.parentElement; ancestor !== null; ancestor = ancestor.parentElement) {
+        if (/auto|scroll/.test(getComputedStyle(ancestor).overflowY) && ancestor.scrollHeight > ancestor.clientHeight + 1) {
+          scrollers.push(ancestor.className)
+        }
+      }
+      return scrollers
+    })
+    expect(outerScrollers).toEqual([])
+    expect(await panel.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
+    await local.locator('li').last().scrollIntoViewIfNeeded()
+    expect(await local.locator('li').last().isVisible()).toBe(true)
+  }
+  await local.locator('button[aria-expanded]').click()
+  const change = panel.locator(`[data-forge-change="${PULL}"]`)
+  for (const [locale, labels] of [
+    ['zh', ['检查', '评审', '合并', '变更']],
+    ['en', ['Checks', 'Review', 'Merge', 'Changes']],
+    ['de', ['Prüfungen', 'Review', 'Zusammenführen', 'Änderungen']],
+  ] as const) {
+    await scaffold.ctx.settings.update('locale', { preference: locale })
+    await change.getByText(labels[0], { exact: true }).waitFor()
+    if (locale === 'en') {
+      await compareOrRefreshGolden(join(EXPECTED, 'local-card.expected.md'),
+        await captureStableAria(page, '[data-forge-local]', scaffold.workspaceCwd), MODE)
+    }
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 700 })
+      await expect.poll(() => change.evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(width)
+      await change.getByText(labels[3], { exact: true }).hover()
+      for (const label of labels) {
+        const geometry = await change.getByText(label, { exact: true }).evaluate((element) => {
+          const value = element.nextElementSibling
+          if (value === null) throw new Error('Status label must have a value')
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          const name = range.getBoundingClientRect()
+          const content = value.getBoundingClientRect()
+          const row = element.parentElement!
+          const icon = element.previousElementSibling!
+          const rowRect = row.getBoundingClientRect()
+          return {
+            gap: content.left - name.right,
+            iconInset: icon.getBoundingClientRect().left - rowRect.left,
+            rowInset: rowRect.left - row.closest('[data-forge-change]')!.getBoundingClientRect().left,
+            labelWidth: element.getBoundingClientRect().width,
+            valueOffset: content.left - rowRect.left,
+            right: content.right,
+            width: document.documentElement.clientWidth,
+          }
+        })
+        expect(geometry.gap).toBeGreaterThanOrEqual(8)
+        expect(geometry.iconInset).toBe(8)
+        expect(geometry.rowInset).toBeGreaterThanOrEqual(6)
+        expect(geometry.rowInset).toBeLessThanOrEqual(7)
+        if (locale === 'zh') {
+          expect(geometry.labelWidth).toBe(32)
+          expect(geometry.valueOffset).toBe(76)
+        }
+        expect(geometry.right).toBeLessThanOrEqual(geometry.width)
+      }
+    }
+  }
+  expect(tripwire.pageErrors).toEqual([])
+  expect(tripwire.warnings).toEqual([])
+})
+
 it.skipIf(MODE === 'record').each(['darwin', 'win32'] as const)('closes diff menus when the %s desktop shortcut deactivates a retained tab', async (platform) => {
   const { page, scaffold, project, tripwire } = await launchPanel(`web-e2e-forge-menu-${platform}`, 'normal', platform)
   await git(project, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
@@ -708,7 +803,7 @@ it.skipIf(MODE === 'record').each(['darwin', 'win32'] as const)('closes diff men
   await page.locator('[data-forge-panel]').getByRole('button', { name: '刷新状态', exact: true }).click()
   await page.locator('[data-forge-local]').getByRole('button', { name: /查看本会话的变更：1 个文件/ }).click()
   const view = page.locator('[data-forge-changes="local"]')
-  await view.getByRole('button', { name: '复制路径: README.md', exact: true }).waitFor()
+  await view.locator('[data-forge-diff-file="README.md"]').waitFor()
   for (const name of ['分支', '全部 1 个文件', 'README.md 的更多操作']) {
     await view.getByRole('button', { name, exact: true }).click()
     await page.getByRole('menu').waitFor()

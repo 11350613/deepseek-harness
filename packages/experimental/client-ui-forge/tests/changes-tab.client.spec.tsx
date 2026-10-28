@@ -671,16 +671,16 @@ describe('ChangesTab actions', () => {
     return m.view.getAllByRole('menuitem').map(item => item.textContent ?? '')
   }
 
-  it.each(['local', 'change'] as const)('copies the full relative path from a %s diff header without folding the file', async (kind) => {
+  it.each(['local', 'change'] as const)('keeps the clipboard unchanged when a %s diff file label is clicked', async (kind) => {
     const m = mount({ source: kind === 'local' ? { kind } : { kind, url: URL7 } })
     await settle()
-    fireEvent.click(within(m.section('src/app.ts')).getByRole('button', { name: `${en['diff.copyPath']}: src/app.ts` }))
-    expect(m.faces.copyPath).toHaveBeenCalledWith('src/app.ts')
+    fireEvent.click(m.section('src/app.ts').querySelector('[data-forge-file-label]')!)
+    expect(m.faces.copyPath).not.toHaveBeenCalled()
     expect(m.section('src/app.ts').hasAttribute('data-expanded')).toBe(true)
     expect(m.tabActions.openResource).not.toHaveBeenCalled()
     fireEvent.click(within(m.section('docs/gone.txt')).getByRole('button', { name: 'Collapse gone.txt' }))
-    fireEvent.click(within(m.section('docs/gone.txt')).getByRole('button', { name: `${en['diff.copyPath']}: docs/gone.txt` }))
-    expect(m.faces.copyPath).toHaveBeenLastCalledWith('docs/gone.txt')
+    fireEvent.click(m.section('docs/gone.txt').querySelector('[data-forge-file-label]')!)
+    expect(m.faces.copyPath).not.toHaveBeenCalled()
     expect(m.section('docs/gone.txt').hasAttribute('data-expanded')).toBe(false)
   })
 
@@ -689,9 +689,11 @@ describe('ChangesTab actions', () => {
       ...LOCAL, files: [file('src/index.ts'), file('tests/index.ts')],
     })) } })
     await settle()
-    fireEvent.click(m.view.getByRole('button', { name: 'Copy path: src/index.ts' }))
+    menu(m, 'src/index.ts')
+    fireEvent.click(m.view.getByRole('menuitem', { name: en['diff.copyPath'] }))
     expect(m.faces.copyPath).toHaveBeenLastCalledWith('src/index.ts')
-    fireEvent.click(m.view.getByRole('button', { name: 'Copy path: tests/index.ts' }))
+    menu(m, 'tests/index.ts')
+    fireEvent.click(m.view.getByRole('menuitem', { name: en['diff.copyPath'] }))
     expect(m.faces.copyPath).toHaveBeenLastCalledWith('tests/index.ts')
   })
 
