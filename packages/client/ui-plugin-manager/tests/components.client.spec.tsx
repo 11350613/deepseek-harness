@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ConfigPageForm } from '../src/client/slot-contract.ts'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -159,6 +160,7 @@ function renderTab(
     useSessionRetainInfo: unusedStandardHook,
     useResource: unusedStandardHook,
     ...allowAllAccess,
+    useContextMenu: contextMenuHook(),
   }
   const navigation = createNavigationStore().create()
   const props: PluginManagerPageProps = {

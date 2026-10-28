@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MarkdownDelegateProvider } from '../src/index.ts'
@@ -282,4 +283,40 @@ describe('Markdown file links', () => {
     expect(view.getByText('source')).toBeTruthy()
     expect(outer).not.toHaveBeenCalled()
   })
+})
+
+it.each(['src/main.ts#L42', 'src/main.ts:42', 'src/main.ts:42:5', 'src/main.ts:42-48'])(
+  'captures %s and other link targets without activating them; linked images take priority', (path) => {
+    const openFile = vi.fn(), openExternalLink = vi.fn(), openContextMenu = vi.fn()
+    const view = render(<MarkdownDelegateProvider {...{ openFile, openExternalLink }}
+      getTriggerProps={contextMenuHook(openContextMenu)().getTriggerProps}>
+      <MarkdownText text={`[file](${path}) [web](https://example.com/a?q=1#part) [![picture](https://example.com/original.gif)](https://example.com/target)`} />
+    </MarkdownDelegateProvider>)
+    fireEvent.contextMenu(view.getByRole('button', { name: 'file' }), { clientX: 2, clientY: 3 })
+    expect(openContextMenu).toHaveBeenLastCalledWith({ kind: 'file', path: 'src/main.ts', line: 42 }, { x: 2, y: 3 })
+    fireEvent.contextMenu(view.getByRole('link', { name: 'web' }))
+    expect(openContextMenu).toHaveBeenLastCalledWith({ kind: 'url', url: 'https://example.com/a?q=1#part' }, expect.any(Object))
+    openContextMenu.mockClear()
+    fireEvent.contextMenu(view.getByRole('img', { name: 'picture' }))
+    expect(openContextMenu).toHaveBeenCalledExactlyOnceWith({ kind: 'image', url: 'https://example.com/original.gif' }, expect.any(Object))
+    expect(openFile).not.toHaveBeenCalled()
+    expect(openExternalLink).not.toHaveBeenCalled()
+  },
+)
+
+it('passes keyboard-positioned produced-file menus and local image identities to their owners', () => {
+  const openMenu = vi.fn(), openContextMenu = vi.fn()
+  const view = render(<MarkdownDelegateProvider getTriggerProps={contextMenuHook(openContextMenu)().getTriggerProps}>
+    <MarkdownText text={'`report.svg` ![local](out/report.svg)'}
+      fileMentions={{ resolve: () => ({
+        title: 'out/report.svg', label: 'Report', open: vi.fn(),
+        contextMenuProps: contextMenuHook((_target, point) => { openMenu(point) })()
+          .getTriggerProps({ kind: 'image', value: { url: 'unused' } }),
+      }) }}
+      pathImages={{ resolve: () => 'blob:local' }} />
+  </MarkdownDelegateProvider>)
+  fireEvent.contextMenu(view.getByRole('button', { name: 'Report' }), { clientX: 5, clientY: 6 })
+  expect(openMenu).toHaveBeenCalledWith({ x: 5, y: 6 })
+  fireEvent.contextMenu(view.getByRole('img'))
+  expect(openContextMenu).toHaveBeenCalledWith({ kind: 'image', url: 'blob:local', path: 'out/report.svg' }, { x: 0, y: 0 })
 })
