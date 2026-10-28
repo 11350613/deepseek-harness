@@ -3,7 +3,7 @@ import { execa } from 'execa'
 import { expect, it } from 'vitest'
 
 it.skipIf(process.platform === 'win32')('retains native startup and timeout diagnostics', async ({ signal }) => {
-  const result = await execa('python3', ['-m', 'unittest', 'discover', '-s', 'scripts/cua-helper', '-p', 'test_smoke.py'], {
+  const result = await execa('python3', ['-B', '-m', 'unittest', 'discover', '-s', 'scripts/cua-helper', '-p', 'test_smoke.py'], {
     cancelSignal: signal, killDescendants: true, reject: false,
   })
   expect(result.isCanceled).toBe(false)
