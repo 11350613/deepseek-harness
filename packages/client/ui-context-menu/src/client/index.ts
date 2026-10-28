@@ -11,7 +11,7 @@ import { MenuRegistry } from './registry.ts'
 import { createMenuStore } from './store.ts'
 import { dictionaries } from './locales.ts'
 import { MenuOverlay } from './View.tsx'
-import type { ContextMenus, MenuResolution, MenuTarget } from './types.ts'
+import type { ContextMenus, MenuResolution, MenuTarget, MenuPoint, UseContextMenu } from './types.ts'
 import { createContextMenuBindings } from './trigger.ts'
 
 export type { ContextMenus, MenuTarget, ContextMenuTargetMap, MenuPoint, MenuAction, MenuActionView, MenuContribution, MenuResolution } from './types.ts'
@@ -24,7 +24,7 @@ declare module '@deepseek-ai/cordis' {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface GlobalStandardProps {
     /** Menu bindings for explicit objects, available in every Slot scope. */
-    useContextMenu: import('./types.ts').UseContextMenu
+    useContextMenu: UseContextMenu
   }
   interface SlotMap {
     /** Optional React rows for existing extension positions; data contributions need no renderer. */
@@ -49,7 +49,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   const store: typeof handle = { ...handle, create: () => instance }
   const targetSource = createSnapshotStore<MenuTarget | null>(null)
   let sequence = 0
-  let active: { resolution: MenuResolution; unsubscribe: () => void; target: MenuTarget; point: import('./types.ts').MenuPoint } | undefined
+  let active: { resolution: MenuResolution; unsubscribe: () => void; target: MenuTarget; point: MenuPoint } | undefined
   let closeTimer: ReturnType<typeof setTimeout> | undefined
   let openingTimer: ReturnType<typeof setTimeout> | undefined
   let finishOpening: (() => void) | undefined

@@ -1,4 +1,5 @@
 /** Inline text and reference presentation; business rules supply resolved JSON data and actions. */
+import type { HTMLAttributes } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import { ReferenceIconRegular, type ReferenceIconKind } from './ReferenceIcon.tsx'
@@ -23,7 +24,7 @@ export function UserTextRun({ text }: UserTextRunProps): ReactNode {
 export interface ReferenceChipProps {
   readonly appearance: ReferenceIconKind | 'skill' | 'command'
   /** Explicit object-menu gesture bindings; absent for display-only references. */
-  readonly contextMenuProps?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>
+  readonly contextMenuProps?: Pick<HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>
   readonly label: string
   readonly title: string
   /** Absent for display-only references and previews. */

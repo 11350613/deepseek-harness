@@ -213,7 +213,7 @@ describe('Markdown file links', () => {
 it('captures link targets and line numbers without activating them; linked images take priority', () => {
   const openFile = vi.fn(), openExternalLink = vi.fn(), openContextMenu = vi.fn()
   const view = render(<MarkdownDelegateProvider {...{ openFile, openExternalLink }}
-    getContextMenuProps={contextMenuHook(openContextMenu)().getTriggerProps}>
+    getTriggerProps={contextMenuHook(openContextMenu)().getTriggerProps}>
     <MarkdownText text={'[file](src/main.ts#L42) [web](https://example.com/a?q=1#part) [![picture](https://example.com/original.gif)](https://example.com/target)'} />
   </MarkdownDelegateProvider>)
   fireEvent.contextMenu(view.getByRole('button', { name: 'file' }), { clientX: 2, clientY: 3 })
@@ -229,7 +229,7 @@ it('captures link targets and line numbers without activating them; linked image
 
 it('passes keyboard-positioned produced-file menus and local image identities to their owners', () => {
   const openMenu = vi.fn(), openContextMenu = vi.fn()
-  const view = render(<MarkdownDelegateProvider getContextMenuProps={contextMenuHook(openContextMenu)().getTriggerProps}>
+  const view = render(<MarkdownDelegateProvider getTriggerProps={contextMenuHook(openContextMenu)().getTriggerProps}>
     <MarkdownText text={'`report.svg` ![local](out/report.svg)'}
       fileMentions={{ resolve: () => ({
         title: 'out/report.svg', label: 'Report', open: vi.fn(),

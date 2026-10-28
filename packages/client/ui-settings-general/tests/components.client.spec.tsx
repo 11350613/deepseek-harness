@@ -43,7 +43,8 @@ const useSessionStatus: TriggerContentProps['useSessionStatus'] = selector => se
 const kit = {
   useSessions: unusedHook, useSessionStatus,
   usePanelInfo, useSessionRetainInfo: () => undefined, useResource, useWorkspaces: unusedHook,
-  ...allowAllAccess, useContextMenu: contextMenuHook(),
+  ...allowAllAccess,
+  useContextMenu: contextMenuHook(),
 }
 
 describe('Desktop collapsed update badge', () => {

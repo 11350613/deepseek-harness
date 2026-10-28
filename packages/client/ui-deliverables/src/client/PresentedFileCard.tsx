@@ -1,3 +1,4 @@
+import type { ContextMenuTriggerProps } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /** File identity, Sidebar preview, and contributed native actions for one delivery. */
 import type { ReactNode } from 'react'
 import { resolveWorkspacePath } from '@deepseek-ai/dsh-util-workspace-path'
@@ -25,7 +26,7 @@ export function PresentedFileCard({ file, cwd, phase, host, onPreview, contextMe
   phase: PresentedOpenPhase | undefined
   host: PresentedHost | null
   onPreview: () => void
-  contextMenuProps: import('@deepseek-ai/dsh-client-ui-context-menu/client').ContextMenuTriggerProps
+  contextMenuProps: ContextMenuTriggerProps
   actions: ReactNode
 } & PropsLocale<typeof NS>) {
   const reveal = host?.fileManager ?? 'directory'

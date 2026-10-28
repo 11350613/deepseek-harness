@@ -26,11 +26,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type {
   ChatFlowDataInjected, ChatFlowInjected, ChatNodeInjected, ChatScrollPosition, ChatViewInjected,
-  QuotaNoticeInjected, QuotaNoticeState, TurnTailOwnerProps,
+  QuotaNoticeInjected, QuotaNoticeState,
 } from './contract/slots.ts'
 import type { ChatSnapshot } from './contract/snapshot.ts'
 import { EMPTY_CHAT_SNAPSHOT } from './contract/snapshot.ts'
 import { ApprovalCommand } from './chat/ApprovalCommand.tsx'
+import { sessionFilePath } from './file-path.ts'
 import { ChatView } from './chat/ChatView.tsx'
 import { ChatFlow } from './chat/ChatFlow.tsx'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
@@ -254,7 +255,6 @@ export function apply(ctx: Context): void {
           fileDrag: ctx.fileDrag.actions,
           hooks: { presentation, interactionIds: ctx.uiConversation.interactions },
           dispatchInteraction: gesture => ctx.uiConversation.interactions.dispatch(sessionId, gesture),
-          fileMentions: (owner: TurnTailOwnerProps) => ctx.get('chatFileMentions')?.forClosing(owner, sessionId),
           // Files open in the right Sidebar, not in a desktop application: the
           // content stays in the product, beside the conversation that produced
           // it. A relative path resolves from the Session's working directory
@@ -277,20 +277,7 @@ export function apply(ctx: Context): void {
             else ctx.sidebarRight.openResource(url, { params: { line: options.line } })
             await Promise.resolve()
           },
-          resolveContextMenuTarget: (target) => {
-            const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
-            const current = session.projections.faceOf('workingDirectory').getSnapshot() as string | null | undefined
-            const path = (value: string) => resolveWorkspacePath(current ?? cwd, value)
-            switch (target.kind) {
-              case 'file': return { kind: 'file', value: { sessionId, path: target.base === 'workspace' ? resolveWorkspacePath(cwd, target.path) : path(target.path),
-                ...(target.line === undefined ? {} : { line: target.line }) } }
-              case 'url': return { kind: 'url', value: { sessionId, url: target.url } }
-              case 'image': return { kind: 'image', value: { sessionId, url: target.url,
-                ...(target.name === undefined ? {} : { name: target.name }),
-                ...(target.mediaType === undefined ? {} : { mediaType: target.mediaType }),
-                ...(target.path === undefined ? {} : { path: path(target.path) }) } }
-            }
-          },
+          resolveFilePath: sessionFilePath(ctx, sessionId),
           openExternalLink: (url) => {
             if (linkOpening.getSnapshot() === 'sidebar' && ctx.get('sidebarRightTabs')?.get('browser') !== undefined) {
               ctx.sidebarRight.openTab('browser', { params: { url } })

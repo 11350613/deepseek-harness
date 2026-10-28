@@ -717,4 +717,12 @@ it('opens a path menu with the preview pane and requested line', async () => {
       navigation: { address: 'dsh-resource://file/session/s/archive.zip', revision: 2, params: undefined } } })} />)
   fireEvent.contextMenu(view.container.querySelector('[data-textpreview-path]')!, { clientX: 55, clientY: 66 })
   expect(openFileMenu).toHaveBeenLastCalledWith({ kind: 'file', value: { sessionId: SESSION, path: ABSOLUTE_PATH, paneId: 'pane-1' } }, { x: 55, y: 66 })
+  view.rerender(<TextPreview {...h.props({ revision: 3, params: { line: 42 } })}
+    useContextMenu={contextMenuHook(openFileMenu)} useDocumentPreviews={selector => selector([])}
+    useTabInfo={() => ({ ...info, tab: { ...info.tab, contentId: 'dsh-resource://file/session/s/archive.zip',
+      navigation: { address: 'dsh-resource://file/session/s/archive.zip', revision: 3, params: { line: 42 } } } })} />)
+  fireEvent.keyDown(view.container.querySelector('[data-textpreview-path]')!, { key: 'F10', shiftKey: true })
+  expect(openFileMenu).toHaveBeenLastCalledWith({ kind: 'file', value: {
+    sessionId: SESSION, path: ABSOLUTE_PATH, line: 42, paneId: 'pane-1',
+  } }, { x: 0, y: 0 })
 })

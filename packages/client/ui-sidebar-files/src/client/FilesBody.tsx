@@ -1,3 +1,4 @@
+import type { ContextMenuTriggerProps } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
  * The file tree's body: the session's workspace root, listed one level at a time.
  *
@@ -77,7 +78,7 @@ interface TreeContext {
   readonly state: FilesTabState
   readonly onToggle: (parent: string, path: string) => void
   readonly onOpen: (path: string) => void
-  readonly getMenuProps: (kind: 'file' | 'directory', path: string) => import('@deepseek-ai/dsh-client-ui-context-menu/client').ContextMenuTriggerProps
+  readonly getPathTriggerProps: (kind: 'file' | 'directory', path: string) => ContextMenuTriggerProps
   readonly t: TranslateNS<'sidebarFiles'>
 }
 
@@ -89,7 +90,7 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
     return (
       <li className={css.item} data-files-entry="directory" data-files-path={path}>
         <button type="button" className={css.row} aria-expanded={expanded} onClick={() => { tree.onToggle(parent, path) }}
-          {...tree.getMenuProps('directory', path)}>
+          {...tree.getPathTriggerProps('directory', path)}>
           {expanded ? <IconFolderOpenRegular className={css.icon} /> : <IconFolderCloseRegular className={css.icon} />}
           <span className={css.name}>{entry.name}</span>
         </button>
@@ -101,7 +102,7 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
     return (
       <li className={css.item} data-files-entry="file" data-files-path={path}>
         <button type="button" className={css.row} onClick={() => { tree.onOpen(path) }}
-          {...tree.getMenuProps('file', path)}>
+          {...tree.getPathTriggerProps('file', path)}>
           <FileTypeIcon kind={classifyFileType(entry.name)} size={16} className={css.fileIcon} />
           <span className={css.name}>{entry.name}</span>
         </button>
@@ -149,7 +150,7 @@ export function FilesBody({
 }: FilesBodyProps): ReactNode {
   const { tab, panel } = useTabInfo()
   const { getTriggerProps } = useContextMenu()
-  const getMenuProps = (kind: 'file' | 'directory', path: string) => getTriggerProps(kind === 'directory'
+  const getPathTriggerProps = (kind: 'file' | 'directory', path: string) => getTriggerProps(kind === 'directory'
     ? { kind, value: { sessionId, path } } : { kind, value: { sessionId, path, paneId: panel.id } })
   useEffect(() => tab.actions.bindCommands({ refresh: () => { refresh(tab.id) } }), [tab.actions, tab.id, refresh])
   const { signal, actions: tabActions } = tab
@@ -193,7 +194,7 @@ export function FilesBody({
     state,
     onToggle: (parent, path) => { toggle(tab.id, parent, path, state.expanded, signal) },
     // Every row is under the tree's root, so its address is session-relative.
-    getMenuProps,
+    getPathTriggerProps,
     onOpen: (path) => { tabActions.openResource(fileAddressFor(sessionId, state.root, path)) },
     t,
   }
@@ -203,7 +204,7 @@ export function FilesBody({
   return (
     <div className={css.root} data-files-state="tree" data-files-root={state.root}>
       <div className={css.header}>
-        <PathLabel path={state.root} className={css.path} data-files-path {...getMenuProps('directory', state.root)} />
+        <PathLabel path={state.root} className={css.path} data-files-path {...getPathTriggerProps('directory', state.root)} />
         <span hidden>
           <button type="button" className={css.tool} aria-label={t('autoRefresh')}
             aria-pressed={state.autoRefresh} data-files-auto-refresh

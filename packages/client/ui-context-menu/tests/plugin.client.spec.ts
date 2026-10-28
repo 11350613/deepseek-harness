@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { MenuAction } from '../src/client/types.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -101,7 +102,7 @@ it('waits for metadata, toggles nearby repeated gestures, replaces occurrences, 
   ctx.provide('locale', { register: () => () => {}, bind: () => (key: string) => key } as never)
   const fiber = ctx.plugin({ inject, apply })
   await fiber.await()
-  let finish!: (actions: readonly import('../src/client/types.ts').MenuAction[]) => void
+  let finish!: (actions: readonly MenuAction[]) => void
   ctx.contextMenus.register({ target: 'pluginDocument', id: 'slow', order: 0,
     resolve: () => new Promise((resolve) => { finish = resolve }) })
   const target = { kind: 'pluginDocument' as const, value: { id: 'file' } }

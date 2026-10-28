@@ -31,13 +31,14 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
+import type { MenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { IconPanelLeftOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '../contract/slots.ts'
-import type { DockIntents, DockMode, FloatRect, TabId, TabRecord, TabRenderer } from '@deepseek-ai/dsh-client-ui-dockkit'
+import type { DockIntents, DockMode, DockSurfaceProps, FloatRect, TabId, TabRecord, TabRenderer } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { canSplit, dockPaneIds, DockLayout, findPaneContentTab } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { HalvesFit, LayoutState, PaneId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -106,7 +107,7 @@ export interface SidebarRightInjected {
   /** Toggle the dock panel using its current display mode. */
   readonly toggleFullscreen: () => void
   readonly hooks: {
-    readonly menuTarget: HostObservable<import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget | null>
+    readonly menuTarget: HostObservable<MenuTarget | null>
     readonly shortcuts: HostObservable<readonly ShortcutCatalogEntry[]>
     readonly tabTypes: HostObservable<readonly SidebarRightTabDefinition[]>
   }
@@ -134,7 +135,7 @@ interface PanelProps {
   readonly renderSlot: Children['renderSlot']
   readonly openTab: SidebarRightInjected['openTab']
   readonly closeTab: SidebarRightInjected['closeTab']
-  readonly getTabMenuProps: NonNullable<import('@deepseek-ai/dsh-client-ui-dockkit').DockSurfaceProps['getTabMenuProps']>
+  readonly getTabTriggerProps: NonNullable<DockSurfaceProps['getTabTriggerProps']>
   readonly tabMenuOpen: boolean
   readonly splitPane: SidebarRightInjected['splitPane']
   readonly toggleFullscreen: SidebarRightInjected['toggleFullscreen']
@@ -347,7 +348,7 @@ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<H
           renderTabTitle={titlesFor(panel)}
           active={panel.active}
           keepMounted={tab => types.find(type => type.kind === tab.kind)?.keepMounted === true}
-          getTabMenuProps={panel.getTabMenuProps} tabMenuOpen={panel.tabMenuOpen}
+          getTabTriggerProps={panel.getTabTriggerProps} tabMenuOpen={panel.tabMenuOpen}
           chrome={<PanelChrome
             sessionId={sessionId} fullscreen={fullscreen} actions={actions} t={t}
             shortcuts={panel.shortcuts} toggleFullscreen={panel.toggleFullscreen}
@@ -372,7 +373,7 @@ export function RightbarSeat({
   active, useShortcuts, splitPane, toggleFullscreen,
 }: RightbarSeatProps): ReactNode {
   const { getTriggerProps } = useContextMenu()
-  const getTabMenuProps: PanelProps['getTabMenuProps'] = (tab, paneId, handlers) =>
+  const getTabTriggerProps: PanelProps['getTabTriggerProps'] = (tab, paneId, handlers) =>
     getTriggerProps({ kind: 'tab', value: { sessionId, tab, paneId } }, handlers)
   // One store instance per session, so this map holds this session's surface.
   const tabMenuOpen = useMenuTarget(target => target?.kind === 'tab' && target.value.sessionId === sessionId)
@@ -438,7 +439,7 @@ export function RightbarSeat({
 
   if (surface === undefined) return null
   const panel: PanelProps = {
-    sessionId, actions, t, renderSlot, surface, openTab, closeTab, getTabMenuProps, tabMenuOpen, useTabTypes, useTabNavigation,
+    sessionId, actions, t, renderSlot, surface, openTab, closeTab, getTabTriggerProps, tabMenuOpen, useTabTypes, useTabNavigation,
     useStore, occurrence,
     fullscreen, autoFullscreen, reportRoom, active, retainTab, shortcuts, splitPane, toggleFullscreen,
   }

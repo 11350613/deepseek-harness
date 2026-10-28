@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { FileActionSource } from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import { Blob as NodeBlob } from 'node:buffer'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -18,7 +19,7 @@ it('offers image actions on file targets, copies absolute paths, and keeps save 
   const notify = vi.fn(), failed = vi.fn()
   const registry = new MenuRegistry(failed)
   const id = SessionId('context-file')
-  const save = vi.fn(async (_source: import('@deepseek-ai/dsh-client-ui-file-actions/client').FileActionSource, _mode: 'download' | 'saveAs') => ({ status: 'saved' as const, path: '/downloads/original.svg' }))
+  const save = vi.fn(async (_source: FileActionSource, _mode: 'download' | 'saveAs') => ({ status: 'saved' as const, path: '/downloads/original.svg' }))
   const copy = vi.fn(async () => {})
   const writeText = vi.fn(async () => {})
   vi.stubGlobal('navigator', { clipboard: { writeText } })

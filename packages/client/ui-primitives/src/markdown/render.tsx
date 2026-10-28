@@ -16,6 +16,7 @@
  * may add node types this renderer has no mapping for.
  */
 
+import type { HTMLAttributes } from 'react'
 import { Fragment, createElement, useCallback, useState } from 'react'
 import type { Key, ReactNode } from 'react'
 import clsx from 'clsx'
@@ -209,7 +210,7 @@ export interface MarkdownFileMentions {
    */
   resolve(value: string): {
     open: () => void
-    contextMenuProps?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>
+    contextMenuProps?: Pick<HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>
     label: string
     title: string
   } | undefined
@@ -590,13 +591,13 @@ function MarkdownAnchor({ href, glyph, children }: {
   readonly glyph: boolean
   readonly children: ReactNode[]
 }): ReactNode {
-  const { openExternalLink, getContextMenuProps } = useMarkdownDelegate()
+  const { openExternalLink, getTriggerProps } = useMarkdownDelegate()
   const external = ['http:', 'https:'].includes(new URL(href).protocol)
   const open = external ? openExternalLink : undefined
   return (
     <a
       href={href}
-      {...external ? getContextMenuProps?.({ kind: 'url', url: href }) : {}}
+      {...external ? getTriggerProps?.({ kind: 'url', url: href }) : {}}
       {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
       onClick={open === undefined ? undefined : (event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -624,7 +625,7 @@ function MarkdownFileLink({ file, glyph, children }: {
   readonly glyph: boolean
   readonly children: ReactNode[]
 }): ReactNode {
-  const { openFile, fileImages, getContextMenuProps } = useMarkdownDelegate()
+  const { openFile, fileImages, getTriggerProps } = useMarkdownDelegate()
   const [load] = useState(nextImageLoad)
   if (openFile === undefined) return <>{children}</>
   // Pure-image anchors already contain their preview and keep one navigation target.
@@ -636,7 +637,7 @@ function MarkdownFileLink({ file, glyph, children }: {
       type="button"
       className={clsx(css.fileMention, css.fileLink)}
       title={src === undefined ? file.path : undefined}
-      {...getContextMenuProps?.({ kind: 'file', ...file })}
+      {...getTriggerProps?.({ kind: 'file', ...file })}
       onClick={() => { openFile(file.path, file.line === undefined ? undefined : { line: file.line }) }}
     >
       {glyph && <LinkIconMedium kind={classifyLinkPath(file.path)} className={css.linkIcon} />}
@@ -693,16 +694,16 @@ function LoadedMarkdownImage({ src, alt, destination, preview }: {
   destination: string
   preview: ReturnType<typeof useMarkdownDelegate>['fileImages']
 }): ReactNode {
-  const { getContextMenuProps } = useMarkdownDelegate()
+  const { getTriggerProps } = useMarkdownDelegate()
   const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState(false)
   const close = useCallback(() => { setOpen(false) }, [])
   if (failed) return <span className={css.imageAlt}>{preview === undefined ? '' : `${preview.labels.failed} · `}{alt || destination}</span>
   const file = parseFileLink(destination)
-  const trigger = getContextMenuProps?.({ kind: 'image', url: src, ...(file === undefined ? {} : { path: file.path }) })
+  const contextMenuProps = getTriggerProps?.({ kind: 'image', url: src, ...(file === undefined ? {} : { path: file.path }) })
   const imageProps = { className: css.image, src, alt, onError: () => { setFailed(true) },
     loading: 'lazy' as const, decoding: 'async' as const, referrerPolicy: 'no-referrer' as const }
-  if (preview === undefined) return <img {...imageProps} {...trigger} />
+  if (preview === undefined) return <img {...imageProps} {...contextMenuProps} />
   const localFileName = file?.path.split(/[\\/]/u).at(-1)
   const urlFileName = destination.split('/').at(-1)?.split(/[?#]/u)[0]
   const exportName = localFileName || urlFileName || 'image'
@@ -714,10 +715,10 @@ function LoadedMarkdownImage({ src, alt, destination, preview }: {
   />
   return <>
     <button type="button" className={css.imageButton} title={preview.labels.open}
-      {...trigger}
+      {...contextMenuProps}
       aria-label={alt ? `${preview.labels.open}: ${alt}` : preview.labels.open}
       onClick={() => { setOpen(true) }}>{img}</button>
-    {open && <ImageLightbox src={src} alt={alt} labels={preview.labels} onClose={close} contextMenuProps={trigger} />}
+    {open && <ImageLightbox src={src} alt={alt} labels={preview.labels} onClose={close} contextMenuProps={contextMenuProps} />}
   </>
 }
 

@@ -362,7 +362,8 @@ function panelProps(data: WorkflowRunChatData, sessions = listState(), openSessi
       submit: () => {},
     },
     useWorkspaces: selector => selector(panelWorkspace),
-    ...allowAllAccess, useContextMenu: contextMenuHook(),
+    ...allowAllAccess,
+    useContextMenu: contextMenuHook(),
     useTurnData: () => undefined,
     useDisclosure: () => { throw new Error('unused') },
     useGroupAction: () => { throw new Error('unused') },
@@ -370,7 +371,6 @@ function panelProps(data: WorkflowRunChatData, sessions = listState(), openSessi
     inspectCall: () => {},
     forkAt: () => {},
     loadImage: () => Promise.reject(new Error('not used')),
-    fileMentions: () => undefined,
     openSession,
     t: makeTranslate(zh),
   }

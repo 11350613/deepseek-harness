@@ -23,7 +23,12 @@ export function FileTreePane({ open, id, ...props }: ChangedFilesProps & { reado
   useLayoutEffect(() => {
     const parent = pane.current?.parentElement
     if (parent === undefined || parent === null) return
-    const measure = (): void => { setMaximum(Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, parent.clientWidth - DIFF_MIN_WIDTH))) }
+    const measure = (): void => {
+      const available = parent.clientWidth
+      // A retained tab has no measurable width while its session or pane is hidden.
+      if (available === 0) return
+      setMaximum(Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, available - DIFF_MIN_WIDTH)))
+    }
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(parent)

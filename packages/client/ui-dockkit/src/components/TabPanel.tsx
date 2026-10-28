@@ -22,6 +22,7 @@
  * `canAddTab` allows), the pane's split control, and the embedder's chrome keep
  * their width and their place at the strip's end.
  */
+import type { KeyboardEvent } from 'react'
 import { Fragment, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import clsx from 'clsx'
@@ -303,7 +304,7 @@ export function TabStrip({ state, pane, callbacks, offsets }: TabStripProps): Re
           // A pane's lone unclosable chip is a label, not a choice: there is
           // no other tab to select against and nothing to do to it.
           const quiet = !closable && pane.tabs.length === 1
-          const onKeyDown = (event: import('react').KeyboardEvent<HTMLElement>) => {
+          const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
             if (event.target !== event.currentTarget) return
             if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return
             const next = chipToFocus(event.key, pane.tabs, tabId)
@@ -357,7 +358,7 @@ export function TabStrip({ state, pane, callbacks, offsets }: TabStripProps): Re
                   event.stopPropagation()
                   activate(tabId)
                 }}
-                {...callbacks.getTabMenuProps?.(tab, pane.id, { onKeyDown, tabIndex: selected ? 0 : -1 }) ?? {
+                {...callbacks.getTabTriggerProps?.(tab, pane.id, { onKeyDown, tabIndex: selected ? 0 : -1 }) ?? {
                   onKeyDown,
                   onContextMenu: (event) => {
                     event.preventDefault(); event.stopPropagation()

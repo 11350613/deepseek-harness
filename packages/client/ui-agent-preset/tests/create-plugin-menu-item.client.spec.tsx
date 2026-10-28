@@ -30,7 +30,8 @@ function view(roster: Partial<AgentPresetSettingsState> = {}, inMenu = false) {
     useAgentPresets: bindSnapshotSelector(agentPresets),
     usePanelInfo: unusedHook, useSessions: unusedHook, useSessionStatus: unusedHook,
     useSessionRetainInfo: unusedHook, useWorkspaces: unusedHook, useResource: unusedHook,
-    ...allowAllAccess, useContextMenu: contextMenuHook(),
+    ...allowAllAccess,
+    useContextMenu: contextMenuHook(),
     load, startCreatorDraft, onDismiss,
   }
   function TestMenu() {

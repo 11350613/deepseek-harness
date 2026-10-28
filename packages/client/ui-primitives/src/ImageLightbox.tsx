@@ -1,3 +1,4 @@
+import type { HTMLAttributes } from 'react'
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { IconCloseOutlineRegular } from './icons/index.tsx'
@@ -30,7 +31,7 @@ export function ImageLightbox({ src, alt, labels, onClose, contextMenuProps }: {
   alt: string
   labels: ImageLightboxLabels
   onClose: () => void
-  contextMenuProps?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'> | undefined
+  contextMenuProps?: Pick<HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'> | undefined
 }) {
   const closeRef = useRef<HTMLButtonElement | null>(null)
   const restoreRef = useRef<HTMLElement | null>(null)

@@ -1,3 +1,4 @@
+import type { AssistantNodeInjected } from '../src/client/chat/AssistantNodeView.tsx'
 import { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { apply as applyMenus, inject as injectMenus } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 // @vitest-environment jsdom
@@ -321,19 +322,9 @@ describe('Chat inject API', () => {
     await b.runtime.sessions.setProjection(ROOT, 'workingDirectory', '/proj/.agents/worktrees/w')
     await injected.openFile('src/a.ts')
     expect(b.sidebarRight.openResource).toHaveBeenLastCalledWith('dsh-resource://file/session/root-1/.agents/worktrees/w/src/a.ts')
-    expect(injected.resolveContextMenuTarget({ kind: 'file', path: 'src/a.ts', line: 7 })).toEqual({ kind: 'file', value: {
-      sessionId: ROOT, path: '/proj/.agents/worktrees/w/src/a.ts', line: 7,
-    } })
-    expect(injected.resolveContextMenuTarget({ kind: 'file', path: 'src/a.ts', base: 'workspace' })).toEqual({ kind: 'file', value: {
-      sessionId: ROOT, path: '/proj/src/a.ts',
-    } })
-    expect(injected.resolveContextMenuTarget({ kind: 'url', url: 'https://example.com/' })).toEqual({ kind: 'url', value: { sessionId: ROOT, url: 'https://example.com/' } })
-    expect(injected.resolveContextMenuTarget({ kind: 'image', url: 'blob:image', path: 'image.png', name: 'image.png', mediaType: 'image/png' })).toEqual({ kind: 'image', value: {
-      sessionId: ROOT, url: 'blob:image', path: '/proj/.agents/worktrees/w/image.png', name: 'image.png', mediaType: 'image/png',
-    } })
+    expect(injected.resolveFilePath('src/a.ts')).toBe('/proj/.agents/worktrees/w/src/a.ts')
     await b.runtime.sessions.setProjection(ROOT, 'workingDirectory', null)
-    expect(injected.resolveContextMenuTarget({ kind: 'image', url: 'https://example.com/image' })).toEqual({ kind: 'image', value: { sessionId: ROOT, url: 'https://example.com/image' } })
-    expect(injected.resolveContextMenuTarget({ kind: 'file', path: 'file.ts' })).toEqual({ kind: 'file', value: { sessionId: ROOT, path: '/proj/file.ts' } })
+    expect(injected.resolveFilePath('file.ts')).toBe('/proj/file.ts')
     await b.runtime.sessions.setProjection(ROOT, 'workingDirectory', '/proj/.agents/worktrees/w')
 
     // A leading `./` names the same file, so the Sidebar reuses its tab.
@@ -534,12 +525,16 @@ describe('Chat inject API', () => {
     expect(flow.injected.hooks.connectionState).toBe(b.runtime.ctx.get('connection')!.state)
     expect(flow.injected.hooks.presentation).toBe(injected.hooks.presentation)
 
-    expect(injected.fileMentions(owner)).toBeUndefined()
+    const entry = b.runtime.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'assistant-step')!
+    const assistant = entry.inject!(ROOT as never)
+    const fileMentions = assistant.fileMentions as AssistantNodeInjected['fileMentions']
+    const getFileTriggerProps = vi.fn(() => ({}))
+    expect(fileMentions(owner, getFileTriggerProps)).toBeUndefined()
     const mentions = { resolve: vi.fn() } as never
     const forClosing = vi.fn(() => mentions)
     b.runtime.ctx.provide('chatFileMentions', { forClosing } as never)
-    expect(injected.fileMentions(owner)).toBe(mentions)
-    expect(forClosing).toHaveBeenCalledWith(owner, ROOT)
+    expect(fileMentions(owner, getFileTriggerProps)).toBe(mentions)
+    expect(forClosing).toHaveBeenCalledWith(owner, ROOT, getFileTriggerProps)
 
     expect(injected.chatScroll.read()).toBeNull()
     const position = { anchorKey: 'node-1', anchorTop: 4, scrollTop: 12 }

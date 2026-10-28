@@ -2,9 +2,9 @@
  * Prop shares the kit's own components pass among themselves. These are internal
  * to the package — the outward contracts are in `adapter.ts`.
  */
-import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { PointerEvent as ReactPointerEvent, ReactNode, HTMLAttributes } from 'react'
 import type { DockLabels, TabMenuExtras, TabRenderer } from '../contract/adapter.ts'
-import type { PaneId, SplitId, TabId } from '../contract/types.ts'
+import type { PaneId, SplitId, TabId, TabRecord } from '../contract/types.ts'
 import type { DropTarget } from '../engine/geometry.ts'
 
 /** Why a pane's split control is disabled: the pane budget, or too little width for two halves. */
@@ -42,8 +42,8 @@ export interface PaneCallbacks {
   /** Whether the embedder popup is preparing or visible; suppresses tab tooltips. */
   readonly tabMenuOpen?: boolean | undefined
   /** Override the kit popup; the embedder owns rendering and dismissal. */
-  readonly getTabMenuProps?: ((tab: import('../contract/types.ts').TabRecord, paneId: PaneId, handlers?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) => Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) | undefined
-  /** Extra rows for the kit popup; ignored when getTabMenuProps is supplied. */
+  readonly getTabTriggerProps?: ((tab: TabRecord, paneId: PaneId, handlers?: Pick<HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) => Pick<HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) | undefined
+  /** Extra rows for the kit popup; ignored when getTabTriggerProps is supplied. */
   readonly renderTabMenuItems: TabMenuExtras | undefined
   /** The pane whose strip hosts the embedder's surface-wide controls. */
   readonly chromePaneId: PaneId

@@ -19,7 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { FILES_ID, filesDefinition } from './definition.tsx'
 import { createList, createWatch, filesFace } from './face.ts'
-import { FilesBody, type FilesBodyInjected } from './FilesBody.tsx'
+import { FilesBody } from './FilesBody.tsx'
 import { FilesTitle } from './FilesTitle.tsx'
 import { en, ja, es, fr, de, ru, pt, zh } from './locales.ts'
 import { createFilesStore } from './store.ts'
@@ -86,8 +86,7 @@ export function apply(ctx: ClientContext): void {
   const inject = filesFace(createList(ctx.remote), createWatch(ctx.remote))
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     {
-      name: 'sidebar.right.pane.tab', key: FILES_ID, locale: NS, store, inject: (sessionId, actions): FilesBodyInjected => ({ ...inject(sessionId, actions),
-      }),
+      name: 'sidebar.right.pane.tab', key: FILES_ID, locale: NS, store, inject,
       children: { 'sidebar.right.tab.files.actions': { kind: 'list', scope: 'session' } },
     },
     FilesBody,

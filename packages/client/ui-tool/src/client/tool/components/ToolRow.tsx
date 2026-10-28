@@ -5,7 +5,7 @@ import {
   TerminalBlock, TextShimmer, WebBlock,
   diffTotals,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ToolCallCommonProps } from '../../contract/slots.ts'
+import type { ContextMenuTriggerProps } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type { PropsRenderSlots, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { OpenFileOptions, UseDisclosure } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { MessageImageLoader } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -91,8 +91,10 @@ export interface ToolRowProps {
   filePathLine?: number | undefined
   /** Open the path (already cwd-resolved), landing on `filePathLine` when given. */
   onOpenFile?: ((path: string, options?: OpenFileOptions) => void) | undefined
-  /** Session-bound object menu supplied by the owning tool view. */
-  getContextMenuProps?: ToolCallCommonProps['getContextMenuProps']
+  /** File gesture bindings supplied by the owning tool view. */
+  fileContextMenuProps?: ContextMenuTriggerProps | undefined
+  /** URL gesture bindings supplied by the owning tool view. */
+  urlContextMenuProps?: ContextMenuTriggerProps | undefined
   /** Safe http(s) URL from tool args; when set, the summary renders as a link that opens it in a new tab. */
   href?: string | undefined
   /**
@@ -149,7 +151,7 @@ export const ToolRow = memo(function ToolRow({
   filePath,
   filePathLine,
   onOpenFile,
-  getContextMenuProps,
+  fileContextMenuProps, urlContextMenuProps,
   href,
   inspect,
   useDisclosure,
@@ -212,8 +214,6 @@ export const ToolRow = memo(function ToolRow({
   // The code variant's program renders through CodeBlock (shiki), so only its
   // output joins the IN/OUT card; every other variant's input does too.
   const cardBody = variant === 'code' ? null : bodyText
-  const fileMenu = useMemo(() => filePath === undefined ? undefined : getContextMenuProps?.({ kind: 'file', path: filePath, ...(filePathLine === undefined ? {} : { line: filePathLine }) }), [getContextMenuProps, filePath, filePathLine])
-  const urlMenu = useMemo(() => linkHref === undefined ? undefined : getContextMenuProps?.({ kind: 'url', url: linkHref }), [getContextMenuProps, linkHref])
   const collapsedContent = useMemo(() => summaryText !== '' && (
     /* An empty summary drops the separator with it (a row that is only
        its title shows no trailing dot). */
@@ -223,11 +223,11 @@ export const ToolRow = memo(function ToolRow({
         <button
           type="button"
           className={css.fileLink}
-          {...fileMenu}
+          {...fileContextMenuProps}
           onClick={openFile}
           onKeyDown={(event) => {
             summaryLinkKeyDown(event)
-            fileMenu?.onKeyDown?.(event)
+            fileContextMenuProps?.onKeyDown?.(event)
           }}
         >
           <TextShimmer>{summaryText}</TextShimmer>
@@ -236,13 +236,13 @@ export const ToolRow = memo(function ToolRow({
         <a
           className={css.fileLink}
           href={linkHref}
-          {...urlMenu}
+          {...urlContextMenuProps}
           target="_blank"
           rel="noopener noreferrer"
           onClick={stopLinkClick}
           onKeyDown={(event) => {
             summaryLinkKeyDown(event)
-            urlMenu?.onKeyDown?.(event)
+            urlContextMenuProps?.onKeyDown?.(event)
           }}
         >
           <TextShimmer>{summaryText}</TextShimmer>
@@ -268,7 +268,7 @@ export const ToolRow = memo(function ToolRow({
         </TextShimmer>
       )}
     </>
-  ), [summaryLinkKeyDown, fileMenu, urlMenu, linkHref, openFile, state, suffix, totals, summaryText, exitLabel])
+  ), [summaryLinkKeyDown, fileContextMenuProps, urlContextMenuProps, linkHref, openFile, state, suffix, totals, summaryText, exitLabel])
   const expandedContent = useMemo(() => open ? (
     <div className={clsx(css.bodyWrap, detailsBody !== null && css.detailsBodyWrap)}>
       {askQuestionBody !== null

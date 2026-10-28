@@ -1,4 +1,5 @@
 /** Complete image bytes rendered in a shared zoom viewport. */
+import type { ContextMenuTriggerProps } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { DraggableImage } from '@deepseek-ai/dsh-client-ui-primitives'
 import { bindImagePan } from './pan.ts'
@@ -124,7 +125,7 @@ export function ImageBody(props: ImageBodyProps): ReactNode {
 function LoadedImage({
   url, name, file, resourceAddress, preference, onPreference, labels, signal, scrollportRef, t, fileDrag, contextMenuProps,
 }: {
-  readonly contextMenuProps: import('@deepseek-ai/dsh-client-ui-context-menu/client').ContextMenuTriggerProps
+  readonly contextMenuProps: ContextMenuTriggerProps
   readonly fileDrag: ImageBodyInjected['fileDrag']
   readonly url: string
   readonly name: string

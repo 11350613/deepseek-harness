@@ -88,7 +88,7 @@ export interface MenuContribution<K extends keyof ContextMenuTargetMap> {
 /** Independent menu occurrence used by custom renderers and embedded menus. */
 export interface MenuResolution {
   /** Read a new immutable presentation after each provider settles, updates, or is withdrawn. */
-  readonly source: import('@deepseek-ai/dsh-client-store').ObservableSnapshot<readonly MenuActionView[]>
+  readonly source: ObservableSnapshot<readonly MenuActionView[]>
   /** Settles when all opening contributions have completed or been withdrawn. */
   readonly ready: Promise<void>
   /**
@@ -102,7 +102,7 @@ export interface MenuResolution {
 /** Client capability used equally by built-in and external plugins. */
 export interface ContextMenus {
   /** Captured target of the shared popup; null after dismissal. */
-  readonly active: import('@deepseek-ai/dsh-client-store').ObservableSnapshot<MenuTarget | null>
+  readonly active: ObservableSnapshot<MenuTarget | null>
   /**
    * Register for subsequent openings; unloading withdraws actions and aborts their queries. Duplicate ids within a target fail.
    * @param contribution - target provider.

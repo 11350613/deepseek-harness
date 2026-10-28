@@ -17,7 +17,7 @@ FactoryComponentPropsOf<'conversation.images.content'>) {
   const { getTriggerProps } = useContextMenu()
   const resolved = useMemo(() => labels ?? messageImageLabels(t), [labels, t])
   return <ImageGallery images={images} load={loadImage} align={align}
-    compact={compact} thumbnail={thumbnail} labels={resolved} fileDrag={fileDrag} getImageMenuProps={source => getTriggerProps({ kind: 'image', value: source })} />
+    compact={compact} thumbnail={thumbnail} labels={resolved} fileDrag={fileDrag} getTriggerProps={getTriggerProps} />
 }
 
 /**

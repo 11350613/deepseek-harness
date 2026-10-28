@@ -46,7 +46,8 @@ function openProps(controller = new PresentedOpenController(), summaries = new C
   const sessions: SessionListState = { ids: [], byId: {}, phase: 'ready', projectionsBySession: {} }
   const openMenu = vi.fn()
   return {
-    openMenu, useContextMenu: contextMenuHook(openMenu),
+    openMenu,
+    useContextMenu: contextMenuHook(openMenu),
     SessionProvider: ({ children }: { children?: import('react').ReactNode }) => <>{children}</>,
     renderSlot: renderFileActions,
     useChangesDiff: <T,>(select: (state: ReturnType<typeof diffs.state.getSnapshot>) => T): T => select(diffs.state.getSnapshot()),
@@ -910,8 +911,9 @@ describe('plugin registration', () => {
     const preview = vi.fn<(path: string) => void>()
     for (const produced of [[], [{ path: 'out/report.docx' }]]) {
       const delivered = tailOwner({ produced, presented: [{ path: 'out/report.docx', seq: 2, index: 0 }] }, 3, preview)
-      delivered.getContextMenuProps = contextMenuHook<import('@deepseek-ai/dsh-client-ui-primitives').MarkdownMenuTarget>((target, point) => { if (target.kind === 'file') ctx.contextMenus.open({ kind: 'file', value: { sessionId: SessionId('child-session'), path: target.path } }, point) })().getTriggerProps
-      const mentions = service?.forClosing(delivered, SessionId('child-session'))
+      const { getTriggerProps } = contextMenuHook((target, point) => { ctx.contextMenus.open(target, point) })()
+      const mentions = service?.forClosing(delivered, SessionId('child-session'), path =>
+        getTriggerProps({ kind: 'file', value: { sessionId: SessionId('child-session'), path } }))
       for (const text of ['report.docx', 'out/report.docx']) {
         const mention = mentions?.resolve(text)
         expect(mention?.label).toBe('Open out/report.docx in sidebar')

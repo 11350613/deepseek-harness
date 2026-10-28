@@ -1,4 +1,3 @@
-import type { MarkdownDelegate } from '@deepseek-ai/dsh-client-ui-primitives'
 /** Chat-owned Slot declarations and composed component props. */
 import type { RefObject } from 'react'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
@@ -18,7 +17,9 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { ConnectionStateSource } from '@deepseek-ai/dsh-client-connection/client'
-import type { MarkdownFileMentions, MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { FileDragActions, MarkdownFileMentions, MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ContextMenuTriggerProps } from '@deepseek-ai/dsh-client-ui-context-menu/client'
+import type { ChatKey } from '../locale.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: the Session-scope access Hook (`useAccess`) the Chat entries read.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -60,7 +61,6 @@ export interface TurnTailOwnerProps {
   turn: TurnLocation
   seq: number
   openFile: (path: string) => void
-  getContextMenuProps?: MarkdownDelegate['getContextMenuProps']
 }
 
 /** Owner currency of finalized-assistant actions. */
@@ -138,9 +138,12 @@ export interface ChatFileMentions {
    * Resolve prose links for one closing Turn.
    * @param owner - closing-Turn identity and file opener.
    * @param sessionId - viewed Session, including when history is inherited from a fork.
+   * @param getFileTriggerProps - ordinary gesture binding for a resolved file path.
    * @returns link resolver when available.
    */
-  forClosing(owner: TurnTailOwnerProps, sessionId: SessionId): MarkdownFileMentions | undefined
+  forClosing(
+    owner: TurnTailOwnerProps, sessionId: SessionId, getFileTriggerProps?: (path: string) => ContextMenuTriggerProps,
+  ): MarkdownFileMentions | undefined
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -231,13 +234,10 @@ export interface ChatNodeOwnerProps {
   groupPart?: string
   cwd?: string | undefined
   openFile: (path: string, options?: OpenFileOptions) => void
-  /** Object-menu callback bound to the originating Session and path base. */
-  getContextMenuProps?: MarkdownDelegate['getContextMenuProps']
   inspectCall: ((callId: ToolCallId) => void) | undefined
   forkAt: (seq: number) => void
   /** Session-authorized image loader supplied by the Chat view. */
   loadImage: MessageImageLoader
-  fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
   /** Turn-process state when this Node belongs to a projected Turn. */
   turnProcess?: TurnProcessOwnerProps | undefined
 }
@@ -317,9 +317,9 @@ export interface PerformanceUsageInjected {
 /** Business callbacks injected into the Chat view. */
 export interface ChatViewInjected {
   /** File preparation and failure callbacks owned by the file-drag plugin. */
-  readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions
+  readonly fileDrag: FileDragActions
   /** Resolve the reference against this Session and its current path base when the gesture begins. */
-  resolveContextMenuTarget: (target: import('@deepseek-ai/dsh-client-ui-primitives').MarkdownMenuTarget) => import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget
+  resolveFilePath: (path: string) => string
   /** Dispatch one gesture to the Conversation plugin registry. */
   dispatchInteraction: (gesture: TextInteractionGesture) => string | null
   hooks: {
@@ -350,7 +350,6 @@ export interface ChatViewInjected {
     read: () => ChatScrollPosition | null
   }
   forkAt: (seq: number) => void
-  fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
 }
 
 /** Session-owned node sources shared with the view, plus the flow's connection state. */
@@ -363,7 +362,7 @@ export type ChatFlowDataInjected = Pick<ChatViewInjected, 'keyedHooks'> & {
 
 /** Ordered rows and reconciled local echoes rendered inside one Chat viewport. */
 export interface ChatFlowOwnerProps extends Pick<ChatNodeOwnerProps,
-  'cwd' | 'openFile' | 'getContextMenuProps' | 'inspectCall' | 'forkAt' | 'loadImage' | 'fileMentions'> {
+  'cwd' | 'openFile' | 'inspectCall' | 'forkAt' | 'loadImage'> {
   readonly entries: readonly RenderEntry[]
   readonly pendingInputs: readonly (PendingSubmission | InboxState['next-step'][number])[]
   readonly lastInputTurn: number | undefined
@@ -399,7 +398,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
   interface LocaleNamespaceMap {
     /** Chat target, transcript node, statistics, and details copy. */
-    chat: import('../locale.ts').ChatKey
+    chat: ChatKey
   }
 
   interface SlotFactoryMap {

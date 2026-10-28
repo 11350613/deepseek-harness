@@ -6,7 +6,7 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { bindDisclosure, useDisclosure } from '@deepseek-ai/dsh-client-ui-chat/src/client/chat/use-disclosure.ts'
 import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { contextMenuHook, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { ToolCallOwnerProps, ToolTreeProps } from '../src/client/contract/slots.ts'
 import { ToolCallTree } from '../src/client/tool/ToolCallTree.tsx'
@@ -53,7 +53,9 @@ function props(
     inspectCall: vi.fn(),
     forkAt: vi.fn(),
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
-    fileMentions: vi.fn(),
+    useContextMenu: contextMenuHook(),
+    sessionId: 'original' as ToolTreeProps['sessionId'],
+    resolveFilePath: path => path,
     useHostInfo: ((selector: (info: { home: string | undefined }) => unknown) => selector({ home })) as ToolTreeProps['useHostInfo'],
     t,
   }
@@ -61,25 +63,23 @@ function props(
 }
 
 describe('ToolCallTree', () => {
-  it('forwards the captured Session menu callback to root and nested tool Slots without a Markdown provider', () => {
-    const owners: ToolCallOwnerProps[] = []
-    const block = { ...root('parent', { name: 'custom_parent', argsRaw: '{}' }),
-      subCalls: [root('child', { name: 'custom_child', argsRaw: '{}' })] }
+  it('binds root and nested fallback files without a Markdown provider', () => {
+    const block = { ...root('parent', { name: 'read', argsRaw: '{"file_path":"parent.ts"}' }),
+      subCalls: [root('child', { name: 'read', argsRaw: '{"file_path":"child.ts"}' })] }
     const opened = vi.fn()
-    const sessionId = 'captured-session'
-    const getContextMenuProps: NonNullable<ToolTreeProps['getContextMenuProps']> = (target) => {
-      opened(sessionId, target)
-      return {}
-    }
-    render(<ToolCallTree {...props(block, undefined, owners)} getContextMenuProps={getContextMenuProps} />)
-    expect(owners).toHaveLength(2)
-    for (const owner of owners) {
-      expect(owner.getContextMenuProps).toBe(getContextMenuProps)
-      owner.getContextMenuProps?.({ kind: 'file', path: '/workspace/captured.ts', line: 42, base: 'workspace' })
-    }
-    expect(opened).toHaveBeenCalledTimes(2)
-    expect(opened).toHaveBeenLastCalledWith(sessionId,
-      { kind: 'file', path: '/workspace/captured.ts', line: 42, base: 'workspace' })
+    const input = props(block)
+    let directory = '/old'
+    const view = render(<ToolCallTree {...input}
+      useContextMenu={contextMenuHook(opened)} resolveFilePath={path => `${directory}/${path}`} />)
+    directory = '/current'
+    fireEvent.contextMenu(view.getByRole('button', { name: 'parent.ts' }), { clientX: 12, clientY: 34 })
+    fireEvent.keyDown(view.getByRole('button', { name: 'child.ts' }), { key: 'F10', shiftKey: true })
+    expect(opened.mock.calls).toEqual([
+      [{ kind: 'file', value: { sessionId: 'original', path: '/current/parent.ts' } }, { x: 12, y: 34 }],
+      [{ kind: 'file', value: { sessionId: 'original', path: '/current/child.ts' } }, { x: 0, y: 0 }],
+    ])
+    expect(input.openFile).not.toHaveBeenCalled()
+    expect(view.container.querySelector('[aria-expanded="true"]')).toBeNull()
   })
 
   it('dispatches only the parent and changed child among 100 sibling calls', () => {

@@ -64,7 +64,8 @@ const runtime = {
   useSessionStatus,
   usePanelInfo, useSessionRetainInfo: () => undefined, useResource,
   useWorkspaces: (() => { throw new Error('unused') }) as never,
-  ...allowAllAccess, useContextMenu: contextMenuHook(),
+  ...allowAllAccess,
+  useContextMenu: contextMenuHook(),
 }
 
 function mount(controller: PermissionPresetSettingsController) {

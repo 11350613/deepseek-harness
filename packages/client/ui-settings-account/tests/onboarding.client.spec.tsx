@@ -23,7 +23,8 @@ it('claims onboarding while loading, offers API key fallback, and completes afte
   const globals: GlobalStandardProps = {
     usePanelInfo: unused, useSessions: unused, useSessionStatus: unused,
     useSessionRetainInfo: unused, useResource: unused, useWorkspaces: unused,
-    ...allowAllAccess, useContextMenu: contextMenuHook(),
+    ...allowAllAccess,
+    useContextMenu: contextMenuHook(),
   }
   const props = {
     ...globals,

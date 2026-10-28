@@ -147,7 +147,7 @@ export function harness(script: Record<number, RemoteResult<WorkspaceFileText>> 
     key === 'sidebar.right.tab.document'
       ? createElement(TextBody, {
         ...owner as object, useTabInfo: opts?.hookContext, sessionId: SESSION, useResource,
-      } as unknown as DocumentPreviewProps)
+      } as DocumentPreviewProps)
       : key === 'sidebar.right.tab.document.action' ? null : createElement('div', {
         'data-slot': key,
         'data-slot-path': (owner as { absolutePath: string }).absolutePath,
@@ -176,7 +176,7 @@ export function harness(script: Record<number, RemoteResult<WorkspaceFileText>> 
     useDocumentPreviews: () => definitions,
     renderSlot,
     t,
-  }) as unknown as TextPreviewProps
+  }) as TextPreviewProps
   return {
     instance,
     face,

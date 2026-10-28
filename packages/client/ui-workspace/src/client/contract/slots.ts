@@ -34,6 +34,7 @@
  * the row's Session identity; a Session binding would activate and retain
  * every listed Session.
  */
+import type { MenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type {
   HostObservable, InjectFace, PropsHooks, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore, SlotHookFactory,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -248,7 +249,7 @@ export type WorkspaceBrowserInjected = {
   openSessionMenu: (sessionId: SessionId, displayTitle: string, point: { x: number; y: number }, mode?: 'toggle') => void
   hooks: DirectoryPickingInjected['hooks'] & {
     workspaceActionRequest: HostObservable<WorkspaceActionRequest | null>
-    menuTarget: HostObservable<import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget | null>
+    menuTarget: HostObservable<MenuTarget | null>
     /**
      * Fixed Host facts, reached through a hook rather than injected as values:
      * the renderer memoizes an entry's inject result for the registration's

@@ -1,4 +1,3 @@
-import type { TabRecord } from '../contract/types.ts'
 /**
  * The docked surface: the split tree plus the tab and divider gestures over it.
  * This is the whole kit as far as an embedder's layout column is concerned —
@@ -10,9 +9,9 @@ import type { TabRecord } from '../contract/types.ts'
  * drop target changes nothing.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, HTMLAttributes } from 'react'
 import type { DockIntents, DockLabels, TabMenuExtras, TabRenderer } from '../contract/adapter.ts'
-import type { LayoutState, PaneId, SplitId, TabId } from '../contract/types.ts'
+import type { LayoutState, PaneId, SplitId, TabId, TabRecord } from '../contract/types.ts'
 import { clampSizes, FLOAT_DEFAULT_SIZE, MIN_PANE_FRACTION } from '../engine/constraints.ts'
 import { getSplit, topRightPaneId } from '../engine/tree.ts'
 import type { DropTarget, HalvesFit } from '../engine/geometry.ts'
@@ -67,8 +66,8 @@ export interface DockSurfaceProps {
   /** Whether the embedder popup is preparing or visible; suppresses tab tooltips. */
   readonly tabMenuOpen?: boolean | undefined
   /** Override the kit popup; the embedder owns rendering and dismissal. */
-  readonly getTabMenuProps?: ((tab: TabRecord, paneId: PaneId, handlers?: Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) => Pick<import('react').HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) | undefined
-  /** Extra rows for the kit popup; ignored when getTabMenuProps is supplied. */
+  readonly getTabTriggerProps?: ((tab: TabRecord, paneId: PaneId, handlers?: Pick<HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) => Pick<HTMLAttributes<HTMLElement>, 'onContextMenu' | 'onKeyDown' | 'tabIndex'>) | undefined
+  /** Extra rows for the kit popup; ignored when getTabTriggerProps is supplied. */
   readonly renderTabMenuItems?: TabMenuExtras
   /**
    * Surface-wide controls, drawn at the far end of the top-right pane's tab
@@ -175,7 +174,7 @@ function sameSizes(a: readonly number[], b: readonly number[]): boolean {
 /** The split tree and the gestures over it. */
 function Surface({
   state, canSplit, canAddTab, canCloseTab, intents, labels, renderTab, renderTabTitle, renderTabMenuItems,
-  getTabMenuProps, tabMenuOpen, chrome, onRoom,
+  getTabTriggerProps, tabMenuOpen, chrome, onRoom,
   draw,
   dropZones = 'edges', minPaneFraction = MIN_PANE_FRACTION, hideSplitWhenBlocked = false,
 }: DockSurfaceProps & { readonly draw: (callbacks: PaneCallbacks, preview: SizePreview | undefined) => ReactNode }): ReactNode {
@@ -297,7 +296,7 @@ function Surface({
     renderTab,
     renderTabTitle,
     renderTabMenuItems,
-    getTabMenuProps, tabMenuOpen,
+    getTabTriggerProps, tabMenuOpen,
     chromePaneId: topRightPaneId(state),
     chrome,
   }

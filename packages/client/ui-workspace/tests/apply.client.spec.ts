@@ -1,3 +1,4 @@
+import type { MenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import { Context } from '@deepseek-ai/cordis'
@@ -936,7 +937,7 @@ it('captures Workspace menu requests, rechecks mutable access, and withdraws reg
   const target = { kind: 'workspace' as const, value: { workspaceId: 'alpha' as WorkspaceId, path: '/projects/alpha', displayTitle: 'Alpha' } }
   browser.openWorkspaceMenu(target.value.workspaceId, target.value.path, 'Alpha', { x: 20, y: 30 })
   expect(vi.spyOn(b.ctx.contextMenus, 'open')).toHaveBeenLastCalledWith(target, { x: 20, y: 30 })
-  const active = b.ctx.contextMenus.active as ReturnType<typeof createSnapshotStore<import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget | null>>
+  const active = b.ctx.contextMenus.active as ReturnType<typeof createSnapshotStore<MenuTarget | null>>
   active.set(target)
   browser.openWorkspaceMenu(target.value.workspaceId, target.value.path, 'Alpha', { x: 20, y: 30 }, 'toggle')
   expect(vi.spyOn(b.ctx.contextMenus, 'close')).toHaveBeenCalledOnce()

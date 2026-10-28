@@ -1,4 +1,14 @@
-/** Viewer-only branch lineage markers; Session menu actions belong to ui-workspace. */
+/**
+ * The viewer page's branch lineage markers.
+ *
+ * The viewer renders the normal sidebar. Its Session menu actions belong to
+ * ui-workspace and follow the page's endpoint access snapshot. Branch creation
+ * uses the Workspace navigation service's reader path, without a title write
+ * the reader does not hold, and opens the child once the Host lists it.
+ *
+ * The Liveshare client face mounts this module only on a viewer page.
+ * @module @deepseek-ai/dsh-experimental-liveshare/src/client/viewer-session-row
+ */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { IconBranchOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { MarkdownDelegateProvider } from '@deepseek-ai/dsh-client-ui-primitives'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { FileReference, FolderReference } from '../src/client/FileReference.tsx'
 import { en } from '../src/client/locales.ts'
 
@@ -16,6 +16,8 @@ function props(openFile: Props['openFile']): Props {
   return {
     node: { id: 'file', start: 0, end: 14, data: { path: 'docs/a b.md', label: 'a b.md' } },
     raw: '@"docs/a b.md"', interactive: true, openFile, t: makeTranslate(en),
+    useContextMenu: contextMenuHook(), sessionId: SessionId('original'),
+    resolveFilePath: path => `/workspace/${path}`,
   } as Props
 }
 
@@ -61,20 +63,22 @@ describe('FileReference', () => {
 it('declares workspace-relative targets for pointer and keyboard gestures and leaves previews inert', () => {
   const open = vi.fn()
   const input = props(vi.fn())
-  const view = render(<MarkdownDelegateProvider getContextMenuProps={contextMenuHook(open)().getTriggerProps}>
-    <FileReference {...input} />
-  </MarkdownDelegateProvider>)
+  let root = '/first'
+  const resolveFilePath = vi.fn((path: string) => `${root}/${path}`)
+  const view = render(<FileReference {...input} useContextMenu={contextMenuHook(open)} resolveFilePath={resolveFilePath} />)
+  expect(resolveFilePath).not.toHaveBeenCalled()
+  root = '/workspace'
   const chip = view.getByRole('button', { name: 'a b.md' })
   chip.getBoundingClientRect = () => new DOMRect(20, 30, 100, 20)
   fireEvent.contextMenu(chip, { clientX: 40, clientY: 50 })
   fireEvent.keyDown(chip, { key: 'F10', shiftKey: true })
   expect(open.mock.calls).toEqual([
-    [{ kind: 'file', path: 'docs/a b.md', base: 'workspace' }, { x: 40, y: 50 }],
-    [{ kind: 'file', path: 'docs/a b.md', base: 'workspace' }, { x: 20, y: 50 }],
+    [{ kind: 'file', value: { sessionId: 'original', path: '/workspace/docs/a b.md' } }, { x: 40, y: 50 }],
+    [{ kind: 'file', value: { sessionId: 'original', path: '/workspace/docs/a b.md' } }, { x: 20, y: 50 }],
   ])
-  view.rerender(<MarkdownDelegateProvider getContextMenuProps={contextMenuHook(open)().getTriggerProps}>
-    <FileReference {...input} interactive={false} />
-  </MarkdownDelegateProvider>)
+  expect(input.openFile).not.toHaveBeenCalled()
+  expect(document.activeElement).toBe(chip)
+  view.rerender(<FileReference {...input} useContextMenu={contextMenuHook(open)} interactive={false} />)
   expect(fireEvent.contextMenu(view.getByText('a b.md'))).toBe(true)
   expect(open).toHaveBeenCalledTimes(2)
 })
