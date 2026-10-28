@@ -37,7 +37,7 @@ kind: "package-reference"
 
 已发送的普通文件附件保留草稿中的[文件卡片圆角](../../../docs/ui-radius.zh.md#radius-scale)。
 
-Chat 在 `MarkdownDelegateProvider.getTriggerProps` 接入处适配 Markdown 目标。助手节点 Slot 直接获取 `useContextMenu`，向可选的文件引用服务传入路径适配函数；消息流和节点中间层不再携带菜单回调。手势发生时按原始 Session 的当前工作目录解析路径，菜单保留捕获的路径和行号，不受焦点变化影响。未声明的插件链接保留原生行为。
+`ChatView` 通过节点列表外围既有的 `MarkdownDelegateProvider` 提供文件及 HTTP(S) 导航，直接传入 `requestOpenFile`、`openExternalLink` 和 `fileImages`。文件打开动作保留 Chat 的失败反馈与重试处理。Assistant Markdown 文件链接在消息落定后可于右侧栏打开，包括未修改文件的引用。相对路径基于当前查看的 Session 工作区解析；绝对路径仍使用同一 Session 的文件系统访问。[支持的 Markdown 行号引用](../ui-primitives/README.zh.md#rendering-agent-output)定位到指定起始行，并复用现有文件标签。文件缺失时显示预览错误状态。
 
 原生消息图片使用独立的用户与输出位置。`conversation.chat.user.content` Factory 声明 `conversation.chat.user.images`，由 `UserContent` 渲染；Assistant 节点注册声明 `conversation.chat.message.images`，由 `AssistantMarkdown` 渲染。两者通过显式 props 接收图片来源、授权 `loadImage` 和布局参数。官方 `MessageImages` 条目调用共享的 root 作用域 `conversation.images.content` Factory。每个位置均可独立替换，无需复制画廊实现。
 
@@ -63,7 +63,7 @@ Assistant 尝试结束且没有可见消息时，Chat 隐藏已发布的 Node，
 
 通用指令行在所有生命周期状态中都保留普通指令图标；失败仍通过行状态与摘要表达。每个终止轮次都渲染自己的红点行；欠费失败的行使用中立的 `message.failure.quota` 文案，而不是提供方消息。新追加的 `QUOTA` 或 `ACCOUNT_QUOTA` 产生的瞬时提示来自本包注册在 `shell.overlay` 的全局条目，它不随 Chat 面板消失：该条目把唯一一条实时提示交给 `shell.quota-notice` 链，并在无人接管时回退到自己的警告 Toast，接管该错误码的条目会替换该回退。只有本 Client 已绑定并已物化的 Session 会发布提示；它从未打开的 Session 中的欠费不会发布。更新的提示会替换当前提示，除非认领条目用 `keepOpen()` 保持住当前提示：该调用返回一个由调用方持有、必须在卸载时调用的释放函数，只要存在保持，认领条目就继续挂载，后续提示被丢弃，释放后恢复后续提示但不重放已丢弃的提示。回退 Toast 自身没有延后策略：当 Desktop 账号的不透明原生 Platform 页盖住本页时，它仍会在下方运行，其显示计时器可能在不可见时走完并自行撤下提示，因此只留下持久化失败行。释放只移除自己的保持，因此它在关闭或更新的保持之后执行时不会影响更新的保持。关闭与退出登录会清空所有保持；被丢弃的提示不排队，其对应的持久化失败行仍会渲染。历史替换和分页不会发布提示。中间重试不会创建终止行；输出 token 上限使用琥珀色警告点。重启恢复以 `interrupted` 结束的轮次会渲染本地化的停止行，说明 DSH 进程在轮次中途退出，不显示代码标签，其过程摘要显示“已停止”。
 
-引用与工具文件组件通过作用域内的委托声明右键菜单目标，使用记录的路径而非显示标签。Chat 提供 Session 与路径上下文，不解释插件 DOM 属性或未声明的链接。Shift+F10 和菜单键打开已聚焦引用的菜单；图片与可编辑控件保留自己的处理器。
+Chat 在 `MarkdownDelegateProvider.getTriggerProps` 接入处适配 Markdown 目标。助手节点 Slot 直接获取 `useContextMenu`，向可选的文件引用服务传入路径适配函数；消息流和节点中间层不再携带菜单回调。手势发生时按原始 Session 的当前工作目录解析路径，菜单保留捕获的路径和行号，不受焦点变化影响。未声明的插件链接保留原生行为。
 
 -----
 
