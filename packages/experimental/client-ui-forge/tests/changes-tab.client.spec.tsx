@@ -330,6 +330,7 @@ describe('ChangesTab keyboard file navigation', () => {
     fireEvent.keyDown(input, { key: 'ArrowRight' })
     fireEvent.keyDown(section.getByRole('button', { name: 'Add to input' }), { key: 'ArrowLeft' })
     expect(input).toHaveProperty('value', 'Keep editing')
+    expect(scrolled).not.toHaveBeenCalled()
     fireEvent.keyDown(m.view.getByRole('separator'), { key: 'ArrowRight' })
     fireEvent.keyDown(within(m.view.getByRole('navigation')).getByRole('textbox'), { key: 'ArrowLeft' })
     fireEvent.click(section.getByRole('button', { name: 'More actions for app.ts' }))
@@ -337,11 +338,14 @@ describe('ChangesTab keyboard file navigation', () => {
     fireEvent.keyDown(menuItem, { key: 'ArrowRight' })
     fireEvent.keyDown(menuItem, { key: 'Escape' })
     fireEvent.keyDown(m.section('src/app.ts').querySelector('svg')!, { key: 'ArrowRight' })
+    expect(scrolled).not.toHaveBeenCalled()
     const selection = window.getSelection()!
     const range = document.createRange()
-    range.selectNodeContents(m.section('src/new.ts').querySelector('[data-review-code]')!)
+    range.selectNodeContents(m.section('src/new.ts').querySelector('[data-review-code][data-new-line="1"]')!)
+    selection.removeAllRanges()
     selection.addRange(range)
     try {
+      expect(selection.toString()).toBe('export const added = 1')
       fireEvent.keyDown(viewport, { key: 'ArrowRight' })
       expect(scrolled).not.toHaveBeenCalled()
     } finally {
