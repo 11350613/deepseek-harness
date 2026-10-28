@@ -63,7 +63,18 @@ An existing plugin's metadata may remain unchanged when it still describes the r
 
 Register every resource inside `apply` with `ctx.effect` or `ctx.on` and return its cleanup. A plugin that declares `Config` validates the row's `config` at activation; query `Config.listConfigs` for an installed plugin's schema before writing its `config`, and follow `$defs` references in the returned document.
 
-Never read, filter, and rewrite `cordis.patch.yml` from plugin code, or locate it by walking up from the package directory. The file belongs to the user and holds other plugins' `insert` rows, comments, and `!!js` expressions. To change its own configuration at runtime, a plugin calls `ctx.get('configEditor')?.edit(ctx.fiber.entry, current => ({ ...current, field }))` after `apply` returns, with `ctx.fiber.entry` checked for `undefined`; `change` returns the row's complete config. The editor keeps the rest of the file, validates the candidate, serializes the write with HMR, and refuses values that a higher layer overrides. Mark fields written this way `.volatile()` so the change applies without restarting the plugin. Secrets, such as a token from an in-app sign-in or binding flow, go in `ctx.credentials.modifyRecord()` records, not configuration.
+## Persist your own configuration
+
+Plugin code never persists configuration by reading, filtering, and rewriting the active profile's `cordis.patch.yml`, and never locates that file by walking up from the package directory. That file is not your bundle's patch: it belongs to the user and holds other plugins' `insert` rows, comments, and `!!js` expressions. To change its own configuration after `apply` returns, a plugin uses the config editor:
+
+```js
+const entry = ctx.fiber.entry
+const editor = ctx.get('configEditor')
+if (entry === undefined || editor === undefined) throw new Error('Configuration cannot be saved in this profile')
+await editor.edit(entry, current => ({ ...current, field: value }))
+```
+
+`change` returns the row's complete config. The editor keeps the rest of the file, validates the candidate, serializes the write with other profile changes, and rejects values that a higher layer overrides. Report a rejection or a missing editor to the user instead of claiming the value was saved. Editing an ordinary field restarts the plugin so `apply` rebuilds its state; a field declared `.volatile()` updates in place and is read with `config.field.get()`. Store secrets, such as a token from an in-app sign-in or binding flow, as `ctx.credentials.modifyRecord()` records, not configuration; declare `credentials` in `inject` or read it with `ctx.get('credentials')`, and see the `@deepseek-ai/dsh-credentials` README for record keys.
 
 ## Install, enable, and observe
 
