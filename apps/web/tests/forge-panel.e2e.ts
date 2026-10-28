@@ -437,6 +437,11 @@ it.skipIf(MODE === 'record')('starts a Session in a worktree before its first me
   const row = page.locator(`[data-row-key="session:${sessionId}"]`)
   await row.getByRole('img', { name: '在自己的工作树中', exact: true }).waitFor({ timeout: 20_000 })
   await row.getByRole('img', { name: '变更请求状态：需要处理 · 检查失败', exact: true }).waitFor({ timeout: 20_000 })
+  // A fresh page cannot retain the previous browser source's status values.
+  await page.goto('about:blank')
+  await expect.poll(() => scaffold.ctx.storageDomain.get('forge_panel_change_requests')).toBeUndefined()
+  await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+  await row.getByRole('img', { name: '变更请求状态：需要处理 · 检查失败', exact: true }).waitFor({ timeout: 20_000 })
   await row.hover()
   const rowHover = page.locator('[data-forge-session-hover]')
   await rowHover.getByText('#7 Add the pull request panel', { exact: true }).waitFor({ timeout: 20_000 })
