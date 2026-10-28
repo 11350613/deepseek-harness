@@ -753,7 +753,7 @@ export function SessionNodeItem({
       {!row.blank && (
         <span className={css.rowResting}>
           <span
-            className={css.time}
+            className={clsx(css.time, primaryStatus.trailingLabel === undefined && css.timestamp)}
             aria-hidden={primaryStatus.trailingLabel === undefined ? undefined : true}
           >
             {primaryStatus.trailingLabel ?? timeLabel(row.updatedAt, now, t)}

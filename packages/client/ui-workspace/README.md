@@ -107,7 +107,7 @@ The leading seat occupies the status cell only while the row's primary status is
 
 On hover-capable devices, hovering a Session row, giving keyboard focus to the row or its actions, or opening its menu replaces the time, trailing icons, and pin marker with action buttons. A pointer click does not keep the buttons visible after the pointer leaves. Built-in Session and Workspace row action buttons use 24px click targets with compensated margins that retain their compact layout footprint and icon positions.
 
-Hoverless devices keep the static details and the More menu trigger visible, including while the menu is open; pin and archive remain available in that menu.
+Hoverless devices keep trailing status icons and the More trigger visible but hide the update time; pending-interaction labels remain visible. Pinned rows show an Unpin button before More, with the same spacing as Workspace actions. Rows without permission to unpin retain the static pin marker. Pin and archive remain available in the menu.
 
 Session rows accept Tab focus and open with unmodified Enter or Space; Tab also reaches their action buttons, while modified keys remain available to global shortcuts.
 

@@ -344,9 +344,15 @@
     display: inline-flex;
   }
 
-  .sessionRow .rowQuickActions,
+  .sessionRow .timestamp,
+  .sessionRow:has(.pinnedAction) .pinIndicator,
+  .sessionRow .rowQuickActions > :global([data-slot]) > :not(.pinnedAction),
   .projectRow[aria-expanded='false'] .rowActions {
     display: none;
+  }
+
+  .sessionRow .pinnedAction {
+    order: -1;
   }
 }
 

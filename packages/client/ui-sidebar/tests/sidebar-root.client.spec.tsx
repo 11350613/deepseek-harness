@@ -122,6 +122,7 @@ describe('SidebarRoot shell', () => {
     expect(screen.queryByRole('tooltip')).toBeNull()
     expect(Array.from(expanded.querySelectorAll('kbd'), key => key.textContent)).toEqual(['Ctrl', 'N'])
     cleanup()
+    document.documentElement.dataset.platform = 'darwin'
     render(<HeaderLeadingControls toggleSidebar={vi.fn()} startSession={vi.fn()} selectPanel={vi.fn()} trackEntryClick={vi.fn()} t={t}
       usePanelInfo={neverHook} useSessions={neverHook} useSessionStatus={neverHook}
       useSessionRetainInfo={neverHook} useResource={useResource} useWorkspaces={neverHook}
@@ -409,6 +410,7 @@ it('keeps the macOS sidebar toggle in its top strip', () => {
 })
 
 it('wires the shell.leading controls to the shared sidebar actions', () => {
+  document.documentElement.dataset.platform = 'darwin'
   const toggleSidebar = vi.fn()
   const startSession = vi.fn()
   const trackEntryClick = vi.fn<HeaderLeadingControlsProps['trackEntryClick']>()
@@ -429,6 +431,17 @@ it('wires the shell.leading controls to the shared sidebar actions', () => {
   render(<HeaderLeadingControls {...props} useRemoteAccess={action => action !== 'session/create'} />)
   expect(screen.getByRole('button', { name: en['toggle.open'] })).toBeTruthy()
   expect(screen.queryByRole('button', { name: en['session.new.label'] })).toBeNull()
+})
+
+it.each([undefined, 'darwin', 'win32'] as const)('shows the collapsed-header New Session control only on Desktop (%s)', (platform) => {
+  if (platform !== undefined) document.documentElement.dataset.platform = platform
+  const props = {
+    toggleSidebar: vi.fn(), startSession: vi.fn(), trackEntryClick: vi.fn(), t,
+    useRemoteAccess: allowAllAccess.useRemoteAccess, useShortcuts: select => select([]),
+  } as HeaderLeadingControlsProps
+  render(<HeaderLeadingControls {...props} />)
+  expect(screen.getByRole('button', { name: en['toggle.open'] })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: en['session.new.label'] }) !== null).toBe(platform !== undefined)
 })
 
 describe('Windows caption New Session analytics', () => {
