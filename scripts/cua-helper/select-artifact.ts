@@ -31,7 +31,9 @@ const artifactsSchema = z.array(z.object({ artifacts: z.array(z.object({
  */
 export function selectCuaHelperArtifact(repository: string, inputsValue: unknown,
   api: (path: string, paginate?: boolean) => unknown): { runId: string; attempt: string; artifactId: string } {
-  if (!/^[\w.-]+\/[\w.-]+$/u.test(repository)) throw new Error('CUA reuse: invalid repository')
+  if (!/^[\w.-]+\/[\w.-]+$/u.test(repository) || repository.split('/').some(part => part === '.' || part === '..')) {
+    throw new Error('CUA reuse: invalid repository')
+  }
   const inputs = inputsSchema.parse(inputsValue)
   const base = `repos/${repository}/actions/runs/${inputs.cua_run_id}`
   const attempt = inputs.cua_run_attempt

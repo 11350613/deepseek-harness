@@ -46,7 +46,7 @@ it.each([
   expect(f.api).not.toHaveBeenCalled()
 })
 
-it.each(['wrong/repo/extra', '../repo'])('rejects invalid repository %s before reading GitHub', (repo) => {
+it.each(['wrong/repo/extra', '../repo', 'owner/..', 'owner/.'])('rejects invalid repository %s before reading GitHub', (repo) => {
   const f = fixture()
   expect(() => selectCuaHelperArtifact(repo, { cua_run_id: '123' }, f.api)).toThrow('invalid repository')
   expect(f.api).not.toHaveBeenCalled()
