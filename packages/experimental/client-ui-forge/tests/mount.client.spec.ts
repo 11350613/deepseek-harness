@@ -9,6 +9,7 @@ import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { ForgeReviewRequest, ForgeReviewResult } from '@deepseek-ai/dsh-experimental-forge/types'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, type RemoteResult, type TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -161,6 +162,7 @@ async function base() {
     changeRequestDiff: vi.fn(async (_sessionId: SessionId, _url: string, _signal?: AbortSignal): Read<ForgeChangeRequestDiff> =>
       ({ ok: true, value: CHANGE })),
     changeRequestText: vi.fn(async (_sessionId: SessionId, _url: string, _commit: string, _path: string): Read<string> => ({ ok: true, value: 'b\n' })),
+    submitReview: vi.fn(async (_sessionId: SessionId, _url: string, _request: ForgeReviewRequest): Read<ForgeReviewResult> => ({ ok: true, value: { ok: true, url: 'https://github.com/review' } })),
   }
   ctx.provide('remote.forgePanel', forgePanel)
   ctx.provide('locale', new LocaleRuntime(ctx))
@@ -690,6 +692,51 @@ describe('mountForgePanel worktree card actions', () => {
 })
 
 describe('mountForgePanel changes view', () => {
+  it('inserts numbered frozen quotes in the originating Session without sending a message', async () => {
+    const f = await fixture()
+    try {
+      const selection: ReviewSelection = { source: { kind: 'local', scope: 'branch' }, comment: { path: 'a.ts', side: 'R', startLine: 1, endLine: 1, body: 'Check this', hunk: '@@ -1 +1 @@\n-old\n+new' } }
+      const scope = f.sessions.scope(S1)!
+      let draft = ''
+      const focus = vi.fn(), send = vi.fn()
+      const insertQuote = vi.fn((text: string) => { draft += `\n> ${text}`; return true })
+      const input = { state: { getSnapshot: () => ({ draft }) }, insertQuote, focus }
+      const resolve = vi.fn(() => input)
+      // Only the input methods used by this contribution are supplied by the Session fixture.
+      vi.spyOn(scope, 'get').mockImplementation(name => name === 'conversation' ? { input: { for: resolve }, send } as never : undefined)
+      const view = f.changes(S1)
+      expect(view.addReviewToInput(selection)).toBe(true)
+      expect(view.addReviewToInput(selection)).toBe(true)
+      expect(insertQuote.mock.calls.map(([text]) => text.split('\n')[0])).toEqual(['## User Comment 1', '## User Comment 2'])
+      expect(resolve).toHaveBeenCalledWith(scope)
+      expect(focus).toHaveBeenCalledTimes(2)
+      insertQuote.mockReturnValueOnce(false)
+      expect(view.addReviewToInput(selection)).toBe(false)
+      expect(focus).toHaveBeenCalledTimes(2)
+      expect(send).not.toHaveBeenCalled()
+      const request: ForgeReviewRequest = { kind: 'review', headSha: 'a', event: 'comment', body: 'Summary', comments: [] }
+      expect(await view.submitReview('https://github.com/pr', request)).toMatchObject({ ok: true, value: { ok: true } })
+      expect(f.forgePanel.submitReview).toHaveBeenCalledWith(S1, 'https://github.com/pr', request)
+    } finally { await f.dispose() }
+  })
+  it.each(['no scope', 'no conversation'] as const)('refuses a quote with %s', async (missing) => {
+    const f = await fixture()
+    try {
+      const view = f.changes(S1)
+      if (missing === 'no scope') f.sessions.scope.mockReturnValue(undefined)
+      expect(view.addReviewToInput({ source: { kind: 'local', scope: 'branch' }, comment: { path: 'a', side: 'L', startLine: 1, endLine: 1, body: 'Comment', hunk: '' } })).toBe(false)
+    } finally { await f.dispose() }
+  })
+  it('immediately closes an already-aborted occurrence and reports failed removal', async () => {
+    const f = await fixture()
+    try {
+      const lifetime = new AbortController()
+      lifetime.abort()
+      vi.spyOn(Storage.prototype, 'removeItem').mockImplementationOnce(() => { throw new Error('storage denied') })
+      expect(f.changes(S1).reviewQueue({ id: 'closed' as TabId, signal: lifetime.signal }).getSnapshot().comments).toEqual([])
+      expect(f.notice()).toMatchObject({ key: 'review.saveFailed' })
+    } finally { await f.dispose() }
+  })
   it.each(['local', 'change'] as const)('retains %s records across Session switches and clears only the closed tab', async (kind) => {
     const f = await fixture()
     const lifetime = new AbortController()

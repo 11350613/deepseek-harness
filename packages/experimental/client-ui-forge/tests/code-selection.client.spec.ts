@@ -1,12 +1,33 @@
 // @vitest-environment jsdom
 /** Text selections preserve one diff side and partial endpoints despite interleaved DOM rows. */
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { codeSideAt, readCodeSelection } from '../src/client/code-selection.ts'
 
 const roots: HTMLElement[] = []
 afterEach(() => {
+  vi.restoreAllMocks()
   document.getSelection()?.removeAllRanges()
   for (const root of roots.splice(0)) root.remove()
+})
+
+it('ignores missing selections and nodes outside displayed code', () => {
+  const { root } = fixture()
+  expect(codeSideAt(root, null)).toBeUndefined()
+  expect(codeSideAt(root, root)).toBeUndefined()
+  vi.spyOn(document, 'getSelection').mockReturnValue(null)
+  expect(readCodeSelection(root, 'L')).toBeUndefined()
+})
+
+it('preserves blank code lines and excludes an empty endpoint from the selected range', () => {
+  const { root, nodes } = fixture()
+  nodes[2]!.textContent = ''
+  const selection = document.getSelection()!
+  selection.setBaseAndExtent(nodes[0]!, 0, nodes[3]!, 0)
+  expect(readCodeSelection(root, 'L')).toEqual({ side: 'L', from: 2, to: 3, text: 'old first\n' })
+  selection.setBaseAndExtent(nodes[1]!.firstChild!, 3, nodes[3]!.firstChild!, 0)
+  expect(readCodeSelection(root, 'R')).toEqual({ side: 'R', from: 2, to: 2, text: ' first' })
+  selection.setBaseAndExtent(nodes[1]!.firstChild!, 1, nodes[1]!.firstChild!, 3)
+  expect(readCodeSelection(root, 'L')).toBeUndefined()
 })
 
 function fixture() {

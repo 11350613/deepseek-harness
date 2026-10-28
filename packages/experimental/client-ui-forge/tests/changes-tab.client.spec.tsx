@@ -10,6 +10,8 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import { CHANGES_KIND, changesAddress, type ChangesParams, type ChangesSource } from '../src/client/changes-address.ts'
+import * as DiffFileModule from '../src/client/DiffFile.tsx'
+import type { ReviewActions } from '../src/client/ReviewComposer.tsx'
 import { ReviewQueue } from '../src/client/review-queue.ts'
 import { createChangesStore } from '../src/client/changes-store.ts'
 import { ChangesTab, type ChangesTabInjected, type ChangesTabProps } from '../src/client/ChangesTab.tsx'
@@ -34,6 +36,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   scrolled.mockReset()
   localStorage.clear()
   Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
@@ -859,6 +862,106 @@ describe('ChangesTab change requests', () => {
 })
 
 describe('line review actions', () => {
+  async function comment(options: MountOptions = {}) {
+    const m = mount({ source: { kind: 'change', url: URL7 }, ...options })
+    await settle()
+    const section = within(m.section('src/app.ts'))
+    fireEvent.click(section.getByRole('button', { name: 'Select line R4' }))
+    fireEvent.click(section.getByRole('button', { name: 'Add comment' }))
+    fireEvent.change(section.getByRole('textbox'), { target: { value: 'Check the guard' } })
+    const publish = () => {
+      fireEvent.click(section.getByRole('button', { name: 'GitHub comment options' }))
+      fireEvent.click(m.view.getByRole('menuitem', { name: 'Publish single comment' }))
+    }
+    return { ...m, sectionQueries: section, publish }
+  }
+  it.each(['stale', 'unsupported', 'failed'] as const)('retains the draft after a known %s refusal and permits a later deliberate publish', async (code) => {
+    const m = await comment({ setup: (faces) => { faces.submitReview.mockResolvedValueOnce(ok({ ok: false, code, message: 'Denied' })) } })
+    m.publish()
+    await settle()
+    expect(m.faces.reviewQueue({ id: TAB, signal: m.aborter.signal }).getSnapshot().uncertain).toBeNull()
+    expect(m.sectionQueries.getByRole('alert').textContent).toBe(code === 'failed' ? t('review.failed', { message: 'Denied' }) : t(code === 'stale' ? 'review.stale' : 'review.unsupported'))
+    expect(m.sectionQueries.getByRole('textbox')).toHaveProperty('value', 'Check the guard')
+    m.publish()
+    await settle()
+    expect(m.sectionQueries.queryByRole('textbox')).toBeNull()
+    expect(m.faces.report).toHaveBeenCalledWith('review.published')
+    expect(m.section('src/app.ts').querySelector('[data-forge-review-thread="published"]')).not.toBeNull()
+  })
+  it.each(['rejected', 'remote-error', 'receipt-storage'] as const)('holds an uncertain %s result for explicit reconciliation', async (kind) => {
+    const m = await comment({ setup: (faces) => {
+      if (kind === 'rejected') faces.submitReview.mockRejectedValueOnce(new Error('disconnected'))
+      else if (kind === 'remote-error') faces.submitReview.mockResolvedValueOnce(REFUSED.failed)
+    } })
+    const records = m.faces.reviewQueue({ id: TAB, signal: m.aborter.signal })
+    if (kind === 'receipt-storage') vi.spyOn(records, 'published').mockReturnValue(false)
+    m.publish()
+    await settle()
+    expect(records.getSnapshot().uncertain).not.toBeNull()
+    fireEvent.click(m.view.getByRole('button', { name: en['review.recheck'] }))
+    expect(m.faces.openLink).toHaveBeenCalledWith(URL7)
+    fireEvent.click(m.view.getByRole('button', { name: 'Submit review' }))
+    const dialog = within(m.view.getByRole('dialog'))
+    expect(dialog.getByRole('button', { name: 'Submit review' })).toHaveProperty('disabled', true)
+    fireEvent.click(dialog.getByRole('button', { name: en['review.recheck'] }))
+    fireEvent.click(dialog.getByRole('button', { name: 'Checked; allow resubmission' }))
+    expect(records.getSnapshot().uncertain).toBeNull()
+    fireEvent.click(dialog.getByRole('button', { name: 'Cancel' }))
+    expect(m.view.queryByRole('dialog')).toBeNull()
+  })
+  it('does not dispatch when persisting the outgoing request fails', async () => {
+    const m = await comment()
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
+    m.publish()
+    await settle()
+    expect(m.faces.submitReview).not.toHaveBeenCalled()
+    expect(m.sectionQueries.getByRole('alert').textContent).toBe(en['review.saveFailed'])
+  })
+  it('reports quote-record failure without losing the accepted input reference', async () => {
+    const m = await comment({ source: { kind: 'local' } })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
+    fireEvent.click(m.sectionQueries.getByRole('button', { name: 'Add to input' }))
+    expect(m.faces.addReviewToInput).toHaveBeenCalledOnce()
+    expect(m.faces.report).toHaveBeenCalledWith('review.saveFailed')
+  })
+  it('shows malformed persisted data without overwriting it', async () => {
+    localStorage.setItem('test-review', 'invalid')
+    const m = mount()
+    await settle()
+    expect(m.view.getByText(en['review.loadFailed'])).toBeTruthy()
+    expect(localStorage.getItem('test-review')).toBe('invalid')
+  })
+  it('filters and folds the tree, preserving its selection while hidden', async () => {
+    const m = mount()
+    await settle()
+    const tree = within(m.view.container.querySelector('[data-forge-file-tree]')!)
+    fireEvent.click(tree.getByRole('button', { name: 'src' }))
+    fireEvent.change(tree.getByRole('textbox'), { target: { value: 'app.ts' } })
+    fireEvent.click(tree.getByRole('button', { name: 'src/app.ts' }))
+    expect(tree.getByRole('button', { name: 'src/app.ts' }).getAttribute('aria-current')).toBe('true')
+    fireEvent.click(m.view.getByRole('button', { name: en['diff.fileTree'] }))
+    expect(m.view.getByRole('button', { name: en['diff.fileTree'] }).getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(m.view.getByRole('button', { name: en['diff.fileTree'] }))
+    expect(tree.getByRole('textbox')).toHaveProperty('value', 'app.ts')
+    fireEvent.change(tree.getByRole('textbox'), { target: { value: '' } })
+    fireEvent.click(tree.getByRole('button', { name: 'src' }))
+    expect(tree.getByRole('button', { name: 'src/app.ts' })).toBeTruthy()
+  })
+  it('refuses a local reference passed to the PR publication callback', async () => {
+    const renderDiff = DiffFileModule.DiffFile
+    let publish: ReviewActions['publish']
+    vi.spyOn(DiffFileModule, 'DiffFile').mockImplementation((props) => {
+      publish = props.review?.publish
+      return renderDiff(props)
+    })
+    const m = mount({ source: { kind: 'change', url: URL7 } })
+    await settle()
+    expect(publish).toBeDefined()
+    expect(await publish!({ source: { kind: 'local', scope: 'branch' }, comment: {
+      path: 'src/app.ts', side: 'R', startLine: 4, endLine: 4, hunk: '', body: 'Local reference',
+    } })).toBe(en['review.stale'])
+    expect(m.faces.submitReview).not.toHaveBeenCalled()
+  })
   it('extends a range on one side and adds successive frozen references without submitting a message', async () => {
     const m = mount()
     await settle()

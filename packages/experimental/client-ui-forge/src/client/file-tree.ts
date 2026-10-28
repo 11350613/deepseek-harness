@@ -18,10 +18,10 @@ function childrenOf(directory: Directory): ChangedFileNode[] {
     let leaf = child
     let name = child.name
     while (leaf.files.length === 0 && leaf.directories.size === 1) {
-      const next = leaf.directories.values().next().value
-      if (next === undefined) break
-      name += `/${next.name}`
-      leaf = next
+      for (const next of leaf.directories.values()) {
+        name += `/${next.name}`
+        leaf = next
+      }
     }
     return { kind: 'directory', path: leaf.path, name, children: childrenOf(leaf) }
   })

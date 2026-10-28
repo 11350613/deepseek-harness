@@ -56,4 +56,42 @@ describe('review submission', () => {
     gh.mockResolvedValue({ ...success, stdout: '{}' })
     expect(await provider.submitReview(ref, single, signal)).toMatchObject({ ok: false, code: 'unknown' })
   })
+  it.each([
+    ['closed', { head: { sha: head }, state: 'closed' }],
+    ['malformed', { head: null }],
+  ])('does not write after a %s preflight response', async (_label, value) => {
+    const { gh, provider, signal } = fixture()
+    gh.mockReset().mockResolvedValue({ exitCode: 0, stdout: JSON.stringify(value), stderr: '' })
+    expect(await provider.submitReview(ref, single, signal)).toMatchObject({ ok: false, code: 'failed' })
+    expect(gh).toHaveBeenCalledTimes(1)
+  })
+  it.each([
+    ['detail', '', 'detail'], ['', 'stdout detail', 'stdout detail'], ['', '', 'GitHub request failed'],
+  ])('reports preflight refusal without mutation (%s, %s)', async (stderr, stdout, message) => {
+    const { gh, provider, signal } = fixture()
+    gh.mockReset().mockResolvedValue({ exitCode: 1, stdout, stderr })
+    expect(await provider.submitReview(ref, single, signal)).toEqual({ ok: false, code: 'failed', message })
+    expect(gh).toHaveBeenCalledTimes(1)
+  })
+  it.each(['http://github.com/octo/demo/pull/7', 'https://elsewhere.test/review'])('does not trust a receipt at %s', async (html_url) => {
+    const { gh, provider, signal } = fixture()
+    gh.mockResolvedValue({ ...success, stdout: JSON.stringify({ html_url }) })
+    expect(await provider.submitReview(ref, single, signal)).toMatchObject({ ok: false, code: 'unknown' })
+    expect(gh).toHaveBeenCalledTimes(2)
+  })
+  it('propagates cancellation before dispatch and contains non-Error write failures', async () => {
+    const { gh, provider } = fixture()
+    const controller = new AbortController()
+    controller.abort(new Error('cancelled'))
+    await expect(provider.submitReview(ref, single, controller.signal)).rejects.toThrow('cancelled')
+    expect(gh).toHaveBeenCalledTimes(1)
+    gh.mockReset().mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify({ head: { sha: head }, state: 'open' }), stderr: '' })
+      .mockRejectedValue('connection lost')
+    expect(await provider.submitReview(ref, single, new AbortController().signal)).toEqual({ ok: false, code: 'unknown', message: 'connection lost' })
+  })
+  it('rejects a host outside the provider configuration without invoking gh', async () => {
+    const { gh, signal } = fixture()
+    expect(await new GitHubProvider(gh, ['enterprise.test']).submitReview(ref, single, signal)).toMatchObject({ ok: false, code: 'failed' })
+    expect(gh).not.toHaveBeenCalled()
+  })
 })

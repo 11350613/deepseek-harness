@@ -2,11 +2,13 @@
 /** Frozen line references, durable pending reviews, and plain-text destination actions. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Profiler } from 'react'
-import { cleanup, fireEvent, render, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ForgeDiffFile } from '../src/types.ts'
-import { formatReviewComment, selectReviewLines, type ReviewSelection } from '../src/client/review.ts'
+import { formatReviewComment, selectReviewLines, reviewMatches, type ReviewSelection } from '../src/client/review.ts'
 import { ReviewQueue } from '../src/client/review-queue.ts'
+import { ReviewThread } from '../src/client/ReviewThread.tsx'
+import { SubmitReview } from '../src/client/SubmitReview.tsx'
 import { ReviewComposer } from '../src/client/ReviewComposer.tsx'
 import { en } from '../src/client/locales.ts'
 
@@ -22,6 +24,53 @@ const selection: ReviewSelection = { source: { kind: 'change', url: 'https://git
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
 
 describe('review references', () => {
+  it('anchors added and deleted files and detects changed source or hunk content', () => {
+    const added = { ...file, hunks: [{ oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ['+new'] }] }
+    const deleted = { ...file, hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 0, lines: ['-old'] }] }
+    expect(selectReviewLines(added, 'R', 1, 1)?.hunk).toContain('@@ -0,0 +1,1 @@')
+    expect(selectReviewLines(deleted, 'L', 1, 1)?.hunk).toContain('@@ -1,1 +0,0 @@')
+    expect(reviewMatches(selection, { kind: 'local', scope: 'branch' }, file)).toBe(false)
+    expect(reviewMatches(selection, { kind: 'change', url: 'x', headSha: 'b' }, file)).toBe(false)
+    expect(reviewMatches(selection, selection.source, added)).toBe(false)
+    expect(reviewMatches(selection, selection.source, file)).toBe(true)
+  })
+  it('keeps a failed draft editable and lets the user queue it without publishing', () => {
+    const queue = vi.fn().mockReturnValue(false), close = vi.fn(), onQuoted = vi.fn()
+    const actions = { source: selection.source, addToInput: () => true, queue, reviewStarted: true, onQuoted }
+    const view = render(<ReviewComposer selection={selection} actions={actions} close={close} t={t} />)
+    fireEvent.click(view.getByRole('button', { name: 'Add to review' }))
+    expect(view.getByRole('alert')).toHaveProperty('textContent', en['review.saveFailed'])
+    fireEvent.change(view.getByRole('textbox'), { target: { value: 'Updated' } })
+    expect(view.queryByRole('alert')).toBeNull()
+    queue.mockReturnValue(true)
+    fireEvent.click(view.getByRole('button', { name: 'Add to review' }))
+    expect(close).toHaveBeenCalledOnce()
+    fireEvent.click(view.getByRole('button', { name: 'Add to input' }))
+    expect(onQuoted).toHaveBeenCalledWith({ ...selection, comment: { ...selection.comment, body: 'Updated' } })
+  })
+  it('contains unexpected publication failures and prevents a second write while one is pending', async () => {
+    let reject: (error: Error) => void = () => {}
+    const publish = vi.fn(() => new Promise<string | undefined>((_resolve, fail) => { reject = fail }))
+    const view = render(<ReviewComposer selection={selection}
+      actions={{ source: selection.source, addToInput: () => true, queue: () => true, publish }} close={vi.fn()} t={t} />)
+    fireEvent.click(view.getByRole('button', { name: 'GitHub comment options' }))
+    fireEvent.click(view.getByRole('menuitem', { name: 'Publish single comment' }))
+    expect(view.getByRole('button', { name: en['review.publishing'] })).toHaveProperty('disabled', true)
+    expect(view.getByRole('textbox')).toHaveProperty('disabled', true)
+    await act(async () => { reject(new Error('transport lost')) })
+    expect(view.getByRole('alert')).toHaveProperty('textContent', en['review.unknown'])
+    expect(publish).toHaveBeenCalledOnce()
+  })
+  it('dispatches at most once when two activations arrive in the same render batch', async () => {
+    let finish: (value: undefined) => void = () => {}
+    const publish = vi.fn(() => new Promise<undefined>((resolve) => { finish = resolve }))
+    const view = render(<ReviewComposer selection={selection} actions={{ source: selection.source, addToInput: () => true, publish }}
+      close={vi.fn()} t={t} />)
+    const button = view.getByRole('button', { name: 'Publish single comment' })
+    act(() => { button.click(); button.click() })
+    expect(publish).toHaveBeenCalledOnce()
+    await act(async () => { finish(undefined) })
+  })
   it('keeps native draft edits through rerenders and updates React only when action availability changes', () => {
     const commits = vi.fn()
     const addToInput = vi.fn().mockReturnValue(true)
@@ -59,7 +108,7 @@ describe('review references', () => {
       .toContain('Lines: 4\nSource: Local (staged)\nDiff hunk:\n````diff\n```\n````')
   })
   it('adds a quote without posting or closing when the input refuses it', () => {
-    const addToInput = vi.fn().mockReturnValue(false)
+    const addToInput = vi.fn<(selection: ReviewSelection) => boolean>().mockReturnValue(false)
     const close = vi.fn()
     const view = render(<ReviewComposer selection={selection} actions={{ source: selection.source, addToInput }} close={close} t={t} />)
     fireEvent.click(view.getByRole('button', { name: 'Add to input' }))
@@ -102,6 +151,22 @@ describe('review references', () => {
 })
 
 describe('pending reviews', () => {
+  it('edits only the chosen occurrence and refuses edits after publication or during dispatch', () => {
+    const queue = new ReviewQueue('review-test')
+    expect(queue.add({ ...selection, source: { kind: 'local', scope: 'branch' } })).toBe(false)
+    queue.add(selection)
+    queue.add({ ...selection, comment: { ...selection.comment, body: 'Second' } })
+    const first = queue.fileComments('a.ts', selection.source).threads[0]!
+    queue.editThread(first.key, null)
+    expect(queue.getSnapshot().comments.map(item => item.comment.body)).toEqual(['Second'])
+    expect(queue.editThread(first.key, 'Missing')).toBe(false)
+    queue.begin({ kind: 'comment', headSha: 'a', comment: selection.comment })
+    expect(queue.summarize('While pending', 'approve')).toBe(false)
+    expect(queue.fileComments('a.ts', selection.source).locked).toBe(true)
+    queue.finish(false)
+    queue.published(selection, 'https://github.com/octo/demo/pull/7#comment-1')
+    expect(queue.fileComments('a.ts', selection.source).threads[0]?.kind).toBe('published')
+  })
   it('clears every record on close and rejects a publication receipt arriving afterwards', () => {
     const queue = new ReviewQueue('review-test')
     queue.add(selection)
@@ -178,5 +243,69 @@ describe('pending reviews', () => {
     setter.mockRestore()
     expect(queue.add(selection)).toBe(true)
     expect(queue.getSnapshot().error).toBeNull()
+  })
+})
+
+describe('inline records', () => {
+  it('keeps pending edits at their code location and quotes the edited text', () => {
+    const records = new ReviewQueue('review-test')
+    records.add(selection)
+    const thread = records.fileComments('a.ts', selection.source).threads[0]!
+    const addToInput = vi.fn().mockReturnValue(false)
+    const actions = { records, source: selection.source, addToInput }
+    const view = render(<ReviewThread thread={thread} actions={actions} locked={false} outdated={false} split t={t} />)
+    fireEvent.click(view.getByRole('button', { name: 'Add to input' }))
+    expect(view.getByRole('alert')).toHaveProperty('textContent', en['review.inputFailed'])
+    fireEvent.click(view.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(view.getByRole('textbox'), { target: { value: 'Edited' } })
+    expect(view.queryByRole('alert')).toBeNull()
+    addToInput.mockReturnValue(true)
+    fireEvent.click(view.getByRole('button', { name: 'Add to input' }))
+    expect(addToInput).toHaveBeenLastCalledWith({ ...selection, comment: { ...selection.comment, body: 'Edited' } })
+    fireEvent.click(view.getByRole('button', { name: 'Done' }))
+    expect(view.queryByRole('textbox')).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: 'Delete' }))
+    expect(records.getSnapshot().comments).toEqual([])
+  })
+  it('preserves unsaved edits and reports failed editing, finishing, and deletion', () => {
+    const records = new ReviewQueue('review-test')
+    records.add(selection)
+    const thread = records.fileComments('a.ts', selection.source).threads[0]!
+    const view = render(<ReviewThread thread={thread} actions={{ source: selection.source, addToInput: () => true, records }}
+      locked={false} outdated split={false} t={t} />)
+    fireEvent.click(view.getByRole('button', { name: 'Edit' }))
+    records.close()
+    fireEvent.change(view.getByRole('textbox'), { target: { value: 'Not saved' } })
+    expect(view.getByRole('alert')).toHaveProperty('textContent', en['review.saveFailed'])
+    fireEvent.click(view.getByRole('button', { name: 'Done' }))
+    expect(view.getByRole('textbox')).toHaveProperty('value', 'Not saved')
+    fireEvent.click(view.getByRole('button', { name: 'Delete' }))
+    expect(view.getByRole('alert')).toBeTruthy()
+  })
+  it('opens a published receipt and omits editing on immutable records', () => {
+    const openLink = vi.fn()
+    const view = render(<ReviewThread thread={{ key: 1, kind: 'published', selection, url: 'https://github.com/review' }}
+      actions={{ source: selection.source, addToInput: () => true, openLink }} locked={false} outdated={false} split={false} t={t} />)
+    fireEvent.click(view.getByRole('button', { name: en['review.recheck'] }))
+    expect(openLink).toHaveBeenCalledWith('https://github.com/review')
+    expect(view.queryByRole('button', { name: 'Edit' })).toBeNull()
+  })
+})
+
+describe('submission availability', () => {
+  it.each(['local', 'different-pr', 'different-head', 'empty-comment', 'load', 'save'] as const)('blocks %s and retains the review in the modal', (kind) => {
+    if (kind === 'load') localStorage.setItem('review-test', 'invalid')
+    const queue = new ReviewQueue('review-test')
+    const source = kind === 'different-pr' ? { kind: 'change' as const, url: 'other', headSha: 'a'.repeat(40) }
+      : kind === 'different-head' ? { kind: 'change' as const, url: 'https://github.com/octo/demo/pull/7', headSha: 'b' } : selection.source
+    if (kind !== 'load') queue.add({ ...selection, source, comment: { ...selection.comment, body: kind === 'empty-comment' ? '' : 'Text' } })
+    if (kind === 'save') {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
+      queue.summarize('Summary', 'comment')
+    }
+    if (kind === 'local') vi.spyOn(queue, 'getSnapshot').mockReturnValue({ ...queue.getSnapshot(), comments: [{ ...selection, source: { kind: 'local', scope: 'branch' } }] })
+    const view = render(<SubmitReview queue={queue} url="https://github.com/octo/demo/pull/7" headSha={'a'.repeat(40)} busy={false} error={null}
+      submit={vi.fn()} close={vi.fn()} check={vi.fn()} reconcile={vi.fn()} t={t} />)
+    expect(view.getByRole('button', { name: 'Submit review' })).toHaveProperty('disabled', true)
   })
 })
