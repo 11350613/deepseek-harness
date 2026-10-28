@@ -111,7 +111,8 @@ it('ends a silent proxy connection and its Git child at the connection deadline'
   await transport.connected
   const result = await running
   expect(result?.kind).toBe('timeout')
-  expect(result).toMatchObject({ timedOut: true, argv: checkArgv('https://github.com/acme/plugin.git') })
+  // The result records the status the terminated Git is read as; only the streamed run reports no exit code.
+  expect(result).toMatchObject({ exitCode: 1, timedOut: true, argv: checkArgv('https://github.com/acme/plugin.git') })
   expect(result!.output).toContain('connection to github.com timed out after 3000ms')
   await transport.disconnected
   expect(transport.sockets.size).toBe(0)
@@ -154,6 +155,18 @@ it('bounds returned diagnostics while retaining Git stderr in the operation log'
   // The recorded command line is the one Git actually ran.
   expect(run).toHaveBeenCalledWith('git', checkArgv('https://github.com/acme/plugin').slice(1), expect.objectContaining({ cwd: dir }))
   expect(await readFile(result!.logPath, 'utf8')).toBe('0123456789')
+})
+
+it('keeps URL user information out of the recorded command line', async () => {
+  const { check } = await fixture()
+  const run = vi.spyOn(subprocess, 'execa').mockResolvedValue({
+    failed: true, exitCode: 128, shortMessage: 'fatal: unable to access the repository',
+  } as Awaited<ReturnType<typeof subprocess.execa>>)
+  onTestFinished(() => { run.mockRestore() })
+  const result = await check('https://user:token@github.com/acme/plugin.git')
+  // Git runs the address as typed so its own credentials keep working, while the recorded line is safe to display.
+  expect(run).toHaveBeenCalledWith('git', checkArgv('https://user:token@github.com/acme/plugin.git').slice(1), expect.anything())
+  expect(result?.argv).toEqual(checkArgv('https://github.com/acme/plugin.git'))
 })
 
 it('reports a missing Git executable without classifying it as a network failure', async () => {

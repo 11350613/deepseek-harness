@@ -132,17 +132,21 @@ it.each(['network', 'timeout'] as const)('stops a GitHub %s before pnpm and attr
   ctx.on('plugin-manager/install-log', (chunk) => { chunks.push(chunk) })
   const before = readFileSync(join(dir, 'package.json'), 'utf8')
   const argv = ['git', '-c', 'credential.helper=', 'ls-remote', '--', 'https://github.com/acme/dsh-plugin.git', 'HEAD']
-  const failure = {
+  const checked = {
     argv, exitCode: 1, output: 'GitHub check failed', truncated: false, logPath: join(dir, 'git.log'), kind,
     ...kind === 'timeout' ? { timedOut: true } : {},
   }
-  connection.mockResolvedValue(failure)
+  connection.mockResolvedValue(checked)
   const pnpm = vi.spyOn(operations, 'runProfilePnpm')
   onTestFinished(() => { pnpm.mockRestore() })
   const requestId = '824103ec-bc45-489d-bb85-5b4fe0aefc78' as PluginInstallRequestId
-  expect(await manager.installBundle('https://github.com/acme/dsh-plugin.git', { requestId })).toMatchObject({
-    application: 'failed', changed: false, stage: 'install', failedAt: 'spec-host', packageResult: failure,
+  const result = await manager.installBundle('https://github.com/acme/dsh-plugin.git', { requestId })
+  expect(result).toMatchObject({
+    application: 'failed', changed: false, stage: 'install', failedAt: 'spec-host',
+    packageResult: { exitCode: 1, output: 'GitHub check failed', truncated: false, logPath: join(dir, 'git.log'), kind },
   })
+  // The command line belongs to the streamed run only; the answer stays a plain package result.
+  expect(result.packageResult).not.toHaveProperty('argv')
   expect(pnpm).not.toHaveBeenCalled()
   expect(connection).toHaveBeenCalledWith(expect.objectContaining({ host: 'github.com' }), dir, expect.objectContaining({ timeoutMs: 5000 }))
   expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before)

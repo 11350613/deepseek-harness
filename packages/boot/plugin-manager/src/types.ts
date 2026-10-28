@@ -139,6 +139,7 @@ export type PluginInstallFailureKind =
 
 /** Package operation completion, including Git checks and a retrieval path for unabridged diagnostics. */
 export interface PackageResult {
+  /** The status the run is read as having ended with; a run the manager terminated records the coerced status 1. */
   exitCode: number
   output: string
   truncated: boolean
@@ -147,7 +148,8 @@ export interface PackageResult {
   kind?: PluginInstallFailureKind
   /**
    * The run outlived its bound: the manager terminated it after it printed nothing for its silence bound, or the GitHub
-   * connection check hit its deadline. `exitCode` still reports how it ended.
+   * connection check hit its deadline. Such a run reports no exit status of its own, so `exitCode` records the status
+   * its failure is read as rather than a status the process returned.
    */
   timedOut?: boolean
   /** Present when a compatibility check refused the run: the packages the running DSH version rejects. */

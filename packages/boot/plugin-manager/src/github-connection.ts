@@ -4,12 +4,18 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
 import { classifyInstallFailure } from './install-failure.ts'
-import type { ParsedInstallSpec } from './install-spec.ts'
+import { HTTP_USER_INFO, type ParsedInstallSpec } from './install-spec.ts'
 import type { PackageResult } from './types.ts'
 
-/** A failed check, with the exact Git command line whose output it captured. */
+/**
+ * A failed check, with the Git command line the install dialog shows as the installation's only run.
+ * The returned result itself stays a plain {@link PackageResult}: the command line never joins the wire fields.
+ */
 export interface GithubConnectionFailure extends PackageResult {
-  /** The `git` command line the check ran: `git -c credential.helper= ls-remote -- <repository> HEAD`. */
+  /**
+   * The `git` command line the check ran, with the user information of an http(s) repository URL removed:
+   * `git -c credential.helper= ls-remote -- <repository> HEAD`.
+   */
   readonly argv: readonly string[]
 }
 
@@ -29,8 +35,8 @@ export interface GithubConnectionOptions {
  * @param spec The parsed installation address; npm packages, local paths and other hosts are not checked.
  * @param dir The profile directory where installation runs.
  * @param options The connection deadline, output bound and operation cancellation.
- * @returns A failed check carrying its command line and bounded output, with a complete log at logPath, or undefined for a
- * reachable repository or an unhandled spec.
+ * @returns A failed check carrying the command line it ran (without URL user information) and its bounded output, with a
+ * complete log at logPath, or undefined for a reachable repository or an unhandled spec.
  */
 export async function checkGithubConnection(
   spec: ParsedInstallSpec, dir: string, options: GithubConnectionOptions,
@@ -48,6 +54,8 @@ export async function checkGithubConnection(
   const logPath = join(logDir, 'git.log')
   const log = await open(logPath, 'ax+', 0o600)
   const argv = ['git', '-c', 'credential.helper=', 'ls-remote', '--', repository, 'HEAD'] as const
+  // The executed command keeps any credentials the spec names; the recorded one drops them before it is displayed.
+  const recordedArgv = argv.map(argument => argument.replace(HTTP_USER_INFO, '$1'))
   const [command, ...args] = argv
   try {
     const result = await execa(command, args, {
@@ -67,8 +75,11 @@ export async function checkGithubConnection(
     const bytes = Buffer.alloc(Math.min(size, options.outputBytes))
     await log.read(bytes, 0, bytes.length, size - bytes.length)
     const output = bytes.toString('utf8')
+    // `PackageResult.exitCode` is a status number, so a Git the deadline stopped records the status its failure is read
+    // as. The run streamed for the same failure reports no exit code, because that process ended without one.
     return {
-      argv, exitCode: result.exitCode ?? (result.code === 'ENOENT' ? 127 : 1), output, truncated: size > options.outputBytes, logPath,
+      argv: recordedArgv, exitCode: result.exitCode ?? (result.code === 'ENOENT' ? 127 : 1),
+      output, truncated: size > options.outputBytes, logPath,
       kind: classifyInstallFailure({ log: output, timedOut: result.timedOut }),
       ...result.timedOut ? { timedOut: true } : {},
     }

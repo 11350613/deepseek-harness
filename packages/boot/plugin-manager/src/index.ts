@@ -907,12 +907,15 @@ export class PluginManager extends TypertRemoteService {
         finally { this.packageOperations.delete(connection) }
         if (stopped()) throw new InstallCancelledError()
         if (connectionFailure?.kind === 'network' || connectionFailure?.kind === 'timeout') {
-          result.packageResult = connectionFailure
+          // The answer keeps a plain PackageResult; the check's command line is only streamed as the run below.
+          const { argv, ...packageResult } = connectionFailure
+          result.packageResult = packageResult
           result.failedAt = 'spec-host'
           // pnpm never runs, so the check is the installation's only run: stream its failure into the install log.
+          // A timed-out Git reports no exit code of its own, unlike the result, which records the status it is read as.
           if (requestId !== undefined) {
             this.ownerContext.emit('plugin-manager/install-log', {
-              requestId, jobId: randomUUID(), argv: connectionFailure.argv, cwd: this.profile.dir, stream: 'stderr',
+              requestId, jobId: randomUUID(), argv, cwd: this.profile.dir, stream: 'stderr',
               text: connectionFailure.output, exitCode: connectionFailure.timedOut === true ? null : connectionFailure.exitCode,
             })
           }
