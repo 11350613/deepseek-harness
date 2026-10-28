@@ -168,6 +168,13 @@ const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
     modelRequestsFile: 'permission-requests.jsonl',
     replayStandaloneCommands: true,
   },
+  'command-identity': {
+    expectedFinalResponse: 'SDK_PERMISSION_OK',
+    environment: { DSH_PERMISSION_MODE: 'danger-full-access' },
+    patches: [fileURLToPath(new URL('./command-identity/runtime.cordis.yml', import.meta.url))],
+    modelRequestsFile: 'command-identity-requests.jsonl',
+    replayStandaloneCommands: true,
+  },
   'plan-review': {
     expectedFinalResponse: 'SDK_PLAN_OK',
     environment: { DSH_PERMISSION_MODE: 'workspace-write' },
@@ -1261,6 +1268,24 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
         expect(JSON.stringify(toolResults[0]?.data)).toContain('Add rollback.')
         expect(JSON.stringify(toolResults[1]?.data)).toContain('Plan approved')
         expect(JSON.stringify(toolResults[2]?.data)).toContain('The user dismissed the plan review')
+      }
+      if (scenario.name === 'command-identity') {
+        const parent = ordered[0]
+        if (parent === undefined) throw new Error('Command identity has no persisted Session')
+        const events = parseSessionLog(parent.content)
+        expect(events.filter(event => event.type === 'command/run').map(event => event.data.name))
+          .toEqual(['access', 'access', 'access'])
+        expect(events.filter(event => event.type === 'command/done').map(event => event.data.kind))
+          .toEqual(['success', 'success', 'error'])
+        expect(events.filter(event => event.type === 'permission/preset').map(event => event.data.preset))
+          .toEqual(['danger-full-access', 'read-only'])
+        const userMessages = events.filter(event => event.type === 'user/message' && event.data.source.kind === 'user')
+        expect(userMessages[0]?.data.content).toEqual([{ type: 'text', text: '/permission read-only' }])
+        expect(modelRequests).toHaveLength(2)
+        const messages = modelRequests[0]?.messages as JsonObject[]
+        expect(messages.some(message => message.role === 'user'
+          && (message.content as JsonObject[]).some(block => block.type === 'text' && block.text === '/permission read-only')))
+          .toBe(true)
       }
       if (scenario.name === 'permission-switch') {
         const parent = ordered[0]

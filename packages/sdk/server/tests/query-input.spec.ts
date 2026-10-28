@@ -48,11 +48,11 @@ describe('SDK query text recognition', () => {
     expect(queryCommand(text, commands)).toBeUndefined()
   })
 
-  it('does not apply an alias to an unrelated scoped replacement', () => {
+  it('does not identify unrelated scoped replacements as builtins', () => {
     const replaced = [{ name: 'compact', description: 'Scoped command' }, { name: 'permission', description: 'Scoped permission' }]
-    expect(queryCommand('/compact', replaced)).toBe('/compact')
+    expect(queryCommand('/compact', replaced)).toBeUndefined()
     expect(queryCommand('/压缩', replaced)).toBeUndefined()
-    expect(queryCommand('/permission read-only', replaced)).toBe('/permission read-only')
+    expect(queryCommand('/permission read-only', replaced)).toBeUndefined()
     expect(queryCommand('/权限 read-only', replaced)).toBeUndefined()
     expect(queryCommand('/计划', [{ name: 'plan', description: 'Scoped plan' }])).toBeUndefined()
   })
@@ -65,11 +65,11 @@ describe('SDK query text recognition', () => {
     expect(queryCommand('/export', [])).toBeUndefined()
     expect(queryCommand('/permission read-only', [])).toBeUndefined()
     expect(queryCommand('/压缩', [{ name: 'prune', definitionId: CommandDefinitionId('@deepseek-ai/dsh-command-compact'), description: 'Renamed command' }]))
-      .toBeUndefined()
+      .toBe('/prune')
     expect(queryCommand('/权限 read-only', [{ name: 'access', definitionId: CommandDefinitionId('@deepseek-ai/dsh-permission-presets'), description: 'Renamed permission' }]))
-      .toBeUndefined()
+      .toBe('/access read-only')
     expect(queryCommand('/计划', [{ name: 'planning', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Renamed plan' }]))
-      .toBeUndefined()
+      .toBe('/planning')
     expect(queryCommand('/目标', [{ name: 'goal', description: 'Scoped goal' }])).toBeUndefined()
   })
 

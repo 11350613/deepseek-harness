@@ -80,7 +80,7 @@ Launch options supply initial values. A permission command changes only its targ
 
 ### Lower-level control with HarnessClient
 
-`client.query(sessionId, input, delivery)` accepts a string or content-block array and waits for a validated prompt receipt or command result. `client.executeCommand(sessionId, line)` accepts only supported canonical English command names, without prompt fallback or attachments; it requires a non-blank permission preset. Use `run()` or `query()` for Chinese aliases. A non-blank unknown preset reaches the native handler and returns `result.kind === "error"`. Subscribe before these calls when notifications are needed. A request timeout abandons only the local wait; runtime work can continue afterward.
+`client.query(sessionId, input, delivery)` accepts a string or content-block array and waits for a validated prompt receipt or command result. `client.executeCommand(sessionId, line)` accepts ASCII registered names or canonical English aliases of supported builtin definitions, without prompt fallback or attachments; it requires a non-blank permission preset. Use `run()` or `query()` for Chinese aliases. A non-blank unknown preset reaches the native handler and returns `result.kind === "error"`. Subscribe before these calls when notifications are needed. A request timeout abandons only the local wait; runtime work can continue afterward.
 
 `/goal` uses the native goal handler and can start automatic rounds after its `CommandExecution`. Subscribe before sending; observe a terminal `goal/change` operation before using `session/wait` for the closing reply. Idle between rounds is not goal completion. See the [server semantics](../server/README.md) for pause, clear, restoration, and permission behavior.
 

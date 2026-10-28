@@ -12,6 +12,7 @@ import { queryCommand } from './query-input.ts'
 import { queryCommandImages, queryContent } from './query-content.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
+import { builtinCommandName, resolveCommand } from '@deepseek-ai/dsh-commands/builtin'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { admitEncodedImages, type EncodedImageAttachment, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, ReasoningEffortId, type ContentBlock, type LlmRuntime } from '@deepseek-ai/dsh-llm'
@@ -317,7 +318,7 @@ export class HarnessSdkJsonRpcServer {
 
   /**
    * Execute supported compact, permission, plan, or goal input through the native command registry.
-   * Only English canonical names are accepted; Chinese aliases and custom renamed commands are rejected.
+   * ASCII registered names and canonical English aliases are accepted; Chinese aliases use query.
    * @param params - target Session and complete command line.
    * @returns the native handler result; command errors remain result values.
    * @throws for unsupported input, unavailable commands, or runtime/transport failure.
@@ -330,8 +331,7 @@ export class HarnessSdkJsonRpcServer {
     if (!this.initialized) throw new Error('SDK server is not initialized')
     if (this.shuttingDown) throw new Error('SDK server is shutting down')
     const parsed = parseCommand(params.line)
-    if (parsed === undefined || (parsed.name !== 'compact' && parsed.name !== 'plan' && parsed.name !== 'goal'
-      && (parsed.name !== 'permission' || parsed.rawInput.trim() === ''))) {
+    if (parsed === undefined) {
       throw new TypeError('The SDK command endpoint supports only /compact, /permission <preset>, /plan [off|message], or /goal [objective|clear|edit objective|pause|resume]')
     }
     const commands = this.ctx.get('commands')
@@ -341,7 +341,15 @@ export class HarnessSdkJsonRpcServer {
     const rec = await this.getOrCreateSession(params.sessionId)
     this.lifetime.signal.throwIfAborted()
     this.assertLiveAgent(rec, params.sessionId)
-    const task = commands.execute(rec.handle.agent, params.line, images.map(image => ({
+    const descriptor = resolveCommand(parsed.name, commands.list(rec.handle.agent))
+    if (descriptor === undefined) throw new Error(`/${parsed.name} is unavailable in this SDK profile`)
+    const builtin = builtinCommandName(descriptor)
+    if (builtin !== 'compact' && builtin !== 'plan' && builtin !== 'goal'
+      && (builtin !== 'permission' || parsed.rawInput.trim() === '')) {
+      throw new TypeError('The SDK command endpoint supports only /compact, /permission <preset>, /plan [off|message], or /goal [objective|clear|edit objective|pause|resume]')
+    }
+    const line = `/${descriptor.name}${parsed.rawInput}`
+    const task = commands.execute(rec.handle.agent, line, images.map(image => ({
       type: 'image', data: image.data, mediaType: image.mimeType,
       ...image.name === undefined ? {} : { name: image.name },
     })), this.lifetime.signal)

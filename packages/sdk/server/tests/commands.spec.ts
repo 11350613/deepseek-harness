@@ -52,7 +52,7 @@ async function setup(registry = true, peer?: JsonRpcTransportPeer) {
   onTestFinished(async () => { await server.shutdown() })
   const initialize = () => server.initialize({ cwd: process.cwd(), provider: 'mock', model: 'mock' })
   const register = (handler: CommandDefinition['handler']) => {
-    ctx.effect(() => ctx.commands.register({ name: 'compact', description: 'Fixture command', handler }))
+    ctx.effect(() => ctx.commands.register({ name: 'compact', definitionId: CommandDefinitionId('@deepseek-ai/dsh-command-compact'), description: 'Fixture command', handler }))
   }
   const command = () => server.executeCommand({ sessionId: SessionId('commands'), line: '/compact' })
   return { ctx, server, loop, initialize, register, command }
@@ -136,7 +136,7 @@ describe('SDK command dispatch', () => {
     h.ctx.provide('attachments', store as AttachmentStore)
     const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const }))
     h.ctx.effect(() => h.ctx.commands.register({
-      name: 'plan', description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
+      name: 'plan', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
     }))
     const attachments = [{ type: 'image', data: 'AQ==', mimeType: 'image/png', name: 'diagram.png' }]
     const text = { type: 'text', text: '/plan inspect' }
@@ -163,7 +163,7 @@ describe('SDK command dispatch', () => {
     h.ctx.provide('attachments', store as AttachmentStore)
     const handler = vi.fn(() => ({ kind: 'success' as const }))
     h.ctx.effect(() => h.ctx.commands.register({
-      name: 'plan', description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
+      name: 'plan', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
     }))
     await expect(h.server.handleRequest('session/query', {
       sessionId: 'refused-content', delivery: 'queue', contentBlocks: [
@@ -186,7 +186,7 @@ describe('SDK command dispatch', () => {
     h.ctx.provide('attachments', { saveImages } as AttachmentStore)
     const handler = vi.fn(() => ({ kind: 'success' as const }))
     h.ctx.effect(() => h.ctx.commands.register({
-      name: 'plan', description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
+      name: 'plan', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
     }))
     const request = h.server.query({ sessionId: SessionId('image-shutdown'), delivery: 'queue',
       contentBlocks: [{ type: 'text', text: '/plan inspect' }, { type: 'image', data: 'AQ==', mimeType: 'image/png' }],
@@ -205,9 +205,10 @@ describe('SDK command dispatch', () => {
     await h.initialize()
     const handler = vi.fn(() => ({ kind: 'success' as const }))
     h.register(handler)
-    await expect(h.server.handleRequest('session/command', { sessionId: 's', line })).rejects.toThrow('only /compact')
+    await expect(h.server.handleRequest('session/command', { sessionId: 's', line })).rejects.toThrow()
     expect(handler).not.toHaveBeenCalled()
-    expect(h.ctx.agents.list()).toEqual([])
+    expect(h.ctx.agents.list().flatMap(agent => agent.session.snapshotEvents())).toEqual([])
+    expect(h.ctx.agents.list()).toHaveLength(line === 'text' ? 0 : 1)
   })
 
   it.each([
@@ -269,6 +270,85 @@ describe('SDK command dispatch', () => {
       .toEqual(['command/run', 'command/done', 'command/run', 'command/done'])
   })
 
+  it.each([
+    ['compact', '@deepseek-ai/dsh-command-compact', '压缩', ''],
+    ['permission', '@deepseek-ai/dsh-permission-presets', '权限', ' read-only'],
+    ['plan', '@deepseek-ai/dsh-plan-mode', '计划', ' task'],
+    ['goal', '@deepseek-ai/dsh-command-goal', '目标', ' task'],
+  ])('dispatches the renamed %s definition through both SDK entries', async (name, id, alias, args) => {
+    const h = await setup()
+    await h.initialize()
+    const registered = `renamed-${name}`
+    const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const }))
+    h.ctx.effect(() => h.ctx.commands.register({
+      name: registered, definitionId: CommandDefinitionId(id), description: 'Renamed builtin', handler,
+    }))
+    const sessionId = SessionId('renamed')
+    for (const token of [name, alias, registered]) {
+      await expect(h.server.handleRequest('session/query', {
+        sessionId, contentBlocks: [{ type: 'text', text: `/${token}${args}` }], delivery: 'queue',
+      })).resolves.toMatchObject({ kind: 'command', execution: { result: { kind: 'success' } } })
+    }
+    for (const token of [name, registered]) {
+      await expect(h.server.handleRequest('session/command', { sessionId, line: `/${token}${args}` }))
+        .resolves.toMatchObject({ result: { kind: 'success' } })
+    }
+    expect(handler).toHaveBeenCalledTimes(5)
+    expect(handler.mock.calls.map(([invocation]) => invocation.rawInput)).toEqual(Array.from({ length: 5 }, () => args))
+    const events = h.ctx.agents.get(sessionId)!.session.snapshotEvents()
+    expect(events.filter(event => event.type === 'command/run').map(event => event.data.name))
+      .toEqual(Array.from({ length: 5 }, () => registered))
+    expect(events.every(event => event.type === 'command/run' || event.type === 'command/done')).toBe(true)
+  })
+
+  it.each([
+    ['compact', ''], ['permission', ' read-only'], ['plan', ' task'], ['goal', ' task'],
+  ])('keeps an unrelated definition named %s outside native SDK dispatch', async (name, args) => {
+    const h = await setup()
+    const model = new TextModel()
+    h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
+    await h.server.initialize({ cwd: process.cwd(), provider: 'query-model', model: 'model' })
+    const handler = vi.fn(() => ({ kind: 'success' as const }))
+    h.ctx.effect(() => h.ctx.commands.register({
+      name, definitionId: CommandDefinitionId(`example/${name}`), description: 'Unrelated command', handler,
+    }))
+    const sessionId = SessionId('unrelated')
+    const line = `/${name}${args}`
+    await expect(h.server.handleRequest('session/command', { sessionId, line })).rejects.toThrow('only /compact')
+    expect(h.ctx.agents.get(sessionId)!.session.snapshotEvents()).toEqual([])
+    await expect(h.server.handleRequest('session/query', {
+      sessionId, contentBlocks: [{ type: 'text', text: line }], delivery: 'queue',
+    })).resolves.toMatchObject({ kind: 'prompt' })
+    await h.server.wait({ sessionId })
+    expect(handler).not.toHaveBeenCalled()
+    expect(model.requests).toHaveLength(1)
+    expect(model.requests[0]!.messages.some(message => message.role === 'user'
+      && message.content.some(block => block.type === 'text' && block.text === line))).toBe(true)
+    expect(h.ctx.agents.get(sessionId)!.session.snapshotEvents().some(event => event.type === 'command/run')).toBe(false)
+  })
+
+  it('requires a preset for a renamed permission definition', async () => {
+    const h = await setup()
+    await h.initialize()
+    const handler = vi.fn(() => ({ kind: 'success' as const }))
+    h.ctx.effect(() => h.ctx.commands.register({
+      name: 'access', definitionId: CommandDefinitionId('@deepseek-ai/dsh-permission-presets'),
+      description: 'Permission', handler,
+    }))
+    await expect(h.server.executeCommand({ sessionId: SessionId('empty-preset'), line: '/access' }))
+      .rejects.toThrow('only /compact')
+    expect(handler).not.toHaveBeenCalled()
+    expect(h.ctx.agents.get(SessionId('empty-preset'))!.session.snapshotEvents()).toEqual([])
+  })
+
+  it('reports an execution unavailable after catalog resolution', async () => {
+    const h = await setup()
+    await h.initialize()
+    h.register(() => ({ kind: 'success' }))
+    vi.spyOn(h.ctx.commands, 'execute').mockResolvedValue(undefined)
+    await expect(h.command()).rejects.toThrow('/compact is unavailable')
+  })
+
   it('requires initialization and the composed registry and command', async () => {
     const absent = await setup(false)
     await expect(absent.command()).rejects.toThrow('not initialized')
@@ -285,7 +365,7 @@ describe('SDK command dispatch', () => {
     const h = await setup()
     await h.initialize()
     const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'error' as const, text: 'native preset refusal' }))
-    h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', description: 'Fixture permission', input: { hint: 'Preset' }, handler }))
+    h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', definitionId: CommandDefinitionId('@deepseek-ai/dsh-permission-presets'), description: 'Fixture permission', input: { hint: 'Preset' }, handler }))
     const sessionId = SessionId('permission')
     const line = '/permission  deployment-preset'
     const result = entry === 'strict'
@@ -303,7 +383,7 @@ describe('SDK command dispatch', () => {
     const h = await setup()
     await h.initialize()
     const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const, text: 'native plan result' }))
-    h.ctx.effect(() => h.ctx.commands.register({ name: 'plan', description: 'Plan', input: { hint: '[off|message]' }, handler }))
+    h.ctx.effect(() => h.ctx.commands.register({ name: 'plan', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Plan', input: { hint: '[off|message]' }, handler }))
     const result = await h.server.query({ sessionId: SessionId('plan'), contentBlocks: [{ type: 'text', text: line }], delivery: 'queue' })
     expect(result).toMatchObject({ kind: 'command', execution: { result: { kind: 'success', text: 'native plan result' } } })
     expect(handler.mock.calls[0]![0].rawInput).toBe(line.slice('/plan'.length))
@@ -516,7 +596,7 @@ describe('SDK query dispatch', () => {
     await h.server.initialize({ cwd: process.cwd(), provider: 'query-model', model: 'model' })
     const handler = vi.fn(() => ({ kind: 'success' as const }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'feedback', description: 'Feedback', input: { hint: 'Task' }, handler }))
-    h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', description: 'Permission', input: { hint: 'Preset' }, handler }))
+    h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', definitionId: CommandDefinitionId('@deepseek-ai/dsh-permission-presets'), description: 'Permission', input: { hint: 'Preset' }, handler }))
     await expect(h.server.query({ sessionId: SessionId('q'), contentBlocks: [{ type: 'text', text }], delivery: 'queue' })).resolves.toMatchObject({ kind: 'prompt' })
     await h.server.wait({ sessionId: 'q' })
     expect(handler).not.toHaveBeenCalled()

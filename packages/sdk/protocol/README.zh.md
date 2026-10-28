@@ -62,7 +62,7 @@ kind: "package-library"
 
 `session/query` 接受 `{ sessionId, contentBlocks, delivery }`，其中 `contentBlocks` 使用 `SdkPromptContentBlock[]`，delivery 为 `queue` 或 `steer`。两个 SDK 都将字符串规范化为文本块，并通过同一入口发送内容块数组。普通输入保留内容块顺序，返回 `{ kind: "prompt", messageId }`；受支持命令结束后返回 `{ kind: "command", execution }`。已识别命令要求一个完整文本块，其他块只能是编码图片；其他组合会在执行或入队前被拒绝。图片经过原生附件接纳与处理器校验。空数组和只包含空白文本的数组会被拒绝；允许仅图片输入。Prompt 回执不是模型结果，命令完成也不要求 inbox 回执或 idle 通知。识别规则及受支持命令由 [SDK 服务端](../server/README.zh.md)定义。
 
-`session/command` 在初始化后接受 `{ sessionId, line }`，将[支持的英文规范命令名](../server/README.zh.md#command-input)委托给原生注册器。中文别名使用 `session/query`。preset 必须非空，裸 `/permission` 会被拒绝。Handler 结束后返回 `CommandExecution`，未知 preset 或其他业务失败以 `result.kind: "error"` 返回。命令不可用、不受支持或请求格式错误时返回 JSON-RPC 错误。不回退为普通 prompt，也不接受附件；携带编码图片的命令使用 `session/query`。不要求 inbox 回执或普通 turn。`session/prompt` 将内容块排入队列，不经过原生 slash command 路由；运行时 skill（技能）识别仍然适用。
+`session/command` 在初始化后接受 `{ sessionId, line }`，将[支持内置定义的 ASCII 注册名或英文规范别名](../server/README.zh.md#command-input)委托给原生注册器。中文别名使用 `session/query`。preset 必须非空，裸 `/permission` 会被拒绝。Handler 结束后返回 `CommandExecution`，未知 preset 或其他业务失败以 `result.kind: "error"` 返回。命令不可用、不受支持或请求格式错误时返回 JSON-RPC 错误。不回退为普通 prompt，也不接受附件；携带编码图片的命令使用 `session/query`。不要求 inbox 回执或普通 turn。`session/prompt` 将内容块排入队列，不经过原生 slash command 路由；运行时 skill（技能）识别仍然适用。
 
 对于 `session/command` 和 `session/query` 的命令结果，命令生命周期通知都在同一流上先于对应响应到达。转发方必须保留这一顺序。
 

@@ -218,13 +218,9 @@ class Session:
             raise ValueError("run delivery must be queue or steer")
         self.harness.start()
         with self.harness.client.subscribe_session_notifications(self.id) as subscription:
-            response = self.harness.client._request_raw("session/query", {
-                "sessionId": self.id, "contentBlocks": normalize_input(input), "delivery": delivery,
-            })
-            if not isinstance(response, dict):
-                raise SdkProtocolError("session/query response must be a JSON object")
-            if response.get("kind") == "command":
-                execution = CommandExecution.model_validate(response.get("execution"))
+            response = self.harness.client._query(self.id, input, delivery)
+            if isinstance(response, CommandExecution):
+                execution = response
                 while True:
                     try:
                         notification = subscription._next_queued()
@@ -237,10 +233,7 @@ class Session:
                     if _is_command_done(notification, self.id, execution.command_id):
                         break
                 return execution
-            if response.get("kind") != "prompt" or not isinstance(response.get("messageId"), str) or not response["messageId"]:
-                raise SdkProtocolError("session/query requires a prompt messageId or command execution result")
-            message_id = response["messageId"]
-            activity = _PromptActivity(self.id, message_id)
+            activity = _PromptActivity(self.id, response)
             while True:
                 notification = subscription.next()
                 if not activity.record(notification, on_notification):
@@ -276,12 +269,6 @@ def _is_command_done(notification: Notification, session_id: str, command_id: st
         return False
     data = event.get("data")
     return isinstance(data, dict) and data.get("commandId") == command_id
-
-
-def normalize_input(input: str | list[JsonObject]) -> list[JsonObject]:
-    if isinstance(input, str):
-        return [{"type": "text", "text": input}]
-    return input
 
 
 def final_response(events: list[JsonObject]) -> str:

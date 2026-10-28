@@ -80,6 +80,8 @@ for line in sys.stdin:
                 "commandId": "silent", "result": {"kind": "success"}}}})
         elif text == "rpc-error":
             send({"id": frame["id"], "error": {"code": -32602, "message": "query rejected"}})
+        elif text == "custom-response":
+            send({"id": frame["id"], "result": json.loads(os.environ["QUERY_RESPONSE"])})
         elif text == "bad-route":
             send({"id": frame["id"], "result": {"kind": "unknown"}})
         elif text == "bad-execution":
@@ -237,7 +239,7 @@ def test_command_result_needs_no_notifications(sdk: DeepSeekHarness) -> None:
     assert_released(sdk)
 
 
-@pytest.mark.parametrize("text,error", [("rpc-error", JsonRpcError), ("bad-route", SdkProtocolError), ("bad-execution", ValidationError)])
+@pytest.mark.parametrize("text,error", [("rpc-error", JsonRpcError), ("bad-route", SdkProtocolError), ("bad-execution", SdkProtocolError)])
 def test_run_reports_routing_failures_without_retry(sdk: DeepSeekHarness, text: str, error: type[Exception]) -> None:
     session = sdk.start_session("main")
     with pytest.raises(error):
@@ -272,3 +274,23 @@ def test_run_requires_supported_delivery(sdk: DeepSeekHarness) -> None:
         session.run("ordinary", delivery="unknown")
     with pytest.raises(ValueError, match="delivery"):
         session.run([{"type": "text", "text": "ordinary"}], delivery="unknown")
+
+
+@pytest.mark.parametrize("response", [
+    None, [], {"kind": "unknown"}, {"kind": "prompt"}, {"kind": "prompt", "messageId": ""},
+    {"kind": "prompt", "messageId": 4},
+    {"kind": "command", "execution": {"commandId": "c"}},
+    {"kind": "command", "execution": {"commandId": "c", "result": {"kind": "success", "sourceEventSeq": True}}},
+])
+def test_run_rejects_invalid_routing_responses_as_protocol_errors(peer: Path, tmp_path: Path, response: object) -> None:
+    with DeepSeekHarness(
+        cwd=str(tmp_path), dsh_home=str(tmp_path / "home"), request_timeout_seconds=5,
+        _launch_args=(sys.executable, str(peer)),
+        env={"REQUEST_LOG": str(tmp_path / "requests.jsonl"), "QUERY_RESPONSE": json.dumps(response)},
+    ) as sdk:
+        with pytest.raises(SdkProtocolError) as raised:
+            sdk.start_session("main").run("custom-response")
+        if isinstance(response, dict) and response.get("kind") == "command":
+            assert isinstance(raised.value.__cause__, ValidationError)
+        assert_released(sdk)
+        assert isinstance(sdk.start_session("main").run("/compact"), CommandExecution)

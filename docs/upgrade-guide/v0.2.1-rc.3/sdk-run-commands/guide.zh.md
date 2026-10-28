@@ -1,6 +1,6 @@
 ---
 kind: upgrade-guide
-description: "SDK run 方法会路由字符串和内容块数组中的已支持 slash command，并可能返回原生命令结果。"
+description: "SDK run 按定义身份路由原生命令，返回提示词活动或命令结果。"
 ---
 
 # SDK run 接受原生命令
@@ -9,17 +9,17 @@ description: "SDK run 方法会路由字符串和内容块数组中的已支持 
 
 ## 变更
 
-Python 的 `DeepSeekHarness.run()`、`Session.run()` 及其 TypeScript 对应方法，会将字符串和内容块数组交给同一个普通输入与命令入口。已支持的 slash command 执行原生处理器。普通输入返回 `RunResult`，命令返回 `CommandExecution`。两种输入形式的普通提示词都支持 queue 或 steer 投递。假设所有 run 都返回助手回答的调用方，需要区分这两种结果。
+Python 的 `DeepSeekHarness.run()`、`Session.run()` 及其 TypeScript 对应方法，将字符串与内容块数组发送到同一提示词／命令入口。普通输入返回 `RunResult`，受支持命令返回 `CommandExecution`。命令按官方定义 ID 识别，并以当前注册名执行。中英文别名跟随重命名后的定义，无关的精确同名替换仍作为普通输入。详见[受支持命令规则](../../../../packages/sdk/server/README.zh.md#command-input)。
 
-内容块数组不再绕过原生 slash command 路由。例如，`run([{"type": "text", "text": "/compact"}])` 会执行压缩。包含命令文本和编码栅格图片的数组遵循 Desktop 的原生附件规则；`/plan off` 携图返回命令错误，不修改计划状态。命令完成不表示计划生成、审阅或自动目标轮次已经结束。处理器拒绝操作时返回命令错误结果；路由和传输失败会抛出异常或拒绝 Promise。
+数组不再绕过原生路由：`run([{"type": "text", "text": "/compact"}])` 会执行压缩。命令携带编码栅格图片时遵循原生附件规则；`/plan off` 携带图片会返回命令错误，且不改变计划状态。命令完成不表示后续计划、审阅或目标轮次已经结束。处理器拒绝仍是命令结果，路由与传输失败会抛出异常或拒绝。
 
-`run("")`、`run([])` 和仅包含空白文本的输入，原先会进入提示词队列。现在这些输入会在创建 Session 或提示词入队前，以 JSON-RPC 错误拒绝。仅图片输入仍然接受。
+`run("")`、`run([])` 及仅包含空白文本的输入会在创建 Session 或入队前失败，仅图片输入仍被接受。严格命令的身份校验使用已初始化的接收 Agent 目录。身份校验拒绝会保留该 Session，不执行 handler，也不提交 prompt。
 
 ## 迁移
 
-1. 调用 `run()` 前过滤空白字符串、空数组和仅包含空白文本的数组。如果确实需要原始排队输入，使用下述低层 prompt 方法；入队成功不保证模型接受空输入。
-2. 在 Python 中读取 `final_response`、在 TypeScript 中读取 `finalResponse` 前检查结果类型。Python 使用 `isinstance(result, RunResult)`，TypeScript 使用 `'finalResponse' in result`。命令结果在 Python 中携带 `command_id`，在 TypeScript 中携带 `commandId`，并包含 `result.kind` 和命令自身的结果字段。
-3. 要绕过原生命令路由，将内容块改为传入 Python `client.session_prompt(session_id, blocks)` 或 TypeScript `client.prompt(sessionId, blocks)`。发送前先订阅，自行管理后续通知与 `session/wait`；这些方法返回入队回执，而非 `RunResult`。运行时 skill（技能）识别仍然适用。
-4. 先选择支持图片输入的模型。通过 `run([text_block, image_block])` 同时提交命令文本和图片；编码图片包含 `type: "image"`、base64 `data` 和 `mimeType`。将完整命令放在第一个文本块中；已识别命令会拒绝额外文本块或非编码图片块，不回退为普通提示词。图片可位于文本块前。不需要额外的输入选项。
-5. 自定义 `session/query` 客户端必须发送 `{ sessionId, contentBlocks, delivery }`；将文本转换为 `{ type: "text", text }` 块。仅接受文本的 `session/command` 和排队输入的 `session/prompt` 保留原有请求字段。
-6. 继续使用 `on_notification` / `onNotification` 观察活动通知。plan 或 goal 的后续工作遵循 [SDK 命令完成规则](../../../../packages/sdk/server/README.zh.md#command-input)。验证字符串和数组路由一致、普通提示词投递、`/plan off` 携图拒绝，以及低层 prompt 绕过行为。
+1. 在调用 `run()` 前过滤空输入或空白输入。在 Python 读取 `final_response` 或 TypeScript 读取 `finalResponse` 前检查返回类型：使用 `isinstance(result, RunResult)` 或 `'finalResponse' in result`。命令结果包含 `command_id`／`commandId` 及 `result.kind`。
+2. 原样排队输入使用 Python `client.session_prompt(session_id, blocks)` 或 TypeScript `client.prompt(sessionId, blocks)`。先订阅，再管理通知及 `session/wait`；这些方法返回回执，而不是 `RunResult`。入队被接受不保证模型接受空输入。运行时技能识别仍适用。
+3. 图片输入选择支持图片的模型，沿用 `run([text_block, image_block])`。编码图片包含 `type: "image"`、base64 `data` 和 `mimeType`。匹配到的命令要求一个完整文本块，其余只能是编码图片；额外文本或其他附件会被拒绝，不回退为提示词。图片可放在文本块之前。
+4. 自定义 `session/query` 客户端发送 `{ sessionId, contentBlocks, delivery }`，普通提示词的 delivery 为 `queue` 或 `steer`。`session/command` 保留 `{ sessionId, line }`，接受受支持定义的 ASCII 注册名或英文规范别名。中文别名使用 `run()`／`session/query`；名称相同不代表内置定义身份。
+5. Python 的 `run()` 和 `session_command()` 收到格式错误的命令响应时抛出 `SdkProtocolError`，并保留校验错误作为 cause。通用 `request(response_model=...)` 保留调用方所选模型的校验行为。
+6. 继续使用 `on_notification`／`onNotification` 观察活动。两个命令入口都先发送生命周期通知，再返回响应；转发方必须保序。后续模型工作遵循服务端的命令完成规则。

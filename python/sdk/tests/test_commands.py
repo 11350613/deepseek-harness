@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from deepseek_harness import CommandErrorResult, CommandExecution, CommandSuccessResult, DeepSeekHarness
-from deepseek_harness.errors import JsonRpcError
+from deepseek_harness.errors import JsonRpcError, SdkProtocolError
 
 
 @pytest.fixture
@@ -125,8 +125,9 @@ def test_command_rpc_rejection_does_not_fall_back_to_prompt(peer: Path, tmp_path
 ])
 def test_command_rejects_malformed_results(peer: Path, tmp_path: Path, response: dict) -> None:
     with harness(peer, tmp_path, {"result": response}) as sdk:
-        with pytest.raises(ValidationError):
+        with pytest.raises(SdkProtocolError) as raised:
             sdk.client.session_command("main", "/compact")
+        assert isinstance(raised.value.__cause__, ValidationError)
 
 
 def test_low_level_prompt_keeps_slash_text_as_an_ordinary_prompt(peer: Path, tmp_path: Path) -> None:

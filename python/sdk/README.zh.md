@@ -69,9 +69,9 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
 
 先选择支持图片输入的模型。通过现有内容块数组同时提交命令和图片，例如 `session.run([{"type": "text", "text": "/plan Analyze this image."}, {"type": "image", "data": image_base64, "mimeType": "image/png"}])`；`harness.run()` 接受相同输入。计划输入和目标创建、编辑接受图片；`/plan off`、目标控制、压缩和权限命令按[原生附件规则](../../packages/sdk/server/README.zh.md#command-input)拒绝图片。原生命令输入支持编码栅格图片，不支持一般文件上传或客户端提供的附件引用。
 
-每次调用在发送前订阅，并在返回或抛出异常前释放自己的订阅。`on_notification` 按线上的顺序接收普通活动区间通知；命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知，因此该区间可能包含重叠工作的通知。调用可以重叠，不会消耗彼此的结果。处理器拒绝返回 `CommandExecution.result.kind="error"`，路由、协议、传输和观察回调失败则抛出异常。超时或观察回调失败不回滚运行时工作，也不授权自动重试。`request_timeout_seconds` 限制协议响应等待，不限制之后的普通提示词活动。
+每次调用在发送前订阅，并在返回或抛出异常前释放自己的订阅。`on_notification` 按线上的顺序接收普通活动区间通知；命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知，因此该区间可能包含重叠工作的通知。调用可以重叠，不会消耗彼此的结果。处理器拒绝返回 `CommandExecution.result.kind="error"`，路由、协议、传输和观察回调失败则抛出异常。`run()` 或 `session_command()` 收到格式错误的原生命令响应时抛出 `SdkProtocolError`，并保留模型校验错误作为 cause。超时或观察回调失败不回滚运行时工作，也不授权自动重试。`request_timeout_seconds` 限制协议响应等待，不限制之后的普通提示词活动。
 
-默认的完整 `sdk` profile 提供已支持的原生命令；`sdk-minimal` 将未支持的输入保留在普通提示词路径。`/compact` 可以发起辅助模型请求，其完成不需要普通 turn 或 idle 通知；空历史可以在不生成摘要时成功。底层 `HarnessClient.session_command(session_id, line)` 只接受受支持的英文规范命令名，不回退为提示词，也不接受附件。中文别名使用 `run()`。见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
+默认的完整 `sdk` profile 提供已支持的原生命令；`sdk-minimal` 将未支持的输入保留在普通提示词路径。`/compact` 可以发起辅助模型请求，其完成不需要普通 turn 或 idle 通知；空历史可以在不生成摘要时成功。底层 `HarnessClient.session_command(session_id, line)` 接受受支持内置定义的 ASCII 注册名或英文规范别名，不回退为提示词，也不接受附件。中文别名使用 `run()`。见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
 
 `/permission <preset>` 只修改接收命令的 Session。未知 preset 返回命令错误，不改变策略。后续输入与恢复保留成功的修改，其他 Session 和调用方的 `DeepSeekHarnessConfig` 保留自己的值。运行中的审批策略变化可以注入通知并触发下一模型步骤。见[权限示例](examples/README.zh.md#change-session-permissions)。
 

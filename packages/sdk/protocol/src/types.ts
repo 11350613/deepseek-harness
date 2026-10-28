@@ -99,7 +99,7 @@ export interface SessionPromptResult {
 export interface SessionCommandParams {
   /** SDK-owned Session identity; an unknown id creates its Agent. */
   sessionId: SessionId
-  /** Complete command line using the canonical English name; the native command validates arguments. */
+  /** Complete line using an ASCII registered name or canonical English alias; the native command validates arguments. */
   line: string
 }
 
