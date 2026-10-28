@@ -7,7 +7,7 @@
  * scope summary changes; a read keeps the previous changes on screen until it settles.
  */
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   Button, IconChevronDownOutlineRegular, IconChevronsUpDownOutlineRegular, IconCompareSplitOutlineRegular, IconInfoOutlineRegular,
@@ -424,9 +424,13 @@ export function ChangesTab({
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set())
   const initial = useMemo(() => initiallyOpen(data === null ? [] : data.files), [data])
   const sections = useRef(new Map<string, HTMLElement>())
+  const scrollport = useRef<HTMLDivElement>(null)
+  // A short final file cannot align with the viewport top; retain its jump until the reader scrolls away.
+  const jumpPosition = useRef<{ readonly data: ChangesData; readonly top: number } | null>(null)
   useLayoutEffect(() => {
     if (!tab.visible || wanted === null || data === null) return
     sections.current.get(wanted)?.scrollIntoView({ block: 'start' })
+    if (scrollport.current !== null) jumpPosition.current = { data, top: scrollport.current.scrollTop }
     setWanted(null)
   }, [tab.visible, wanted, data])
   const refresh = (): void => { setAttempt(value => value + 1) }
@@ -496,6 +500,40 @@ export function ChangesTab({
     .filter(path => !data?.files.some(file => file.path === path))
   const orphanRecords = absentPaths.map(path => <OrphanReviews key={path} path={path} actions={recordActions} t={t} />)
 
+  const files = data === null ? [] : data.files
+  const jump = (path: string): void => {
+    setTreeState(value => ({ ...value, selected: path }))
+    setChosen(value => ({ ...value, [path]: true }))
+    setWanted(path)
+  }
+  const navigateFiles = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (!tab.visible || event.defaultPrevented || event.nativeEvent.isComposing
+      || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+      || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return
+    const viewport = event.currentTarget
+    const origin = event.target
+    const selection = window.getSelection()
+    if (!(origin instanceof HTMLElement) || !viewport.contains(origin)
+      || origin.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-forge-comment]') !== null
+      || (selection !== null && !selection.isCollapsed)) return
+    const remembered = jumpPosition.current
+    let index = remembered !== null && remembered.data === data && remembered.top === viewport.scrollTop
+      ? files.findIndex(file => file.path === treeState.selected) : -1
+    if (index < 0) {
+      const top = viewport.getBoundingClientRect().top
+      index = Math.max(0, files.findLastIndex((file) => {
+        const section = sections.current.get(file.path)
+        return section !== undefined && section.getBoundingClientRect().top <= top + 1
+      }))
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const next = files[index + (event.key === 'ArrowRight' ? 1 : -1)]
+    if (next === undefined) return
+    viewport.focus({ preventScroll: true })
+    jump(next.path)
+  }
+
   let body: ReactNode
   if (data === null) {
     if (state === null && snapshot?.disconnected) {
@@ -526,7 +564,11 @@ export function ChangesTab({
     body = <div className={css.files}>{orphanRecords}<div className={css.centered}>{t('diff.empty')}</div></div>
   } else {
     body = (
-      <div className={css.files} data-forge-changes-scroll="">
+      <div ref={scrollport} className={css.files} data-forge-changes-scroll="" role="region"
+        aria-label={t('diff.allFiles', { count: files.length })} aria-keyshortcuts="ArrowLeft ArrowRight" tabIndex={0}
+        onKeyDown={navigateFiles} onScroll={(event) => {
+          if (jumpPosition.current?.top !== event.currentTarget.scrollTop) jumpPosition.current = null
+        }}>
         {data.files.map((file) => {
           const path = file.path
           return (
@@ -572,16 +614,11 @@ export function ChangesTab({
       </div>
     )
   }
-  const files = data === null ? [] : data.files
   const navigator: ChangedFilesProps = {
     files, state: treeState, t,
     filter: (query) => { setTreeState(value => ({ ...value, query })) },
     toggle: (path) => { setTreeState(value => ({ ...value, collapsed: { ...value.collapsed, [path]: value.collapsed[path] !== true } })) },
-    jump: (path) => {
-      setTreeState(value => ({ ...value, selected: path }))
-      setChosen(value => ({ ...value, [path]: true }))
-      setWanted(path)
-    },
+    jump,
   }
   // The toolbar collapses every file while any is expanded, as the files on screen show, and expands every file otherwise.
   const anyExpanded = files.some(file => chosen[file.path] ?? initial.has(file.path))

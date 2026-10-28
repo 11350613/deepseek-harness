@@ -244,6 +244,112 @@ function rowTexts(section: HTMLElement): string[] {
   return [...section.querySelectorAll(`.${css.text}`)].map(element => element.textContent ?? '')
 }
 
+/** Section geometry with a short final page whose scroll position is clamped by the viewport. */
+function fileViewport(m: ReturnType<typeof mount>) {
+  const nodes = [...m.view.container.querySelectorAll<HTMLElement>('[data-forge-diff-file]')]
+  const viewport = m.view.getByRole('region', { name: `All ${nodes.length} files` })
+  vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 600, 300))
+  nodes.forEach((node, index) => {
+    vi.spyOn(node, 'getBoundingClientRect').mockImplementation(() => new DOMRect(0, index * 200 - viewport.scrollTop, 600, 200))
+  })
+  scrolled.mockImplementation(function (this: HTMLElement) {
+    viewport.scrollTop = Math.min(nodes.indexOf(this) * 200, nodes.length * 200 - 300)
+  })
+  return { viewport, nodes }
+}
+
+describe('ChangesTab keyboard file navigation', () => {
+  it.each([{ kind: 'local' }, { kind: 'change', url: URL7 }] as const)('moves between $kind files, expands the destination and keeps focus in the diff', async (source) => {
+    const m = mount({ source })
+    await settle()
+    const { viewport, nodes } = fileViewport(m)
+    const destination = nodes[2]!
+    fireEvent.click(within(destination).getByRole('button', { name: /^Collapse / }))
+    viewport.scrollTop = 250
+    fireEvent.scroll(viewport)
+    expect(fireEvent.keyDown(viewport, { key: 'ArrowRight' })).toBe(false)
+    expect(scrolled.mock.contexts.at(-1)).toBe(destination)
+    expect(destination.hasAttribute('data-expanded')).toBe(true)
+    expect(document.activeElement).toBe(viewport)
+    const tree = within(m.view.getByRole('navigation'))
+    expect(tree.getByRole('button', { name: destination.dataset.forgeDiffFile! }).getAttribute('aria-current')).toBe('true')
+    fireEvent.scroll(viewport)
+    fireEvent.keyDown(viewport, { key: 'ArrowLeft' })
+    expect(scrolled.mock.contexts.at(-1)).toBe(nodes[1])
+    expect(m.faces.localDiff.mock.calls.length + m.faces.changeRequestDiff.mock.calls.length).toBe(1)
+  })
+
+  it('stops at the ends, remembers a clamped last file, and follows manual scrolling', async () => {
+    const m = mount()
+    await settle()
+    const { viewport, nodes } = fileViewport(m)
+    fireEvent.keyDown(viewport, { key: 'ArrowLeft' })
+    expect(scrolled).not.toHaveBeenCalled()
+    for (let index = 1; index < nodes.length; index += 1) {
+      fireEvent.keyDown(viewport, { key: 'ArrowRight' })
+      fireEvent.scroll(viewport)
+      expect(scrolled.mock.contexts.at(-1)).toBe(nodes[index])
+    }
+    const count = scrolled.mock.calls.length
+    fireEvent.keyDown(viewport, { key: 'ArrowRight' })
+    expect(scrolled).toHaveBeenCalledTimes(count)
+    fireEvent.keyDown(viewport, { key: 'ArrowLeft' })
+    expect(scrolled.mock.contexts.at(-1)).toBe(nodes.at(-2))
+    viewport.scrollTop = 225
+    fireEvent.scroll(viewport)
+    fireEvent.keyDown(viewport, { key: 'ArrowRight' })
+    expect(scrolled.mock.contexts.at(-1)).toBe(nodes[2])
+  })
+
+  it('leaves vertical arrows, modifiers, composition and handled keys to their owners', async () => {
+    const m = mount()
+    await settle()
+    const { viewport } = fileViewport(m)
+    for (const input of [
+      { key: 'ArrowDown' }, { key: 'ArrowUp' }, { key: 'ArrowRight', shiftKey: true },
+      { key: 'ArrowRight', ctrlKey: true }, { key: 'ArrowRight', metaKey: true },
+      { key: 'ArrowRight', altKey: true }, { key: 'ArrowRight', isComposing: true },
+    ]) expect(fireEvent.keyDown(viewport, input)).toBe(true)
+    const handled = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+    handled.preventDefault()
+    fireEvent(viewport, handled)
+    act(() => { m.visibility.set(false) })
+    fireEvent.keyDown(viewport, { key: 'ArrowRight' })
+    expect(scrolled).not.toHaveBeenCalled()
+  })
+
+  it('preserves comment editing, native selections, tree controls and portalled menus', async () => {
+    const m = mount()
+    await settle()
+    const { viewport } = fileViewport(m)
+    const section = within(m.section('src/app.ts'))
+    fireEvent.click(section.getByRole('button', { name: 'Select line R4' }))
+    fireEvent.click(section.getByRole('button', { name: 'Add comment' }))
+    const input = section.getByRole('textbox')
+    fireEvent.change(input, { target: { value: 'Keep editing' } })
+    fireEvent.keyDown(input, { key: 'ArrowRight' })
+    fireEvent.keyDown(section.getByRole('button', { name: 'Add to input' }), { key: 'ArrowLeft' })
+    expect(input).toHaveProperty('value', 'Keep editing')
+    fireEvent.keyDown(m.view.getByRole('separator'), { key: 'ArrowRight' })
+    fireEvent.keyDown(within(m.view.getByRole('navigation')).getByRole('textbox'), { key: 'ArrowLeft' })
+    fireEvent.click(section.getByRole('button', { name: 'More actions for app.ts' }))
+    const menuItem = m.view.getByRole('menuitem', { name: 'Copy path' })
+    fireEvent.keyDown(menuItem, { key: 'ArrowRight' })
+    fireEvent.keyDown(menuItem, { key: 'Escape' })
+    fireEvent.keyDown(m.section('src/app.ts').querySelector('svg')!, { key: 'ArrowRight' })
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.selectNodeContents(m.section('src/new.ts').querySelector('[data-review-code]')!)
+    selection.addRange(range)
+    try {
+      fireEvent.keyDown(viewport, { key: 'ArrowRight' })
+      expect(scrolled).not.toHaveBeenCalled()
+    } finally {
+      selection.removeAllRanges()
+    }
+  })
+})
+
 describe('ChangesTab local reads', () => {
   it('waits for the panel state, then reads the branch scope and draws its files', async () => {
     const m = mount({ state: null })
