@@ -1,7 +1,7 @@
 /** Inline text and reference presentation; business rules supply resolved JSON data and actions. */
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
-import { contextMenuTrigger } from './context-menu-trigger.ts'
+import { contextMenuTrigger } from '@deepseek-ai/dsh-util-context-menu'
 import { ReferenceIconRegular, type ReferenceIconKind } from './ReferenceIcon.tsx'
 import css from './user-text.module.css'
 import markdownCss from './markdown/MarkdownText.module.css'

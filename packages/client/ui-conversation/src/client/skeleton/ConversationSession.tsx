@@ -1,4 +1,4 @@
-import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
+import { menuPoint } from '@deepseek-ai/dsh-util-context-menu'
 /** Strict per-session header/body content inserted into the resident conversation layout. */
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'

@@ -1,4 +1,4 @@
-import { menuPoint, contextMenuTrigger } from '../context-menu-trigger.ts'
+import { menuPoint, contextMenuTrigger } from '@deepseek-ai/dsh-util-context-menu'
 /**
  * Direct mdast→React markdown renderer. Replaces the react-markdown /
  * remark-rehype pipeline with one switch over parsed nodes so streaming can

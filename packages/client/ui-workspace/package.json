@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-workspace",
   "description": "Workspace picker plugin: one WorkspacePicker registered into the sidebar and empty-state workspace slots",
-  "version": "0.2.1-rc.4",
+  "version": "0.2.2-alpha.2",
   "publishConfig": {
     "access": "public"
   },
@@ -84,7 +84,8 @@
     "react": "^18.2.0",
     "@deepseek-ai/dsh-client-shortcuts": "workspace:*",
     "@deepseek-ai/dsh-client-product-analytics": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-context-menu": "workspace:*"
+    "@deepseek-ai/dsh-client-ui-context-menu": "workspace:*",
+    "@deepseek-ai/dsh-util-context-menu": "workspace:*"
   },
   "files": [
     "locale/*.json",

@@ -1,4 +1,4 @@
-import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
+import { menuPoint } from '@deepseek-ai/dsh-util-context-menu'
 /**
  * Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
  * all data and callbacks arrive via props. Hover swaps (folder->chevron,
@@ -12,7 +12,7 @@ import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
  * session and workspace hover cards are suppressed while a menu is open.
  */
 import { useEffect, useMemo, useRef } from 'react'
-import type { RefObject } from 'react'
+import type { PointerEvent, RefObject } from 'react'
 import clsx from 'clsx'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -108,12 +108,16 @@ function restTitle(title: HTMLSpanElement): void {
  * @param title - ref to the row's clipping title element.
  * @returns stable pointer enter/leave handlers for the row.
  */
-function useTitleMarquee(title: RefObject<HTMLSpanElement | null>): { enter: () => void; leave: () => void } {
+function useTitleMarquee(title: RefObject<HTMLSpanElement | null>): {
+  enter: (event?: PointerEvent) => void
+  leave: () => void
+} {
   const frame = useRef(0)
   const revealing = useRef(false)
   useEffect(() => () => { cancelAnimationFrame(frame.current) }, [])
   return useMemo(() => ({
-    enter: (): void => {
+    enter: (event?: PointerEvent): void => {
+      if (event?.pointerType === 'touch') return
       /* v8 ignore next -- defensive: the title span renders unconditionally. */
       if (title.current === null) return
       if (revealing.current) return

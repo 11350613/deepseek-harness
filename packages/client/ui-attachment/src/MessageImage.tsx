@@ -1,4 +1,4 @@
-import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
+import { menuPoint } from '@deepseek-ai/dsh-util-context-menu'
 import type { MenuTargetMap, MenuPoint } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'

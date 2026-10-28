@@ -1,4 +1,4 @@
-import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
+import { menuPoint } from '@deepseek-ai/dsh-util-context-menu'
 /** File identity, Sidebar preview, and contributed native actions for one delivery. */
 import type { ReactNode } from 'react'
 import { resolveWorkspacePath } from '@deepseek-ai/dsh-util-workspace-path'

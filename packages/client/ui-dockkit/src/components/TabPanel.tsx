@@ -1,4 +1,4 @@
-import { menuPoint } from '@deepseek-ai/dsh-client-ui-primitives'
+import { menuPoint } from '@deepseek-ai/dsh-util-context-menu'
 /**
  * One pane: its tab strip (drag source, drop target, split control) and the
  * active tab's body with the dock preview overlay. Presentational; every gesture
@@ -433,6 +433,7 @@ export function TabStrip({ state, pane, callbacks, offsets }: TabStripProps): Re
       {!(callbacks.hideSplitWhenBlocked && block !== undefined) && (
         <Tooltip label={block === undefined ? callbacks.labels.splitPane : splitBlockedTitle(callbacks.labels, block)} shortcutKeys={callbacks.labels.splitPaneKeys} side="bottom" delayMs={500} openOnClick={block !== undefined}>
           <span
+            data-dockkit-split-control
             tabIndex={block === undefined ? undefined : 0}
             aria-label={block === undefined ? undefined : splitBlockedTitle(callbacks.labels, block)}
             onClick={(event) => { if (block !== undefined) event.stopPropagation() }}

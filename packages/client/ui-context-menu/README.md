@@ -27,7 +27,7 @@ Add actions to right-click menus without importing a React component. Targets re
 
 The Web application bundle mounts this Client plugin. External Client plugins declare the package in `dsh.client.inject`, import its `/client` types, and inject the `menus` service. `resolutionTimeoutMs` bounds each provider’s preparation (1000ms by default); timed-out providers are aborted and omitted with visible failure feedback.
 
-Ordinary React controls bind `contextMenuTrigger(open)` from ui-primitives to their actual DOM element. The callback supplies an explicit target to `ctx.menus.open()`; no DOM attributes are interpreted as target metadata. Nested controls can prevent handling, and portals bind at their rendered element. Special editors and canvases can call `open()` directly.
+Ordinary React controls bind `contextMenuTrigger(open)` from [`util/context-menu`](../../util/context-menu/README.md) to their actual DOM element. The callback supplies an explicit target to `ctx.menus.open()`; no DOM attributes are interpreted as target metadata. Nested controls can prevent handling, and portals bind at their rendered element. Special editors and canvases can call `open()` directly.
 
 ### Register actions
 

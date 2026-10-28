@@ -1,9 +1,10 @@
+import { contextMenuTrigger } from '@deepseek-ai/dsh-util-context-menu'
 import { memo, useCallback, useMemo, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   CodeBlock, DiffBlock, DisclosureRow, IconInspectOutlineRegular, ReadBlock, SearchBlock,
   TerminalBlock, TextShimmer, WebBlock,
-  diffTotals, contextMenuTrigger,
+  diffTotals,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolCallCommonProps } from '../../contract/slots.ts'
 import type { PropsRenderSlots, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'

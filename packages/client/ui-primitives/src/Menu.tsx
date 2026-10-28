@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, SyntheticEvent } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
@@ -196,7 +196,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
   open: boolean
   /** Pointer-positioned popup: cursor clearance, grouped icons, and context gestures. */
   contextual?: boolean
-  /** Resolve the original control when a context menu opens after asynchronous preparation. */
+  /** Resolve the original control for focus restoration and inert/hidden dismissal. */
   returnFocus?: (() => HTMLElement | null) | undefined
   /** Retain a dismissed context popup during its short fade. */
   exiting?: 'dismiss' | 'replace' | undefined
@@ -223,6 +223,17 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
 }) {
   const rootRef = useRef<HTMLSpanElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const menuId = useId()
+  useLayoutEffect(() => {
+    const trigger = returnFocus?.()
+    if (!open || !contextual || trigger == null) return
+    const previous = trigger.getAttribute('aria-controls')
+    trigger.setAttribute('aria-controls', [previous, menuId].filter(Boolean).join(' '))
+    return () => {
+      if (previous === null) trigger.removeAttribute('aria-controls')
+      else trigger.setAttribute('aria-controls', previous)
+    }
+  }, [open, contextual, returnFocus, menuId])
   /** Index the arrow walk last focused, the resume point when focus left the rows. */
   const walkIndex = useRef<number | null>(null)
   /**
@@ -270,6 +281,8 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
   openRef.current = open
   const [openSubmenuId, setOpenSubmenuId] = useState<string | null>(null)
   const [fixedPos, setFixedPos] = useState<CSSProperties | null>(null)
+  const close = useRef(onClose)
+  close.current = onClose
   const { arm: armClose, cancel: cancelClose } = usePointerGrace(onClose)
 
   // Portal mode: fixed-position the list from the anchor rect before paint;
@@ -280,6 +293,11 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
   useLayoutEffect(() => {
     if (!open || !portal) { setFixedPos(null); return }
     const place = () => {
+      const anchorElement = returnFocus?.() ?? rootRef.current
+      if (anchorElement?.closest('[inert], [hidden]') != null) {
+        if (exitingRef.current === undefined) close.current()
+        return
+      }
       let r: DOMRect | null
       if (getAnchorRect !== undefined) {
         r = getAnchorRect()
@@ -335,7 +353,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
       window.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
     }
-  }, [open, portal, align, side, getAnchorRect, minWidthFromAnchor, contextual])
+  }, [open, portal, align, side, getAnchorRect, minWidthFromAnchor, contextual, returnFocus])
 
   // Opening remembers where the keyboard was, so closing can hand it back to
   // that control — an anchor wrapping several (a split button) cannot be asked
@@ -565,7 +583,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
   // already at the final position (with getAnchorRect returning null the
   // list simply stays hidden).
   const list = open && (
-    <MenuSurface compact={compact}
+    <MenuSurface compact={compact} id={contextual ? menuId : undefined}
       ref={listRef}
       className={clsx(css.list, listClassName, dense && css.denseList, compact && css.compactList, scrollable && css.scrollable, portal && css.portal, side === 'top' && !portal && css.sideTop, align === 'end' && !portal && css.alignEnd)}
       style={portal ? fixedPos ?? MEASURE_STYLE : undefined}

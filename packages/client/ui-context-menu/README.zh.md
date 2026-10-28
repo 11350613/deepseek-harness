@@ -27,7 +27,7 @@ kind: "package-reference"
 
 Web 应用 bundle 挂载此客户端插件。外部客户端插件在 `dsh.client.inject` 声明本包，导入 `/client` 类型，并注入 `menus` 服务。`resolutionTimeoutMs` 限制每个提供方的准备时长（默认 1000ms）；超时后取消并忽略该提供方，显示失败提示。
 
-普通 React 控件将 ui-primitives 的 `contextMenuTrigger(open)` 绑定到实际 DOM 元素。回调向 `ctx.menus.open()` 提供显式目标；DOM 属性不作为目标元数据解释。嵌套控件可以阻止处理，Portal 在实际渲染元素上绑定。特殊编辑器和 Canvas 可直接调用 `open()`。
+普通 React 控件将 [`util/context-menu`](../../util/context-menu/README.zh.md) 的 `contextMenuTrigger(open)` 绑定到实际 DOM 元素。回调向 `ctx.menus.open()` 提供显式目标；DOM 属性不作为目标元数据解释。嵌套控件可以阻止处理，Portal 在实际渲染元素上绑定。特殊编辑器和 Canvas 可直接调用 `open()`。
 
 ### 注册操作
 
