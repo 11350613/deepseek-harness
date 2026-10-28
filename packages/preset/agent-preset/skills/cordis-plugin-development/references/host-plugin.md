@@ -63,6 +63,8 @@ An existing plugin's metadata may remain unchanged when it still describes the r
 
 Register every resource inside `apply` with `ctx.effect` or `ctx.on` and return its cleanup. A plugin that declares `Config` validates the row's `config` at activation; query `Config.listConfigs` for an installed plugin's schema before writing its `config`, and follow `$defs` references in the returned document.
 
+Never read, filter, and rewrite `cordis.patch.yml` from plugin code, or locate it by walking up from the package directory. The file belongs to the user and holds other plugins' `insert` rows, comments, and `!!js` expressions. To change its own configuration at runtime, a plugin calls `ctx.get('configEditor')?.edit(ctx.fiber.entry, current => ({ ...current, field }))` after `apply` returns, with `ctx.fiber.entry` checked for `undefined`; `change` returns the row's complete config. The editor keeps the rest of the file, validates the candidate, serializes the write with HMR, and refuses values that a higher layer overrides. Mark fields written this way `.volatile()` so the change applies without restarting the plugin. Secrets, such as a token from an in-app sign-in or binding flow, go in `ctx.credentials.modifyRecord()` records, not configuration.
+
 ## Install, enable, and observe
 
 `plugin_manager` `install_bundle` performs package installation and bundle selection; do not reproduce those steps with shell commands. Only pass `approvedBuilds` after the user explicitly approves the reported pending build scripts. Preserve returned failures and pending states; report success only after observing the requested capability.
