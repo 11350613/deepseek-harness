@@ -11,7 +11,7 @@ export function pull(number: number, repository: ForgeRepository = demo): Change
 /** One CheckRun context node as GitHub returns it. */
 export function checkRun(name: string, status: string, conclusion: string | null, workflow: string | null = 'ci'): Record<string, unknown> {
   return {
-    __typename: 'CheckRun', databaseId: 1,
+    __typename: 'CheckRun', id: 'check-1', databaseId: 1,
     name,
     status,
     conclusion,

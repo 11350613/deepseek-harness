@@ -167,10 +167,10 @@ function Summary({ snapshot, now, t }: {
   return (
     <>
       <span className={css.ci} data-tone={ci.kind === 'failed' ? 'error' : undefined}>
-        {ci.kind !== 'none' && <CheckGlyph state={ROLLUP[snapshot.checksRollup]} size={12} />}
+        {ci.kind !== 'none' && <CheckGlyph state={ci.kind === 'cancelled' ? 'cancelled' : ROLLUP[snapshot.checksRollup]} size={12} />}
         {ci.kind === 'failed'
           ? ci.count > 0 ? t('change.ci.failed', { count: ci.count }) : t('change.ci.failedUnlisted')
-          : t(`change.ci.${ci.kind}`)}
+          : ci.kind === 'cancelled' ? t('change.ci.cancelled', { count: ci.count }) : t(`change.ci.${ci.kind}`)}
       </span>
       {flag !== undefined && <span className={css.flag} data-flag={flag}>{t(`change.flag.${flag}`)}</span>}
     </>
@@ -207,6 +207,7 @@ function ChecksRow({ snapshot, openLink, t }: {
     ...counts.failed > 0 ? [t('change.checks.failed', { count: counts.failed })] : [],
     ...counts.running > 0 ? [t('change.checks.running', { count: counts.running })] : [],
     ...counts.passed > 0 ? [t('change.checks.passed', { count: counts.passed })] : [],
+    ...counts.cancelled > 0 ? [t('change.checks.cancelled', { count: counts.cancelled })] : [],
     ...counts.other > 0 ? [t('change.checks.other', { count: counts.other })] : [],
   ].join(' · ')
   const close = (): void => { setOpen(false) }

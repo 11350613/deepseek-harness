@@ -13,7 +13,7 @@ const CHECK_FIELDS = `pageInfo { hasNextPage endCursor }
   nodes {
     __typename
     ... on CheckRun {
-      databaseId name status conclusion detailsUrl startedAt completedAt
+      id databaseId name status conclusion detailsUrl startedAt completedAt
       checkSuite { app { id } workflowRun { event workflow { id name } } }
     }
     ... on StatusContext { context state targetUrl createdAt }
@@ -44,7 +44,8 @@ export const HEAD_QUERY = `query($owner: String!, $name: String!, $branch: Strin
 
 const checkRunSchema = z.object({
   __typename: z.literal('CheckRun'),
-  databaseId: z.number().int().nonnegative(),
+  id: z.string(),
+  databaseId: z.number().int().nonnegative().nullable(),
   name: z.string(),
   status: z.string(),
   conclusion: z.string().nullable(),
@@ -308,8 +309,10 @@ function toSnapshot(
     if (run.success) {
       const suite = run.data.checkSuite
       const workflow = suite?.workflowRun
-      const key = JSON.stringify(['run', run.data.name, suite?.app?.id, workflow?.workflow.id, workflow?.event])
-      retain(key, run.data.databaseId, {
+      // A queued run may have neither a database id nor timestamps. Retain such runs by node id rather than guessing their age.
+      const key = run.data.databaseId === null ? JSON.stringify(['unranked-run', run.data.id])
+        : JSON.stringify(['run', run.data.name, suite?.app?.id, workflow?.workflow.id, workflow?.event])
+      retain(key, run.data.databaseId ?? 0, {
         name: run.data.name,
         state: checkRunState(run.data.status, run.data.conclusion),
         url: run.data.detailsUrl,
@@ -360,7 +363,7 @@ function toSnapshot(
     reviewDecision: reviewDecision(node.reviewDecision),
     checks,
     checksRollup: summary,
-    checksTruncated: rollup?.contexts.pageInfo.hasNextPage ?? false,
+    checksTruncated: false,
     unresolvedThreads: node.reviewThreads.nodes.filter(thread => !thread.isResolved).length,
     updatedAt: node.updatedAt,
     closedAt: node.closedAt,
@@ -387,13 +390,14 @@ function checkRunState(status: string, conclusion: string | null): CheckState {
   if (status !== 'COMPLETED') return 'pending'
   switch (conclusion) {
     case 'SUCCESS': return 'success'
-    case 'ACTION_REQUIRED': return 'pending'
+    case 'ACTION_REQUIRED':
     case 'FAILURE':
     case 'TIMED_OUT':
     case 'STARTUP_FAILURE': return 'failure'
     case 'CANCELLED': return 'cancelled'
     case 'SKIPPED': return 'skipped'
-    default: return 'neutral'
+    case 'NEUTRAL': return 'neutral'
+    default: return 'pending'
   }
 }
 

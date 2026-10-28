@@ -114,7 +114,7 @@ if (args[0] === 'auth' && args[1] === 'status') {
 if (args[0] === 'api' && args[1] === 'graphql') {
   const query = args.find(arg => arg.startsWith('query=')).slice('query='.length)
   const check = (name, conclusion, completedAt, databaseId = 101) => ({
-    __typename: 'CheckRun', name, status: 'COMPLETED', conclusion, databaseId,
+    __typename: 'CheckRun', id: 'check-' + databaseId, name, status: 'COMPLETED', conclusion, databaseId,
     detailsUrl: 'https://github.com/octo/demo/actions/runs/1', startedAt: '2026-10-09T00:00:00Z', completedAt,
     checkSuite: { app: { id: 'github-actions' }, workflowRun: { event: 'pull_request', workflow: { id: 'ci', name: 'CI' } } },
   })
@@ -637,7 +637,7 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   const guide = page.locator('[data-sidebar-right-guide]')
   await guide.getByRole('button', { name: /^代码审查和变更/ }).waitFor()
   await compareOrRefreshGolden(join(EXPECTED, 'review-guide.expected.md'),
-    await captureStableAria(page, '[data-sidebar-right-guide]', scaffold.workspaceCwd), MODE)
+    await captureStableAria(page, '[data-sidebar-right-guide-entry="forge-panel"]', scaffold.workspaceCwd), MODE)
   await guide.getByRole('button', { name: /^代码审查和变更/ }).click()
   // The New Session screen inspected the checkout before these changes, which came from outside the Session.
   await page.locator('[data-forge-panel]').getByRole('button', { name: '刷新状态', exact: true }).click()
@@ -733,26 +733,26 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   await fileTree.getByRole('textbox', { name: '筛选文件…' }).fill('src')
   await fileTree.getByRole('textbox', { name: '筛选文件…' }).fill('')
   await fileTree.getByRole('button', { name: 'src', exact: true }).click()
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
+  await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).click()
   expect(await treeIsLeft()).toBe(false)
   expect(await fileTree.getByRole('button', { name: 'src', exact: true }).getAttribute('aria-expanded')).toBe('false')
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await fileTree.isVisible()).toBe(false)
-  expect(await view.getByRole('button', { name: '文件树', exact: true }).isVisible()).toBe(false)
+  expect(await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).isVisible()).toBe(false)
   await view.getByRole('button', { name: '全部 2 个文件', exact: true }).click()
   await page.getByRole('menu').getByRole('textbox', { name: '筛选文件…' }).waitFor()
   await page.keyboard.press('Escape')
   await page.setViewportSize({ width: 1680, height: 1000 })
   expect(await treeIsLeft()).toBe(false)
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
+  await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).click()
   expect(await fileTree.isVisible()).toBe(false)
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
+  await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).click()
   expect(await treeIsLeft()).toBe(true)
   expect(await fileTree.getByRole('button', { name: 'src', exact: true }).getAttribute('aria-expanded')).toBe('false')
   await fileTree.getByRole('textbox', { name: '筛选文件…' }).fill('src')
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
+  await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).click()
+  await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).click()
+  await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).click()
   expect(await fileTree.getByRole('textbox', { name: '筛选文件…' }).inputValue()).toBe('src')
   await compareOrRefreshGolden(join(EXPECTED, 'file-tree-toggle.expected.md'),
     await captureStableAria(page, '[data-forge-changes="change"]', scaffold.workspaceCwd), MODE)
@@ -775,7 +775,7 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   expect(searchBounds.x + searchBounds.width).toBeLessThanOrEqual(treeBounds.x + treeBounds.width)
   await resizeTree.press('ArrowRight')
   const resizedWidth = await resizeTree.getAttribute('aria-valuenow')
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
+  await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).click()
   expect(await treeIsLeft()).toBe(false)
   expect(await resizeTree.getAttribute('aria-valuenow')).toBe(resizedWidth)
   await resizeTree.press('ArrowLeft')
@@ -789,8 +789,8 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   await page.mouse.up()
   expect(Number(await resizeTree.getAttribute('aria-valuenow'))).toBeGreaterThan(Number(resizedWidth))
   const rightWidth = await resizeTree.getAttribute('aria-valuenow')
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
-  await view.getByRole('button', { name: '文件树', exact: true }).click()
+  await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).click()
+  await view.getByRole('button', { name: /^(将文件树移到右侧|隐藏文件树|在左侧显示文件树)$/ }).click()
   expect(await resizeTree.getAttribute('aria-valuenow')).toBe(rightWidth)
   for (const side of ['old', 'new'] as const) {
     const firstLine = await panelFile.locator(`[data-review-code][data-${side}-line="2"]`).boundingBox()

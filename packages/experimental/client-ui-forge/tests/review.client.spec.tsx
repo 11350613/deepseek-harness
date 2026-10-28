@@ -299,9 +299,12 @@ describe('submission availability', () => {
       submit={vi.fn()} close={vi.fn()} check={vi.fn()} reconcile={vi.fn()} t={t} />)
     const button = view.getByRole('button', { name: 'Submit review' })
     const summary = view.getByRole('textbox')
+    const announcement = view.getByRole('status')
+    expect(announcement.textContent).toBe('')
     fireEvent.click(view.getByRole('radio', { name: 'Request changes' }))
     expect(button).toHaveProperty('disabled', true)
     expect(summary).toHaveProperty('required', true)
+    expect(announcement.textContent).toBe(en['review.summaryRequired'])
     expect(view.getByText(en['review.summaryRequired']).id).toBe(summary.getAttribute('aria-describedby'))
     fireEvent.change(summary, { target: { value: '  ' } })
     expect(button).toHaveProperty('disabled', true)
@@ -311,7 +314,8 @@ describe('submission availability', () => {
     fireEvent.click(view.getByRole('radio', { name: 'Approve' }))
     expect(button).toHaveProperty('disabled', false)
     expect(summary).toHaveProperty('required', false)
-    expect(view.queryByText(en['review.summaryRequired'])).toBeNull()
+    expect(announcement.textContent).toBe('')
+    expect(view.getByRole('status')).toBe(announcement)
   })
 
   it.each(['local', 'different-pr', 'different-head', 'empty-comment', 'load', 'save'] as const)('blocks %s and retains the review in the modal', (kind) => {

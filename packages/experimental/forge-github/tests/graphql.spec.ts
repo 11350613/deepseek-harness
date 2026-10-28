@@ -105,7 +105,7 @@ describe('snapshot mapping', () => {
 
   it.each([
     ['QUEUED', null, 'pending'], ['COMPLETED', 'SUCCESS', 'success'], ['COMPLETED', 'CANCELLED', 'failure'],
-    ['COMPLETED', 'ACTION_REQUIRED', 'pending'],
+    ['COMPLETED', 'ACTION_REQUIRED', 'failure'],
   ] as const)('summarizes the latest %s/%s run instead of a superseded failure', async (status, conclusion, expected) => {
     const result = await single(pullRequestNode(1, {}, [
       checkRun('build', 'COMPLETED', 'FAILURE'), { ...checkRun('build', status, conclusion), databaseId: 2 },
@@ -114,9 +114,34 @@ describe('snapshot mapping', () => {
     expect(result.checksRollup).toBe(expected)
   })
 
-  it('reports malformed known checks instead of publishing a smaller count', async () => {
-    await expect(single(pullRequestNode(1, {}, [{ ...checkRun('build', 'COMPLETED', 'SUCCESS'), databaseId: null }])))
+  it.each(['STALE', null, 'FUTURE_CONCLUSION'])('does not report completed %s as passing', async (conclusion) => {
+    const result = await single(pullRequestNode(1, {}, [checkRun('build', 'COMPLETED', conclusion)], 'SUCCESS'))
+    expect(result.checksRollup).toBe('pending')
+  })
+
+  it('retains unranked runs by node id without guessing their age from missing times', async () => {
+    const queued = { ...checkRun('build', 'QUEUED', null), id: 'queued', databaseId: null }
+    const failed = { ...checkRun('build', 'COMPLETED', 'FAILURE'), id: 'failed', databaseId: null }
+    const passed = { ...checkRun('build', 'COMPLETED', 'SUCCESS'), databaseId: 9 }
+    const result = await single(pullRequestNode(1, {}, [queued, failed, queued, passed]))
+    expect(result.checks.map(check => check.state)).toEqual(['pending', 'failure', 'success'])
+    expect(result.checksRollup).toBe('failure')
+    expect(result.checksTruncated).toBe(false)
+    expect((await single(pullRequestNode(1, {}, [queued, passed]))).checksRollup).toBe('pending')
+    expect((await single(pullRequestNode(1, {}, [failed]))).checksRollup).toBe('failure')
+  })
+
+  it.each([-1, '1'])('reports malformed known check id %s instead of publishing a smaller count', async (databaseId) => {
+    await expect(single(pullRequestNode(1, {}, [{ ...checkRun('build', 'COMPLETED', 'SUCCESS'), databaseId }])))
       .rejects.toThrow('unexpected GitHub check fields')
+  })
+
+  it.each(['FAILURE', 'PENDING'] as const)('preserves the raw %s rollup when an unknown context cannot be summarized', async (state) => {
+    const result = await single(pullRequestNode(1, {}, [
+      checkRun('build', 'COMPLETED', 'SUCCESS'), { __typename: 'FutureContext' },
+    ], state))
+    expect(result.checksRollup).toBe(state === 'FAILURE' ? 'failure' : 'pending')
+    expect(result.checksTruncated).toBe(false)
   })
 
   it.each([
@@ -149,12 +174,13 @@ describe('snapshot mapping', () => {
     ['COMPLETED', 'FAILURE', 'failure'],
     ['COMPLETED', 'TIMED_OUT', 'failure'],
     ['COMPLETED', 'STARTUP_FAILURE', 'failure'],
-    ['COMPLETED', 'ACTION_REQUIRED', 'pending'],
+    ['COMPLETED', 'ACTION_REQUIRED', 'failure'],
     ['COMPLETED', 'CANCELLED', 'cancelled'],
     ['COMPLETED', 'SKIPPED', 'skipped'],
     ['COMPLETED', 'NEUTRAL', 'neutral'],
-    ['COMPLETED', 'STALE', 'neutral'],
-    ['COMPLETED', null, 'neutral'],
+    ['COMPLETED', 'STALE', 'pending'],
+    ['COMPLETED', null, 'pending'],
+    ['COMPLETED', 'FUTURE_CONCLUSION', 'pending'],
     ['IN_PROGRESS', null, 'pending'],
     ['QUEUED', null, 'pending'],
   ])('maps check run %s/%s to %s', async (status, conclusion, expected) => {

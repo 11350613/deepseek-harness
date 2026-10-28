@@ -226,7 +226,7 @@ export class GitHubProvider implements ForgeProvider {
       } catch (error) {
         if (signal.aborted) throw signal.reason
         if (error instanceof GhUnavailableError || error instanceof GhTimeoutError || error instanceof GhOutputLimitError) {
-          return { ok: false, failure: { code: 'unavailable', message: error.message } }
+          return { ok: false, failure: { code: error instanceof GhOutputLimitError ? 'too-large' : 'unavailable', message: error.message } }
         }
         throw error
       }

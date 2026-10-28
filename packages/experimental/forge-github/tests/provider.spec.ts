@@ -94,14 +94,18 @@ describe('GitHub provider fetch', () => {
     expect(gh.calls).toHaveLength(1)
   })
 
-  it.each([new GhTimeoutError('timed out'), new GhOutputLimitError('too much output'), new GhUnavailableError('gh missing')])(
-    'contains a failed continuation process to its pull request', async (error) => {
+  it.each([
+    [new GhTimeoutError('timed out'), 'unavailable'],
+    [new GhOutputLimitError('too much output'), 'too-large'],
+    [new GhUnavailableError('gh missing'), 'unavailable'],
+  ] as const)(
+    'contains a failed continuation process to its pull request', async (error, code) => {
       const gh = fakeGh((args) => {
         if (args.includes('id=fixed-rollup')) throw error
         return output({ data: { r0: { p0: firstPage(), p1: pullRequestNode(2) } } })
       })
       const results = await provider(gh.run).fetch([pull(1), pull(2)], signal)
-      expect(results.get(changeRequestKey(pull(1)))).toEqual({ code: 'unavailable', message: error.message })
+      expect(results.get(changeRequestKey(pull(1)))).toEqual({ code, message: error.message })
       expect(results.get(changeRequestKey(pull(2)))).toMatchObject({ title: 'Change 2' })
     },
   )

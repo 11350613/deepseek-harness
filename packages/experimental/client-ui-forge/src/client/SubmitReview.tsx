@@ -51,7 +51,7 @@ export function SubmitReview({ queue, url, headSha, busy, error, submit, close, 
           aria-label={t('review.summary')} placeholder={t('review.summary')} required={requiresSummary}
           aria-describedby={requiresSummary ? summaryHint : undefined}
           onChange={(event) => { queue.summarize(event.target.value, state.event) }} />
-        {requiresSummary && <div id={summaryHint} className={css.hint}>{t('review.summaryRequired')}</div>}
+        <div id={summaryHint} className={css.hint} role="status">{requiresSummary ? t('review.summaryRequired') : ''}</div>
       </div>
       <div className={css.decisions}>
         {(['comment', 'approve', 'request-changes'] as const).map(value => <label key={value}>

@@ -623,6 +623,7 @@ export function ChangesTab({
   // The toolbar collapses every file while any is expanded, as the files on screen show, and expands every file otherwise.
   const anyExpanded = files.some(file => chosen[file.path] ?? initial.has(file.path))
   const expansionLabel = t(anyExpanded ? 'diff.collapseAll' : 'diff.expandAll')
+  const treeAction = t(treePosition === 'left' ? 'diff.moveFileTreeRight' : treePosition === 'right' ? 'diff.hideFileTree' : 'diff.showFileTreeLeft')
   let additions = 0
   let deletions = 0
   for (const file of files) {
@@ -673,9 +674,9 @@ export function ChangesTab({
             </button>
           </Tooltip>
           <span className={css.treeToggle}>
-            <Tooltip label={t(treePosition === 'left' ? 'diff.moveFileTreeRight' : treePosition === 'right' ? 'diff.hideFileTree' : 'diff.showFileTreeLeft')} side="bottom">
-              <button type="button" className={css.tool} aria-label={t('diff.fileTree')} aria-expanded={treePosition !== 'hidden'}
-                aria-pressed={treePosition !== 'hidden'} aria-controls={treeId} disabled={files.length === 0}
+            <Tooltip label={treeAction} side="bottom">
+              <button type="button" className={css.tool} aria-label={treeAction} aria-expanded={treePosition !== 'hidden'}
+                aria-controls={treeId} disabled={files.length === 0}
                 onClick={() => { setTreePosition(value => value === 'left' ? 'right' : value === 'right' ? 'hidden' : 'left') }}>
                 <IconWorkspaceTreeOutlineRegular />
               </button>

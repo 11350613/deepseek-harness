@@ -131,6 +131,7 @@ describe('collapsed ChangeRequestCard', () => {
       checksRollup: 'failure',
       checks: [check('lint', { state: 'failure' }), check('test'), check('types', { state: 'failure' })],
     }, '2 checks failed', 'failure', 'error'],
+    ['cancelled checks', { checksRollup: 'failure', checks: [check('build', { state: 'cancelled' })] }, '1 checks cancelled', 'cancelled', null],
     ['failed checks the host did not list', { checksRollup: 'failure', checksTruncated: true }, en['change.ci.failedUnlisted'], 'failure', 'error'],
   ] as const)('states %s', (_label, overrides, text, glyph, tone) => {
     const ci = within(metaOf(card(entry(1, snapshot(1, overrides))))).getByText(text)
@@ -292,7 +293,7 @@ describe('expanded ChangeRequestCard', () => {
     const toggle = within(b.item).getByText(en['change.row.checks']).closest('button')
     if (toggle === null) throw new Error('the checks row does not open a list')
     const summary = rowValue(b.item, en['change.row.checks'])
-    expect(summary.textContent).toBe('1 failed · 2 running · 2 passed · 3 other')
+    expect(summary.textContent).toBe('1 failed · 2 running · 2 passed · 1 cancelled · 2 other')
     expect(summary.getAttribute('data-tone')).toBe('error')
     // The row leads with the combined outcome.
     expect(toggle.querySelector('[data-forge-check]')?.getAttribute('data-forge-check')).toBe('failure')
