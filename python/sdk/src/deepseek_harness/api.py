@@ -50,6 +50,12 @@ class RunResult:
     notifications: list[Notification]
 
 
+class RunCommandResult(CommandExecution):
+    """Settled native command result with the Session id for continued interaction."""
+
+    session_id: str
+
+
 class _PromptActivity:
     """Collect an ordinary prompt's notifications from its inbox receipt through idle."""
 
@@ -174,8 +180,8 @@ class DeepSeekHarness:
         session_id: str | None = None,
         on_notification: Callable[[Notification], None] | None = None,
         delivery: Literal["queue", "steer"] = "queue",
-    ) -> RunResult | CommandExecution:
-        """Run text or content blocks through native input routing on a fresh or named Session."""
+    ) -> RunResult | RunCommandResult:
+        """Run input on a fresh or named Session, returning its id with either result kind."""
         return self.start_session(session_id).run(input, on_notification=on_notification, delivery=delivery)
 
 
@@ -200,11 +206,12 @@ class Session:
         *,
         on_notification: Callable[[Notification], None] | None = None,
         delivery: Literal["queue", "steer"] = "queue",
-    ) -> RunResult | CommandExecution:
+    ) -> RunResult | RunCommandResult:
         """Run text or content blocks through native input routing.
 
         Input returns the prompt's receipt-to-idle RunResult or a settled
-        CommandExecution; command completion does not wait for later model work.
+        RunCommandResult. Both include this Session's id. Command completion does
+        not wait for later model work.
         The first text block selects native commands. Matched commands require
         one text block with only encoded images beside it; native handlers decide
         which commands accept those images. Ordinary prompts retain block order
@@ -232,7 +239,7 @@ class Session:
                         on_notification(notification)
                     if _is_command_done(notification, self.id, execution.command_id):
                         break
-                return execution
+                return RunCommandResult(session_id=self.id, commandId=execution.command_id, result=execution.result)
             activity = _PromptActivity(self.id, response)
             while True:
                 notification = subscription.next()

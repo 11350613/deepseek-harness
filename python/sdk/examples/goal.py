@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from deepseek_harness import CommandExecution, DeepSeekHarness, Notification
+from deepseek_harness import RunCommandResult, DeepSeekHarness, Notification
 from deepseek_harness.api import final_response
 
 
@@ -68,7 +68,7 @@ def main() -> None:
                 return event
 
             execution = session.run(f"/goal {args.objective}")
-            if not isinstance(execution, CommandExecution):
+            if not isinstance(execution, RunCommandResult):
                 raise RuntimeError("The SDK profile did not execute the requested command")
             print(execution.result.text, flush=True)
             if execution.result.kind == "error":

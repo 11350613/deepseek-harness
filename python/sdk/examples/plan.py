@@ -13,7 +13,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from deepseek_harness import CommandExecution, DeepSeekHarness, Notification, UserQuestionRequest
+from deepseek_harness import RunCommandResult, DeepSeekHarness, Notification, UserQuestionRequest
 from deepseek_harness.api import final_response
 
 
@@ -173,7 +173,7 @@ def main() -> None:
         session = harness.start_session()
         with closing(harness.client.subscribe_session_notifications(session.id)) as notifications:
             execution = session.run(f"/plan {args.task}")
-            if not isinstance(execution, CommandExecution):
+            if not isinstance(execution, RunCommandResult):
                 raise RuntimeError("The SDK profile did not execute the requested command")
             print(execution.result.text, flush=True)
             if execution.result.kind == "error":

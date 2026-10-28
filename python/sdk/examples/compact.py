@@ -7,12 +7,12 @@ import argparse
 import os
 from pathlib import Path
 
-from deepseek_harness import CommandExecution, DeepSeekHarness, RunResult
+from deepseek_harness import RunCommandResult, DeepSeekHarness, RunResult
 
 
-def display(result: RunResult | CommandExecution) -> None:
+def display(result: RunResult | RunCommandResult) -> None:
     """Print the input's result and stop on a reported failure."""
-    if isinstance(result, CommandExecution):
+    if isinstance(result, RunCommandResult):
         print(f"Command {result.command_id}: {result.result.kind}")
         if result.result.kind == "error":
             raise RuntimeError(result.result.text)

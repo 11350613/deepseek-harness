@@ -82,6 +82,12 @@ export interface RunResult {
   notifications: HarnessNotification[]
 }
 
+/** A high-level run's native command outcome and its receiving Session. */
+export interface RunCommandResult extends CommandExecution {
+  /** Session to use for subsequent input, observation, or persisted restoration. */
+  sessionId: string
+}
+
 /** Re-exported content-block alias so SDK callers need no extra import. */
 export type { ContentBlock }
 export type { CommandExecution }

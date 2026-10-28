@@ -375,33 +375,6 @@ export class HarnessClient {
   }
 
   /**
-   * Send text or content blocks for runtime prompt-or-command routing and await its receipt.
-   * @param sessionId - target Session; an unknown id creates it.
-   * @param input - text or content blocks, without client-side command interpretation.
-   * @param delivery - ordinary prompt delivery; commands retain their own admission rules.
-   * @returns the prompt receipt or native command execution.
-   */
-  async query(
-    sessionId: string,
-    input: string | SdkPromptContentBlock[],
-    delivery: SessionQueryParams['delivery'],
-  ): Promise<SessionQueryResult> {
-    const params: SessionQueryParams = {
-      sessionId: SessionId(sessionId), contentBlocks: normalizeInput(input), delivery,
-    }
-    const value = await this.request('session/query', params)
-    if (isRecord(value)) {
-      if (value.kind === 'prompt' && typeof value.messageId === 'string' && value.messageId.length > 0) {
-        return { kind: 'prompt', messageId: value.messageId }
-      }
-      if (value.kind === 'command') {
-        return { kind: 'command', execution: commandExecution(value.execution, 'session/query') }
-      }
-    }
-    throw new SdkProtocolError(`session/query returned an invalid routing result: ${JSON.stringify(value)}`)
-  }
-
-  /**
    * Restore persisted history without sending a prompt; failures propagate without creating a session.
    * @param sessionId - persisted identity in this runtime's configured persistence store.
    * @returns after the session is ready for prompts.
@@ -619,6 +592,35 @@ export function createProcessHarnessClient(options: RuntimeProcessOptions): Harn
     runtime: RuntimeProcessOptions,
   ) => HarnessClient
   return new Constructor({}, options)
+}
+
+/**
+ * Send routed input for the package's high-level run API; absent from the package exports.
+ * @param client - client owning the initialized runtime connection.
+ * @param sessionId - target Session; an unknown id creates it.
+ * @param input - text or content blocks, without client-side command interpretation.
+ * @param delivery - ordinary prompt delivery; commands retain their own admission rules.
+ * @returns the validated prompt receipt or native command execution.
+ */
+export async function queryInput(
+  client: HarnessClient,
+  sessionId: string,
+  input: string | SdkPromptContentBlock[],
+  delivery: SessionQueryParams['delivery'],
+): Promise<SessionQueryResult> {
+  const params: SessionQueryParams = {
+    sessionId: SessionId(sessionId), contentBlocks: normalizeInput(input), delivery,
+  }
+  const value = await client.request('session/query', params)
+  if (isRecord(value)) {
+    if (value.kind === 'prompt' && typeof value.messageId === 'string' && value.messageId.length > 0) {
+      return { kind: 'prompt', messageId: value.messageId }
+    }
+    if (value.kind === 'command') {
+      return { kind: 'command', execution: commandExecution(value.execution, 'session/query') }
+    }
+  }
+  throw new SdkProtocolError(`session/query returned an invalid routing result: ${JSON.stringify(value)}`)
 }
 
 /**

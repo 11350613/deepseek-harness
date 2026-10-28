@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from deepseek_harness import CommandExecution, DeepSeekHarness, Notification, RunResult, SdkProtocolError
+from deepseek_harness import CommandExecution, RunCommandResult, DeepSeekHarness, Notification, RunResult, SdkProtocolError
 from deepseek_harness.errors import JsonRpcError
 
 
@@ -146,9 +146,54 @@ def test_run_returns_command_without_waiting_for_idle(sdk: DeepSeekHarness, entr
     result = (sdk.run("/compact", session_id="main", on_notification=notifications.append)
               if entry == "harness" else sdk.start_session("main").run("/compact", on_notification=notifications.append))
     assert isinstance(result, CommandExecution)
+    assert isinstance(result, RunCommandResult)
+    assert result.session_id == "main"
     assert result.result.kind == "success"
     assert [notice.payload["event"]["type"] for notice in notifications] == ["command/run", "command/done"]
     assert_released(sdk)
+
+
+def test_top_level_command_results_identify_distinct_sessions_and_allow_continuing_one(
+    sdk: DeepSeekHarness, tmp_path: Path,
+) -> None:
+    first = sdk.run("/compact")
+    second = sdk.run("/compact")
+    assert isinstance(first, RunCommandResult) and isinstance(second, RunCommandResult)
+    assert first.session_id and second.session_id and first.session_id != second.session_id
+    continued = sdk.run("continue the first session", session_id=first.session_id)
+    assert isinstance(continued, RunResult)
+    assert continued.session_id == first.session_id
+    sent = [json.loads(line) for line in (tmp_path / "requests.jsonl").read_text(encoding="utf-8").splitlines()]
+    queries = [frame["params"] for frame in sent if frame["method"] == "session/query"]
+    assert [query["sessionId"] for query in queries] == [first.session_id, second.session_id, first.session_id]
+    assert_released(sdk)
+
+
+@pytest.mark.parametrize("result", [
+    {"kind": "success"},
+    {"kind": "success", "text": "Compacted.", "sourceEventSeq": 0},
+    {"kind": "success", "sourceEventSeq": 2**53 - 1},
+    {"kind": "error", "text": "The agent is busy."},
+])
+def test_run_adds_session_identity_without_changing_command_results(peer: Path, tmp_path: Path, result: dict) -> None:
+    execution = {"commandId": "custom-command", "result": result}
+    with DeepSeekHarness(
+        cwd=str(tmp_path), dsh_home=str(tmp_path / "home"), request_timeout_seconds=5,
+        _launch_args=(sys.executable, str(peer)),
+        env={"REQUEST_LOG": str(tmp_path / "requests.jsonl"), "QUERY_RESPONSE": json.dumps({
+            "kind": "command", "execution": execution,
+        })},
+    ) as sdk:
+        returned = sdk.run("custom-response")
+        assert isinstance(returned, RunCommandResult)
+        assert returned.session_id
+        assert returned.model_dump(by_alias=True, exclude_none=True) == {
+            **execution, "session_id": returned.session_id,
+        }
+        low_level = sdk.client._query(returned.session_id, "custom-response", "queue")
+        assert isinstance(low_level, CommandExecution)
+        assert low_level.model_dump(by_alias=True, exclude_none=True) == execution
+        assert_released(sdk)
 
 
 @pytest.mark.parametrize("text", ["ordinary", "fast-prompt", "/model", " /compact extra "])

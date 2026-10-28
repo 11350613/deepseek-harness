@@ -70,19 +70,19 @@ if ('commandId' in result) console.log(result.result)
 else console.log(result.finalResponse)
 ```
 
-字符串和内容块输入被识别为命令时都返回 `CommandExecution`，普通提示词活动返回 `RunResult`。命令完成不需要 turn 或 idle 通知。业务拒绝仍为 `result.kind === "error"`；路由、协议、传输和观察回调失败会拒绝 Promise。命令保留 `commandId` 及可选摘要 `sourceEventSeq`，不会选取助手回复作为结果。要绕过原生命令路由，使用低层 `client.prompt(sessionId, blocks)` 并自行管理后续订阅与等待；运行时 skill（技能）识别仍然适用。
+字符串和内容块输入被识别为命令时都返回 `RunCommandResult`，普通提示词活动返回 `RunResult`。两种结果都包含 `sessionId`，包括 `harness.run()` 创建新 Session 的情况。`RunCommandResult` 在原生 `CommandExecution` 上增加该 Session 标识。命令完成不需要 turn 或 idle 通知。业务拒绝仍为 `result.kind === "error"`；路由、协议、传输和观察回调失败会拒绝 Promise。命令保留 `commandId` 及可选摘要 `sourceEventSeq`，不会选取助手回复作为结果。要绕过原生命令路由，使用低层 `client.prompt(sessionId, blocks)` 并自行管理后续订阅与等待；运行时 skill（技能）识别仍然适用。
 
 每次调用都拥有自己的订阅，在发送前安装，在调用完成前释放。`onNotification` 按线上的顺序观察普通输入从入队回执到 idle 的活动。命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知；该区间可能包含重叠工作的通知。并发调用保留各自结果，所以运行中的模型轮次可以与命令的原生 busy 结果并存。超时或观察回调失败不回滚运行时工作，也不授权自动重试；命令完成不会结束独立的模型活动。
 
 启动选项提供初始值。权限命令只修改目标 Session；后续输入与恢复保留该状态，其他 Session 保留自己的状态，新 Session 使用配置默认值。命令不修改选项对象或已保存的用户默认值。运行中的审批策略变化可以注入通知并触发下一步骤。原生转换与恢复行为见[权限 preset](../../interaction/permission-presets/README.zh.md)。
 
-`run('/plan')` 进入计划模式；`/plan off` 退出；`/plan <message>` 进入并 steer 正文。调用返回 `CommandExecution` 时，模型工作和审阅仍可能继续。需要 `RunResult` 时，先进入，再运行普通文本。组合输入应在 `run()` 前订阅，并通过 `client.request('session/wait', { sessionId })` 等待；保持问答处理器存活直到工作结束。计划状态不修改权限。
+`run('/plan')` 进入计划模式；`/plan off` 退出；`/plan <message>` 进入并 steer 正文。调用返回 `RunCommandResult` 时，模型工作和审阅仍可能继续。需要 `RunResult` 时，先进入，再运行普通文本。组合输入应在 `run()` 前订阅，并通过 `client.request('session/wait', { sessionId })` 等待；保持问答处理器存活直到工作结束。计划状态不修改权限。
 
 ### 用 HarnessClient 做低层控制
 
-`client.query(sessionId, input, delivery)` 接受字符串或内容块数组，等待经过校验的提示词回执或命令结果。`client.executeCommand(sessionId, line)` 接受受支持内置定义的 ASCII 注册名或英文规范别名，不回退为提示词，也不接受附件；permission preset 必须非空。中文别名使用 `run()` 或 `query()`。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在调用前订阅。请求超时仅放弃本地等待，运行时工作仍可继续。
+`client.executeCommand(sessionId, line)` 接受受支持内置定义的 ASCII 注册名或英文规范别名，不回退为提示词，也不接受附件；permission preset 必须非空，返回原生 `CommandExecution`。中文别名使用 `run()`。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在命令调用前订阅。请求超时仅放弃本地等待，运行时工作仍可继续。
 
-`/goal` 使用原生目标 handler，可在 `CommandExecution` 返回后启动自动轮次。发送前应订阅；先观察终态 `goal/change` 操作，再用 `session/wait` 等待收尾回复。轮次之间的 idle 不代表目标完成。暂停、清除、恢复和权限行为见[服务端语义](../server/README.zh.md)。
+原生目标创建和恢复可在命令调用返回后启动自动轮次。发送前应订阅；先观察终态 `goal/change` 操作，再用 `session/wait` 等待收尾回复。轮次之间的 idle 不代表目标完成。暂停、清除、恢复和权限行为见[服务端语义](../server/README.zh.md)。
 
 `HarnessClient` 是运行 API 之下的协议客户端：显式 `start()`、`initialize()`、`prompt()`、`request()` 与 `close()`，外加通知订阅。`prompt()` 在运行时接受排队消息后立即返回该消息的 id，绝不等待 agent 活动。`subscribe(filter?)` 返回 `NotificationSubscription`（可等待的 `next()`、非阻塞 `tryNext()`、异步迭代）；`subscribeSessionTree(id)` 把范围限定到一个会话及从 `subagent.started` 血缘边发现的后代——运行时对上下文内每个会话都发通知，范围限定在客户端完成，与 Python SDK 完全一致。
 
@@ -109,7 +109,7 @@ else console.log(result.finalResponse)
 
 ### 设计理念
 
-客户端是同一协议上的两层：`DeepSeekHarness`（自有运行）叠加在 `HarnessClient`（协议客户端）之上，与 Python SDK 的分层一致。它运行在任何 harness 上下文之外，因此直接 spawn 运行时而非经由 `dsh-subprocess` 服务——即该 seam 记录的 SDK 托管传输例外——其关闭阶梯也位于本包。运行时对上下文内每个会话都发通知；会话树范围限定是客户端对 `subagent.started` 血缘边的过滤。
+客户端是同一协议上的两层：`DeepSeekHarness`（自有运行）叠加在 `HarnessClient`（协议客户端）之上，与 Python SDK 的分层一致。两种 SDK 都通过公开 `run()` 接收提示词或命令，请求构造与响应校验保留在内部辅助函数中。它运行在任何 harness 上下文之外，因此直接 spawn 运行时而非经由 `dsh-subprocess` 服务——即该 seam 记录的 SDK 托管传输例外——其关闭阶梯也位于本包。运行时对上下文内每个会话都发通知；会话树范围限定是客户端对 `subagent.started` 血缘边的过滤。
 
 ### 源码地图
 
@@ -118,7 +118,7 @@ else console.log(result.finalResponse)
 | [`src/api.ts`](src/api.ts) | `DeepSeekHarness` + `HarnessSession`：统一输入路由、自有活动区间与命令结果 |
 | [`src/client.ts`](src/client.ts) | `HarnessClient`：spawn、握手、请求、订阅扇出、类型化错误 |
 | [`src/dispose.ts`](src/dispose.ts) | 私有关闭阶梯：stdin EOF → SIGTERM → SIGKILL 直到真正退出 |
-| [`src/types.ts`](src/types.ts) | 启动与超时选项、通知、`RunResult` 与 `CommandExecution` |
+| [`src/types.ts`](src/types.ts) | 启动与超时选项、通知、`RunResult` 与 `RunCommandResult` |
 | [`src/index.ts`](src/index.ts) | 消费方接口：两层客户端与面向调用方的类型 |
 
 ### 自有活动流程

@@ -8,10 +8,9 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import type { SessionEvent, TurnEndReason } from '@deepseek-ai/dsh-session'
-import type { CommandExecution } from '@deepseek-ai/dsh-sdk-protocol'
-import { createProcessHarnessClient, HarnessClient, isRecord, SdkProtocolError } from './client.ts'
+import { createProcessHarnessClient, HarnessClient, isRecord, queryInput, SdkProtocolError } from './client.ts'
 import type { RuntimeProcessOptions } from './launch.ts'
-import type { ContentBlock, DeepSeekHarnessOptions, HarnessNotification, RunResult, SdkPromptContentBlock } from './types.ts'
+import type { RunCommandResult, ContentBlock, DeepSeekHarnessOptions, HarnessNotification, RunResult, SdkPromptContentBlock } from './types.ts'
 
 /**
  * Reusable SDK for running DeepSeek Harness agent turns in a runtime
@@ -123,9 +122,9 @@ export class DeepSeekHarness implements AsyncDisposable {
    * Run text or content blocks on a fresh or named Session through native input routing.
    * @param input - prompt or command text, optionally accompanied by image content blocks.
    * @param options - optional Session identity, delivery and notification observer.
-   * @returns ordinary prompt activity or the native command result.
+   * @returns ordinary prompt activity or the native command result, both with the receiving Session id.
    */
-  run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult | CommandExecution> {
+  run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult | RunCommandResult> {
     return this.session(options?.sessionId).run(input, options)
   }
 
@@ -246,17 +245,17 @@ export class HarnessSession {
    * Run text or content blocks through native prompt-or-command routing.
    * @param input - prompt or command text, optionally accompanied by image content blocks; image-only input is an ordinary prompt.
    * @param options - input delivery and a per-notification observer.
-   * @returns the prompt's receipt-to-idle activity or a settled command; command
+   * @returns the prompt's receipt-to-idle activity or a settled command with this Session id; command
    * completion does not wait for later model work. Handler errors remain results.
    * @throws on routing, protocol, transport or observer failure; runtime work is not rolled back.
    */
-  async run(input: string | SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult | CommandExecution> {
+  async run(input: string | SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult | RunCommandResult> {
     const delivery = resolveRunDelivery(options?.delivery)
     await this.harness.start()
     const client = this.harness.client
     const subscription = client.subscribeSessionTree(this.id)
     try {
-      const response = await client.query(this.id, input, delivery)
+      const response = await queryInput(client, this.id, input, delivery)
       if (response.kind === 'command') {
         for (let notification = subscription.tryNext(); notification !== undefined; notification = subscription.tryNext()) {
           options?.onNotification?.(notification)
@@ -265,7 +264,7 @@ export class HarnessSession {
             && isRecord(event) && event.type === 'command/done' && isRecord(event.data)
             && event.data.commandId === response.execution.commandId) break
         }
-        return response.execution
+        return { ...response.execution, sessionId: this.id }
       }
       const activity = new PromptActivity(this.id, response.messageId)
       while (true) {

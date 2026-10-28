@@ -70,19 +70,19 @@ if ('commandId' in result) console.log(result.result)
 else console.log(result.finalResponse)
 ```
 
-Both string and content-block input return `CommandExecution` for a command or `RunResult` for ordinary prompt activity. Commands settle without requiring a turn or idle notification. Business refusals remain `result.kind === "error"`; routing, protocol, transport and observer failures reject. A command retains `commandId` and optional summary `sourceEventSeq` instead of selecting an assistant reply. To bypass native command routing, use the low-level `client.prompt(sessionId, blocks)` and manage the subsequent subscription and wait yourself; runtime skill recognition still applies.
+Both string and content-block input return `RunCommandResult` for a command or `RunResult` for ordinary prompt activity. Both results include `sessionId`, including when `harness.run()` creates a fresh Session. `RunCommandResult` extends the native `CommandExecution` with that Session identity. Commands settle without requiring a turn or idle notification. Business refusals remain `result.kind === "error"`; routing, protocol, transport and observer failures reject. A command retains `commandId` and optional summary `sourceEventSeq` instead of selecting an assistant reply. To bypass native command routing, use the low-level `client.prompt(sessionId, blocks)` and manage the subsequent subscription and wait yourself; runtime skill recognition still applies.
 
 Every call owns a subscription installed before sending and released before settlement. `onNotification` observes ordinary receipt-to-idle activity in wire order. Command callbacks replay Session-tree notifications from subscription through their own `command/done` after the command response; overlapping work can appear in that interval. Concurrent calls keep their own results, so a running model turn can coexist with a command's native busy result. Timeout or observer failure does not roll back runtime work or authorize automatic retry; command completion does not end independent model activity.
 
 Launch options supply initial values. A permission command changes only its target Session; later inputs and restoration retain that state, other Sessions keep theirs, and new Sessions use configured defaults. It does not update the options object or saved user defaults. An approval-policy change during a running turn can inject a notice and cause another step. See [permission presets](../../interaction/permission-presets/README.md) for native transition and restoration behavior.
 
-`run('/plan')` enters plan mode; `/plan off` leaves; `/plan <message>` enters and steers the message. The call returns `CommandExecution` while model work and review can continue. Enter first and run ordinary text when a `RunResult` is needed. For combined input, subscribe before `run()` and wait through `client.request('session/wait', { sessionId })`; keep question handling alive until the work finishes. Plan state does not change permissions.
+`run('/plan')` enters plan mode; `/plan off` leaves; `/plan <message>` enters and steers the message. The call returns `RunCommandResult` while model work and review can continue. Enter first and run ordinary text when a `RunResult` is needed. For combined input, subscribe before `run()` and wait through `client.request('session/wait', { sessionId })`; keep question handling alive until the work finishes. Plan state does not change permissions.
 
 ### Lower-level control with HarnessClient
 
-`client.query(sessionId, input, delivery)` accepts a string or content-block array and waits for a validated prompt receipt or command result. `client.executeCommand(sessionId, line)` accepts ASCII registered names or canonical English aliases of supported builtin definitions, without prompt fallback or attachments; it requires a non-blank permission preset. Use `run()` or `query()` for Chinese aliases. A non-blank unknown preset reaches the native handler and returns `result.kind === "error"`. Subscribe before these calls when notifications are needed. A request timeout abandons only the local wait; runtime work can continue afterward.
+`client.executeCommand(sessionId, line)` accepts ASCII registered names or canonical English aliases of supported builtin definitions, without prompt fallback or attachments; it requires a non-blank permission preset and returns the native `CommandExecution`. Use `run()` for Chinese aliases. A non-blank unknown preset reaches the native handler and returns `result.kind === "error"`. Subscribe before the command call when notifications are needed. A request timeout abandons only the local wait; runtime work can continue afterward.
 
-`/goal` uses the native goal handler and can start automatic rounds after its `CommandExecution`. Subscribe before sending; observe a terminal `goal/change` operation before using `session/wait` for the closing reply. Idle between rounds is not goal completion. See the [server semantics](../server/README.md) for pause, clear, restoration, and permission behavior.
+Native goal creation and resume can start automatic rounds after the command call returns. Subscribe before sending; observe a terminal `goal/change` operation before using `session/wait` for the closing reply. Idle between rounds is not goal completion. See the [server semantics](../server/README.md) for pause, clear, restoration, and permission behavior.
 
 `HarnessClient` is the protocol client under the run API: explicit `start()`, `initialize()`, `prompt()`, `request()`, and `close()`, plus notification subscriptions. `prompt()` returns the queued message id as soon as the runtime accepts it and never waits for agent activity. `subscribe(filter?)` returns a `NotificationSubscription` (awaitable `next()`, non-blocking `tryNext()`, async iteration); `subscribeSessionTree(id)` scopes to one session and the descendants discovered from `subagent.started` lineage edges — the runtime notifies for every session in its context, and scoping is client-side, exactly like the Python SDK.
 
@@ -109,7 +109,7 @@ This section explains the design behind the client; the observable behavior is f
 
 ### Design concept
 
-The client is two layers over one wire: `DeepSeekHarness` (owned runs) over `HarnessClient` (the protocol client), mirroring the Python SDK's layering. It runs outside any harness context, so it spawns the runtime directly rather than through the `dsh-subprocess` service — the seam's documented exception for SDK-managed transports — and its teardown ladder lives in this package. The runtime notifies for every session in its context; session-tree scoping is a client-side filter over `subagent.started` lineage edges.
+The client is two layers over one wire: `DeepSeekHarness` (owned runs) over `HarnessClient` (the protocol client), mirroring the Python SDK's layering. Both SDKs expose `run()` for prompt-or-command input; request construction and response validation stay in internal helpers. It runs outside any harness context, so it spawns the runtime directly rather than through the `dsh-subprocess` service — the seam's documented exception for SDK-managed transports — and its teardown ladder lives in this package. The runtime notifies for every session in its context; session-tree scoping is a client-side filter over `subagent.started` lineage edges.
 
 ### Source map
 
@@ -118,7 +118,7 @@ The client is two layers over one wire: `DeepSeekHarness` (owned runs) over `Har
 | [`src/api.ts`](src/api.ts) | `DeepSeekHarness` + `HarnessSession`: unified input routing, owned activity intervals and command results |
 | [`src/client.ts`](src/client.ts) | `HarnessClient`: spawn, handshake, requests, subscription fan-out, typed errors |
 | [`src/dispose.ts`](src/dispose.ts) | Private teardown ladder: stdin EOF → SIGTERM → SIGKILL to actual exit |
-| [`src/types.ts`](src/types.ts) | Launch and timeout options, notifications, `RunResult` and `CommandExecution` |
+| [`src/types.ts`](src/types.ts) | Launch and timeout options, notifications, `RunResult` and `RunCommandResult` |
 | [`src/index.ts`](src/index.ts) | Consumer interface: the two client layers and caller-facing types |
 
 ### Owned activity flow

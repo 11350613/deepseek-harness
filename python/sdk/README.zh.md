@@ -61,21 +61,21 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
 <a id="run-text-and-commands"></a>
 ## 运行文本与命令
 
-`session.run(input, on_notification=..., delivery="queue")` 是字符串和内容块数组共用的高层输入入口。两者都使用运行时的[命令形式与 Desktop 别名](../../packages/sdk/server/README.zh.md#command-input)识别规则；未识别的输入保持普通提示词及原始内容块顺序。对普通输入，包括图片，`delivery="steer"` 指向下一个可用步骤。命令的接纳规则与执行时序仍由原生处理器负责。
+`session.run(input, on_notification=..., delivery="queue")` 是字符串和内容块数组共用的公开提示词／命令输入入口。两者都使用运行时的[命令形式与 Desktop 别名](../../packages/sdk/server/README.zh.md#command-input)识别规则；未识别的输入保持普通提示词及原始内容块顺序。对普通输入，包括图片，`delivery="steer"` 指向下一个可用步骤。命令的接纳规则与执行时序仍由原生处理器负责。
 
-普通提示词返回其入队回执到下一次 idle 区间的 `RunResult`，命令则在执行结束后返回 `CommandExecution`。读取 `final_response` 前使用 `isinstance(result, RunResult)` 检查类型，否则检查命令的 `result.kind`。命令保留自己的 `command_id` 和可选 `source_event_seq`，不会选取更早的助手回复作为结果。
+普通提示词返回其入队回执到下一次 idle 区间的 `RunResult`，命令则在执行结束后返回 `RunCommandResult`。两种结果都包含 `session_id`，包括 `harness.run()` 创建新 Session 的情况。`RunCommandResult` 在原生 `CommandExecution` 上增加该 Session 标识。读取 `final_response` 前使用 `isinstance(result, RunResult)` 检查类型，否则检查命令的 `result.kind`。命令保留自己的 `command_id` 和可选 `source_event_seq`，不会选取更早的助手回复作为结果。
 
-内容块数组与字符串使用相同的命令路由。`session.run([{"type": "text", "text": "/compact"}])` 和 `session.run("/compact")` 都调用原生压缩并返回 `CommandExecution`。要绕过原生命令路由，调用低层 `client.session_prompt(session_id, blocks)` 并自行管理后续订阅与等待；运行时 skill（技能）识别仍然适用。
+内容块数组与字符串使用相同的命令路由。`session.run([{"type": "text", "text": "/compact"}])` 和 `session.run("/compact")` 都调用原生压缩并返回 `RunCommandResult`。要绕过原生命令路由，调用低层 `client.session_prompt(session_id, blocks)` 并自行管理后续订阅与等待；运行时 skill（技能）识别仍然适用。
 
 先选择支持图片输入的模型。通过现有内容块数组同时提交命令和图片，例如 `session.run([{"type": "text", "text": "/plan Analyze this image."}, {"type": "image", "data": image_base64, "mimeType": "image/png"}])`；`harness.run()` 接受相同输入。计划输入和目标创建、编辑接受图片；`/plan off`、目标控制、压缩和权限命令按[原生附件规则](../../packages/sdk/server/README.zh.md#command-input)拒绝图片。原生命令输入支持编码栅格图片，不支持一般文件上传或客户端提供的附件引用。
 
-每次调用在发送前订阅，并在返回或抛出异常前释放自己的订阅。`on_notification` 按线上的顺序接收普通活动区间通知；命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知，因此该区间可能包含重叠工作的通知。调用可以重叠，不会消耗彼此的结果。处理器拒绝返回 `CommandExecution.result.kind="error"`，路由、协议、传输和观察回调失败则抛出异常。`run()` 或 `session_command()` 收到格式错误的原生命令响应时抛出 `SdkProtocolError`，并保留模型校验错误作为 cause。超时或观察回调失败不回滚运行时工作，也不授权自动重试。`request_timeout_seconds` 限制协议响应等待，不限制之后的普通提示词活动。
+每次调用在发送前订阅，并在返回或抛出异常前释放自己的订阅。`on_notification` 按线上的顺序接收普通活动区间通知；命令回调在命令响应到达后，按顺序交付从订阅时刻到自身 `command/done` 的 Session 树通知，因此该区间可能包含重叠工作的通知。调用可以重叠，不会消耗彼此的结果。处理器拒绝返回 `RunCommandResult.result.kind="error"`，路由、协议、传输和观察回调失败则抛出异常。`run()` 或 `session_command()` 收到格式错误的原生命令响应时抛出 `SdkProtocolError`，并保留模型校验错误作为 cause。超时或观察回调失败不回滚运行时工作，也不授权自动重试。`request_timeout_seconds` 限制协议响应等待，不限制之后的普通提示词活动。
 
-默认的完整 `sdk` profile 提供已支持的原生命令；`sdk-minimal` 将未支持的输入保留在普通提示词路径。`/compact` 可以发起辅助模型请求，其完成不需要普通 turn 或 idle 通知；空历史可以在不生成摘要时成功。底层 `HarnessClient.session_command(session_id, line)` 接受受支持内置定义的 ASCII 注册名或英文规范别名，不回退为提示词，也不接受附件。中文别名使用 `run()`。见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
+默认的完整 `sdk` profile 提供已支持的原生命令；`sdk-minimal` 将未支持的输入保留在普通提示词路径。`/compact` 可以发起辅助模型请求，其完成不需要普通 turn 或 idle 通知；空历史可以在不生成摘要时成功。底层 `HarnessClient.session_command(session_id, line)` 接受受支持内置定义的 ASCII 注册名或英文规范别名，不回退为提示词，也不接受附件，返回原生 `CommandExecution`。中文别名使用 `run()`。见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
 
 `/permission <preset>` 只修改接收命令的 Session。未知 preset 返回命令错误，不改变策略。后续输入与恢复保留成功的修改，其他 Session 和调用方的 `DeepSeekHarnessConfig` 保留自己的值。运行中的审批策略变化可以注入通知并触发下一模型步骤。见[权限示例](examples/README.zh.md#change-session-permissions)。
 
-`/plan` 进入计划模式，`/plan off` 退出，`/plan <message>` 进入后通过原生 steer 提交去除首尾空白的正文。其 `CommandExecution` 确认命令执行结束，不代表计划生成或审阅结束。需要 `RunResult` 时，先用 `/plan` 进入，再运行普通文本。组合输入应在 `run()` 前订阅，并保持问答处理器存活，通过 `session/wait` 观察后续工作，见[计划示例](examples/README.zh.md#review-a-plan)。计划指导和 `exit_plan_mode` 遵循原生生命周期，不修改权限设置。
+`/plan` 进入计划模式，`/plan off` 退出，`/plan <message>` 进入后通过原生 steer 提交去除首尾空白的正文。其 `RunCommandResult` 确认命令执行结束，不代表计划生成或审阅结束。需要 `RunResult` 时，先用 `/plan` 进入，再运行普通文本。组合输入应在 `run()` 前订阅，并保持问答处理器存活，通过 `session/wait` 观察后续工作，见[计划示例](examples/README.zh.md#review-a-plan)。计划指导和 `exit_plan_mode` 遵循原生生命周期，不修改权限设置。
 
 `/goal` 查看当前目标；`/goal <objective>`、`edit <objective>`、`pause`、`resume` 和 `clear` 使用原生处理器。创建和恢复可以在 `run()` 返回后启动自动轮次。发送前订阅，观察终态 `goal/change` 操作后，再调用 `session/wait` 等待可能的模型收尾。轮次之间的 idle 不代表目标完成。恢复的活动目标在显式 resume 前保持 disarmed。见[目标示例](examples/README.zh.md#run-a-goal)。
 

@@ -884,6 +884,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
             { type: 'text', text: action.line },
           ] : action.line)
           if (!('commandId' in execution)) throw new Error('SDK command input returned prompt activity')
+          expect(execution.sessionId).toBe(sessionId)
           collectCommandNotifications(subscription, sessionId, execution, notifications, observe)
           continue
         }

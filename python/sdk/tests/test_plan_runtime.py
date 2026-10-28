@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from deepseek_harness import CommandExecution, RunResult, Session, UserQuestionRequest
+from deepseek_harness import CommandExecution, RunCommandResult, RunResult, Session, UserQuestionRequest
 from test_commands_runtime import (
     _Completion, _Runtime, _SESSION_ID, _WAIT_SECONDS, _assert_request_permission,
     _command_pair, _of_type, _permission_facts, _read_events,
@@ -212,6 +212,36 @@ def test_plan_state_survives_resume_without_changing_permissions(tmp_path: Path)
         _assert_request_permission(request, "workspace-write", "ask")
     events = _read_events(resumed.logs)
     assert [e["data"] for e in _of_type(events, "plan/mode")] == [{"active": True}]
+
+
+def test_top_level_plan_result_identifies_the_session_for_wait_continue_and_resume(tmp_path: Path) -> None:
+    first = _Completion("PLAN_READY", blocked=True)
+    with _runtime(tmp_path, [first, _Completion("CONTINUED_PLAN")], initial_permission="workspace-write") as runtime:
+        execution = runtime.call(runtime.harness.run, "/plan Design this change without tools.")
+        assert isinstance(execution, RunCommandResult)
+        assert execution.result.kind == "success"
+        assert first.entered.wait(_WAIT_SECONDS), runtime.model.failures
+        assert not first.release.is_set()
+        session = runtime.harness.start_session(execution.session_id)
+        first.release.set()
+        _wait_activity(runtime, session)
+        continued = runtime.call(runtime.harness.run, "Continue this plan without tools.", session_id=execution.session_id)
+        assert isinstance(continued, RunResult)
+        assert continued.session_id == execution.session_id
+        assert continued.final_response == "CONTINUED_PLAN"
+        assert "Design this change without tools." in _request_texts(runtime.model.captured()[1])
+    with _runtime(tmp_path, [_Completion("RESTORED_PLAN")], initial_permission="workspace-write") as resumed:
+        session = resumed.call(resumed.harness.resume_session, execution.session_id)
+        result = resumed.call(session.run, "Finish reviewing this plan without tools.")
+        assert isinstance(result, RunResult) and result.session_id == execution.session_id
+        assert result.final_response == "RESTORED_PLAN"
+        [request] = resumed.model.captured()
+        assert _GUIDANCE in _effective_system(request)
+        assert "Design this change without tools." in _request_texts(request)
+        assert "Continue this plan without tools." in _request_texts(request)
+    events = _read_events(resumed.logs, session_id=execution.session_id)
+    _command_pair(events, execution, "plan")
+    assert len(_of_type(events, "turn/start")) == 3
 
 
 def test_plan_state_is_local_and_literal_prompts_do_not_toggle_it(tmp_path: Path) -> None:
