@@ -47,8 +47,9 @@
 }
 
 .current {
+  box-sizing: content-box;
   max-width: 200px;
-  cursor: default;
+  font-family: inherit;
 }
 
 .current svg {

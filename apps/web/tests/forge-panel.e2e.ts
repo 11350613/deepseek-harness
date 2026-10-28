@@ -217,9 +217,12 @@ interface PanelLaunch {
  * Launch the bundle against a GitHub checkout of `main` and `release` and open the New Session screen of that workspace.
  * @param failureShot - name of the screenshot saved when the test fails.
  * @param scenario - normal conversation, a restoration follow-up, or a numbered PR lookup.
+ * @param options - desktop transport, initial checkout branch, and touch input for the browser.
  * @returns the scaffold, page, and checkout.
  */
-async function launchPanel(failureShot: string, scenario: 'normal' | 'follow-up' | 'reference' = 'normal', desktop?: 'darwin' | 'win32'): Promise<PanelLaunch> {
+async function launchPanel(failureShot: string, scenario: 'normal' | 'follow-up' | 'reference' = 'normal',
+  options: { desktop?: 'darwin' | 'win32'; branch?: string; hasTouch?: boolean } = {}): Promise<PanelLaunch> {
+  const { desktop } = options
   const resources: { scaffold?: WebScaffold; browser?: Browser } = {}
   const root = await mkdtemp(join(tmpdir(), 'dsh-forge-panel-'))
   onTestFinished(async () => {
@@ -275,6 +278,7 @@ async function launchPanel(failureShot: string, scenario: 'normal' | 'follow-up'
   await git(project, 'remote', 'add', 'origin', 'https://github.com/octo/demo.git')
   await git(project, 'branch', 'release')
   await git(project, 'commit', '--quiet', '--allow-empty', '-m', 'main only')
+  if (options.branch !== undefined) await git(project, 'checkout', '--quiet', '-b', options.branch)
   if (scenario === 'reference') {
     // The model's confined command must own the CLI double's writable call log.
     const modelBin = join(project, '.fixture-bin')
@@ -285,7 +289,8 @@ async function launchPanel(failureShot: string, scenario: 'normal' | 'follow-up'
 
   const browser = await chromium.launch()
   resources.browser = browser
-  const page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE, timezoneId: 'Asia/Shanghai' })
+  const page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE, timezoneId: 'Asia/Shanghai',
+    hasTouch: options.hasTouch ?? false })
   if (desktop !== undefined) {
     // Only Electron's keyboard transport is substituted; the product registry and menus remain real.
     await page.addInitScript(({ device, config }) => {
@@ -965,8 +970,66 @@ it.skipIf(MODE === 'record')('keeps localized status columns separate and long f
   expect(tripwire.warnings).toEqual([])
 })
 
+it.skipIf(MODE === 'record')('keeps long branch details accessible by touch and keyboard across the hero row breakpoints', async () => {
+  const branch = 'feature/a-long-current-branch-name-for-mobile-review'
+  const { page, scaffold, tripwire } = await launchPanel('web-e2e-forge-branch-details', 'normal', { branch, hasTouch: true })
+  const option = page.locator('[data-forge-worktree]')
+  const chip = option.locator('[data-forge-current-branch]')
+  await chip.waitFor()
+  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
+  for (const [locale, label] of [['zh', `当前分支：${branch}`], ['en', `Current branch: ${branch}`], ['de', `Aktueller Branch: ${branch}`]] as const) {
+    await scaffold.ctx.settings.update('locale', { preference: locale })
+    await option.getByRole('button', { name: label, exact: true }).waitFor()
+    for (const width of [390, 600, 601, 700, 1280]) {
+      await page.setViewportSize({ width, height: 844 })
+      await chip.scrollIntoViewIfNeeded()
+      await expect.poll(() => option.evaluate((element) => {
+        const row = element.closest('[class*="heroWorkspaceRow"]')!
+        const ancestors: Element[] = []
+        for (let node: Element | null = row; node !== null; node = node.parentElement) ancestors.push(node)
+        return {
+          fits: element.getBoundingClientRect().right <= innerWidth,
+          overflow: ancestors.filter(node => node.scrollWidth > node.clientWidth + 1).map(node => node.className),
+        }
+      })).toEqual({ fits: true, overflow: [] })
+    }
+  }
+  await scaffold.ctx.settings.update('locale', { preference: 'en' })
+  await option.getByRole('button', { name: `Current branch: ${branch}`, exact: true }).waitFor()
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await chip.locator('span').evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true)
+  const tooltip = page.getByRole('tooltip', { exact: true, name: `Current branch: ${branch}` })
+  await chip.tap()
+  await tooltip.waitFor()
+  await compareOrRefreshGolden(join(EXPECTED, 'branch-details.expected.md'), await tooltip.ariaSnapshot(), MODE)
+  await chip.tap()
+  await tooltip.waitFor({ state: 'hidden' })
+  await chip.tap()
+  await tooltip.waitFor()
+  await page.locator('[class*="heroWorkspaceRow"]').tap({ position: { x: 1, y: 1 } })
+  await tooltip.waitFor({ state: 'hidden' })
+  await chip.focus()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Shift+Tab')
+  await tooltip.waitFor()
+  await page.keyboard.press('Escape')
+  await tooltip.waitFor({ state: 'hidden' })
+  await page.keyboard.press('Enter')
+  await tooltip.waitFor()
+  await page.keyboard.press('Escape')
+  await tooltip.waitFor({ state: 'hidden' })
+  expect(await option.getByRole('checkbox').isChecked()).toBe(false)
+  expect(await page.getByRole('menu').count()).toBe(0)
+  await scaffold.ctx.settings.update('locale', { preference: 'zh' })
+  await option.getByRole('checkbox', { name: '新建工作树', exact: true }).waitFor()
+  const { settled } = await sendPrompt(page, scaffold)
+  await settled
+  expect(tripwire.pageErrors).toEqual([])
+  expect(tripwire.warnings).toEqual([])
+})
+
 it.skipIf(MODE === 'record').each(['darwin', 'win32'] as const)('closes diff menus when the %s desktop shortcut deactivates a retained tab', async (platform) => {
-  const { page, scaffold, project, tripwire } = await launchPanel(`web-e2e-forge-menu-${platform}`, 'normal', platform)
+  const { page, scaffold, project, tripwire } = await launchPanel(`web-e2e-forge-menu-${platform}`, 'normal', { desktop: platform })
   await git(project, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
   await git(project, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
   await writeFile(join(project, 'README.md'), 'review this change\n')
