@@ -248,9 +248,8 @@
   overflow: auto;
 }
 
-.files:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
-  outline-offset: -2px;
+.files:focus {
+  outline: none;
 }
 
 /* The actions of a failed read, side by side. */

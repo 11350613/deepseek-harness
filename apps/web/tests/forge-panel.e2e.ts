@@ -876,6 +876,78 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
 })
 
 
+it.skipIf(MODE === 'record')('retains a wrapped code line and tree width across tab and Session switches', async () => {
+  const { page, scaffold, root, tripwire } = await launchPanel('web-e2e-forge-reading-position')
+  const paths = ['src/before-0.ts', 'src/before-1.ts', 'src/before-2.ts', 'src/server.ts', 'src/after.ts']
+  const patch = paths.map(path => [
+    `diff --git a/${path} b/${path}`, 'index 1111111..2222222 100644', `--- a/${path}`, `+++ b/${path}`,
+    '@@ -1,650 +1,650 @@', '-const oldValue = true;', '+const newValue = true;',
+    ...Array.from({ length: 649 }, (_, index) => ` const value_${index + 2} = "${'x'.repeat(24 + (index + 2) % 70)}";`), '',
+  ].join('\n')).join('\n')
+  await writeFile(join(root, 'pr-7.diff'), patch)
+  const { settled } = await sendPrompt(page, scaffold)
+  const sessionId = await settled
+  const session = scaffold.ctx.sessions.get(sessionId)
+  if (session === undefined) throw new Error('Session must stay loaded')
+  scaffold.ctx.forgeSession.track(session, PULL)
+  await page.locator('[data-forge-header]').click()
+  await page.locator(`[data-forge-change="${PULL}"]`).getByRole('button', { name: /查看 #7 的变更/ }).click()
+  await page.getByRole('button', { name: '全屏', exact: true }).click()
+  await page.setViewportSize({ width: 1280, height: 700 })
+  const view = page.locator('[data-forge-changes="change"]')
+  const scroll = view.locator('[data-forge-changes-scroll]')
+  const file = view.locator('[data-forge-diff-file="src/server.ts"]')
+  const code = file.locator('[data-review-code][data-new-line="300"]')
+  const separator = view.getByRole('separator', { name: '调整文件树宽度', exact: true })
+  const beforeFile = view.locator('[data-forge-diff-file="src/before-0.ts"]')
+  // ResizeObserver runs between rendering frames, including when an ancestor becomes hidden.
+  const layout = () => page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => { requestAnimationFrame(() => { resolve() }) })
+  }))
+  const reading = () => file.evaluate((element) => {
+    const viewport = element.closest('[data-forge-changes-scroll]')!
+    const top = Math.max(viewport.getBoundingClientRect().top, element.firstElementChild!.getBoundingClientRect().bottom)
+    const line = [...element.querySelectorAll<HTMLElement>('[data-review-code][data-new-line]')]
+      .find(row => row.getBoundingClientRect().bottom > top + 1)!
+    return { path: element.getAttribute('data-forge-diff-file'), line: line.dataset.newLine,
+      offset: line.getBoundingClientRect().top - top, scrollTop: viewport.scrollTop }
+  })
+  await code.waitFor()
+  for (const width of [240, 320]) {
+    if (width === 320) {
+      for (let step = 0; step < 4; step += 1) await separator.press('ArrowLeft')
+      await beforeFile.getByRole('button', { name: '收起 before-0.ts', exact: true }).click()
+    }
+    await layout()
+    await code.evaluate((element) => {
+      const viewport = element.closest('[data-forge-changes-scroll]')!
+      const header = element.closest('[data-forge-diff-file]')!.firstElementChild!
+      const top = viewport.getBoundingClientRect().top + header.getBoundingClientRect().height
+      viewport.scrollTop += element.getBoundingClientRect().top - top + 7
+    })
+    await layout()
+    const position = await reading()
+    expect(position.line).toBe('300')
+    expect(position.offset).toBe(-7)
+    for (const destination of ['tab', 'session', 'tab', 'session']) {
+      if (destination === 'tab') await page.getByRole('tab').filter({ hasText: '变更请求' }).click()
+      else await page.keyboard.press('ControlOrMeta+Alt+n')
+      await expect.poll(() => view.isVisible()).toBe(false)
+      await layout()
+      expect(await scroll.evaluate(element => element.clientWidth)).toBe(0)
+      if (destination === 'tab') await page.getByRole('tab').filter({ hasText: '#7 的变更' }).click()
+      else await page.locator(`[data-row-key="session:${sessionId}"]`).click()
+      await view.waitFor()
+      await layout()
+      expect(await separator.getAttribute('aria-valuenow')).toBe(String(width))
+      expect(await reading()).toEqual(position)
+      expect(await beforeFile.getAttribute('data-expanded')).toBe(width === 240 ? '' : null)
+    }
+  }
+  expect(tripwire.pageErrors).toEqual([])
+  expect(tripwire.warnings).toEqual([])
+})
+
 it.skipIf(MODE === 'record')('uses horizontal arrows to navigate files while preserving vertical scrolling and comment editing', async () => {
   const { scaffold, page, project, tripwire } = await launchPanel('web-e2e-forge-file-keys')
   await git(project, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
@@ -902,6 +974,7 @@ it.skipIf(MODE === 'record')('uses horizontal arrows to navigate files while pre
   await scroll.focus()
   await page.keyboard.press('ArrowLeft')
   expect(await scroll.evaluate(element => element.scrollTop)).toBe(0)
+  expect(await scroll.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('none')
   await page.keyboard.press('ArrowDown')
   await expect.poll(() => scroll.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
   await scroll.evaluate((element) => { element.scrollTop = 0 })
