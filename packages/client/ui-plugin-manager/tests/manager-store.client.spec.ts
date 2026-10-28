@@ -815,7 +815,7 @@ describe('PluginManagerController', () => {
     face.editInstallSpec('dsh-x')
     face.runInstall()
     await vi.waitFor(() => { expect(state().install.phase).toBe('failed') })
-    expect(state().install.failure).toEqual({ reason: 'ERR', code: 'operation-error', kind: 'network' })
+    expect(state().install.failure).toEqual({ reason: 'ERR', code: 'operation-error', kind: 'network', stage: 'enable' })
     face.cancelInstall()
     expect(state().install).toMatchObject({ open: true, phase: 'idle', spec: 'dsh-x', failure: null, subject: null })
   })
@@ -1227,7 +1227,7 @@ describe('PluginManagerController', () => {
       pendingBuilds: ['native'],
     }))
     await vi.waitFor(() => { expect(state().install.phase).toBe('failed') })
-    expect(state().install.failure).toEqual({ reason: 'ERR_PNPM_IGNORED_BUILDS', code: 'operation-error', kind: 'build-blocked', pendingBuilds: ['native'] })
+    expect(state().install.failure).toEqual({ reason: 'ERR_PNPM_IGNORED_BUILDS', code: 'operation-error', kind: 'build-blocked', pendingBuilds: ['native'], stage: 'enable' })
     // The retry keeps the subject the check produced and carries the approved names under a new request id.
     face.approveBuildsAndRetry()
     const second = await started()
@@ -1301,7 +1301,7 @@ describe('PluginManagerController', () => {
     answer(ok(failed({ code: 'operation-error', diagnostic: 'ERR_PNPM' }, { exitCode: 1, output: 'ERR_PNPM', truncated: false, logPath: '/l', kind: 'network' })))
     await vi.waitFor(() => { expect(state().install.phase).toBe('failed') })
     expect(state().install.runs).toEqual([])
-    expect(state().install.failure).toEqual({ reason: 'ERR_PNPM', code: 'operation-error', kind: 'network' })
+    expect(state().install.failure).toEqual({ reason: 'ERR_PNPM', code: 'operation-error', kind: 'network', stage: 'enable' })
     expect(state().install.subject).toEqual({ spec: 'x', ...INSPECTED })
     // A lost answer cannot establish whether the Host stopped the process.
     await installing()
@@ -1329,21 +1329,53 @@ describe('PluginManagerController', () => {
       { jobId: 'j', command: 'pnpm add x', cwd: '/p', output: 'partial', exitCode: 0 },
       { jobId: 'k', command: 'pnpm add x', cwd: '/p', output: 'open', exitCode: null },
     ])
-    expect(state().install.failure).toEqual({ reason: '', code: 'not-bundle' })
+    expect(state().install.failure).toEqual({ reason: '', code: 'not-bundle', stage: 'enable' })
     // An incompatibility keeps the packages it names.
     await installing()
     answer(ok(failed({ code: 'incompatible-version', incompatible: [INCOMPATIBLE] })))
     await vi.waitFor(() => { expect(state().install.phase).toBe('failed') })
-    expect(state().install.failure).toEqual({ reason: '', code: 'incompatible-version', incompatible: [INCOMPATIBLE] })
+    expect(state().install.failure).toEqual({ reason: '', code: 'incompatible-version', incompatible: [INCOMPATIBLE], stage: 'enable' })
     // A failure the Host does not explain has neither code nor words.
     await installing()
     answer(ok(failed()))
     await vi.waitFor(() => { expect(state().install.phase).toBe('failed') })
-    expect(state().install.failure).toEqual({ reason: '' })
+    expect(state().install.failure).toEqual({ reason: '', stage: 'enable' })
     expect(plugins.installBundle).toHaveBeenCalledTimes(6)
     // Editing the spec after a failure starts over too.
     face.editInstallSpec('y')
     expect(state().install).toMatchObject({ phase: 'idle', spec: 'y', runs: [], failure: null })
+  })
+
+  it('keeps the step a failed install reached and the complete Host log it settled with', async () => {
+    const retry = deferred<ReturnType<typeof ok<ChangeResult>>>()
+    const failedLog = '/var/log/dsh/plugin-manager/install-failed.log'
+    const doneLog = '/var/log/dsh/plugin-manager/install-done.log'
+    const { face, state, plugins, started } = bench({
+      installBundle: vi.fn()
+        .mockResolvedValueOnce(ok(failed(
+          { code: 'operation-error', diagnostic: 'activation refused' },
+          { exitCode: 0, output: 'installed', truncated: false, logPath: failedLog },
+        )))
+        .mockReturnValueOnce(retry.promise),
+    })
+    face.openInstall()
+    face.editInstallSpec('dsh-x')
+    face.runInstall()
+    await vi.waitFor(() => { expect(state().install.phase).toBe('failed') })
+    // The Host laid the failure at activation, and the details keep the run's complete log.
+    expect(state().install.failure).toEqual({ reason: 'activation refused', code: 'operation-error', stage: 'enable' })
+    expect(state().install.logPath).toBe(failedLog)
+    // Retrying forgets the settled run's log until the next answer names its own.
+    face.runInstall()
+    await started()
+    expect(state().install.logPath).toBeNull()
+    retry.resolve(ok({
+      ...APPLIED, bundle: 'dsh-x',
+      packageResult: { exitCode: 0, output: '', truncated: false, logPath: doneLog },
+    }))
+    await vi.waitFor(() => { expect(state().install.phase).toBe('done') })
+    expect(state().install.logPath).toBe(doneLog)
+    expect(plugins.installBundle).toHaveBeenCalledTimes(2)
   })
 
   it('drops every late settlement after disposal', async () => {

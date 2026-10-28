@@ -1389,6 +1389,9 @@ function InstallDialog({
             <h2 className={css.wizardTitle} role={phase === 'failed' ? 'alert' : 'status'}>{heading}</h2>
             {phase === 'done' && subject?.bundled ? <p className={css.wizardSub}>{t('installBundledDescription')}</p> : null}
             {phase === 'failed' ? <p className={css.wizardSub}>{failureText(install.failure, t, install)}</p> : null}
+            {phase === 'failed' && failure?.stage === 'enable'
+              ? <p className={css.wizardSub}>{t('installFailedEnabling')}</p>
+              : null}
             {attemptLine === null ? null : <p className={css.wizardSub}>{attemptLine}</p>}
             {uncertaintyText === null ? null : <p className={css.wizardSub} role="alert">{uncertaintyText}</p>}
             {phase === 'unknown' ? <p className={css.wizardSub}>{t('installUnknownDescription')}</p> : null}
@@ -1460,7 +1463,7 @@ function InstallDialog({
           {install.detailsOpen
             ? (
               <div className={css.detailsBody}>
-                <p className={css.installLocation}>{firstRun === undefined ? t('terminalNoOutput') : t('installLocation', { dir: firstRun.cwd })}</p>
+                <p className={css.installLocation}>{firstRun === undefined ? t('installDetailsNoOutput') : t('installLocation', { dir: firstRun.cwd })}</p>
                 {install.runs.map((run, index) => {
                   const registry = asked?.registries[index]
                   return (
@@ -1480,6 +1483,9 @@ function InstallDialog({
                     </div>
                   )
                 })}
+                {install.logPath === null
+                  ? null
+                  : <p className={css.installLocation}>{t('installLogPath', { path: install.logPath })}</p>}
               </div>
             )
             : null}

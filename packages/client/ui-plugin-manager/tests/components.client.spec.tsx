@@ -70,7 +70,7 @@ const MIRROR_OPTION = `${en.registryNpmmirror} registry.npmmirror.com`
 
 const IDLE_INSTALL: InstallState = {
   open: false, spec: '', registries: null, registry: { kind: 'offered', registry: null }, registryOpen: false, registryError: false, attempts: null,
-  phase: 'idle', inputError: null, subject: null, runs: [], detailsOpen: false,
+  phase: 'idle', inputError: null, subject: null, runs: [], detailsOpen: false, logPath: null,
   installed: null, installedVersion: null, restartRequired: false, failure: null, approvedBuilds: [], enabling: false,
 }
 
@@ -1856,9 +1856,9 @@ describe('PluginManagerPage', () => {
     expect(screen.queryByText('line 8')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: en.terminalExpandAria.replace('{n}', '3') }))
     expect(screen.getByText('line 8')).toBeTruthy()
-    // Before the first chunk there is no location to name.
+    // Before the first chunk there is no location to name, and the details say so honestly.
     set({ install: { ...IDLE_INSTALL, open: true, spec: 'dsh-x', phase: 'running', subject, detailsOpen: true } })
-    expect(screen.getByText(en.terminalNoOutput)).toBeTruthy()
+    expect(screen.getByText(en.installDetailsNoOutput)).toBeTruthy()
     // Cancel and the back control each ask the Host to stop the run; the close control asks too, and closes once the Host confirms.
     fireEvent.click(screen.getByRole('button', { name: en.installCancel }))
     fireEvent.click(screen.getByRole('button', { name: en.installCancelAndEdit }))
@@ -2058,6 +2058,28 @@ describe('PluginManagerPage', () => {
     // A tarball spec reads by its kind too.
     set({ install: { ...IDLE_INSTALL, open: true, spec: '/p/x.tgz', phase: 'failed', subject: { spec: '/p/x.tgz', status: 'accepted', kind: 'tarball', bundle: null, registry: null }, failure: null } })
     expect(screen.getByText(en.installSubjectTarball)).toBeTruthy()
+  })
+
+  it('names an enable-stage failure and points the details at the complete Host log', () => {
+    const subject = { spec: 'dsh-x', status: 'accepted', kind: 'registry', name: 'dsh-x', bundle: true, registry: null } as const
+    const logPath = '/home/u/.dsh/profiles/web/plugin-manager/runs/install.log'
+    const failed: InstallState = {
+      ...IDLE_INSTALL, open: true, spec: 'dsh-x', phase: 'failed', subject, detailsOpen: true, logPath,
+      failure: { reason: 'activation refused', stage: 'enable' },
+    }
+    const { set } = renderTab({ install: failed })
+    // The installed bundle could not be activated, so the screen separates the finished install from the failure.
+    expect(screen.getByText(en.installFailedEnabling)).toBeTruthy()
+    // No terminal chunk reached the dialog; the details say that instead of claiming the run printed nothing.
+    expect(screen.getByText(en.installDetailsNoOutput)).toBeTruthy()
+    // They still point at the Host's complete log for the run that settled the dialog.
+    expect(screen.getByText(en.installLogPath.replace('{path}', logPath))).toBeTruthy()
+    // A failure of the install itself names no finished install.
+    set({ install: { ...failed, failure: { reason: 'activation refused', stage: 'install' } } })
+    expect(screen.queryByText(en.installFailedEnabling)).toBeNull()
+    // Without a settled run's log the details offer no path.
+    set({ install: { ...failed, logPath: null } })
+    expect(screen.queryByText(en.installLogPath.replace('{path}', logPath))).toBeNull()
   })
 
   it.each(['network', 'timeout'] as const)('shows GitHub recovery only after a %s failure and returns to package input', (kind) => {
