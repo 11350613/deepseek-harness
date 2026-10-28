@@ -890,10 +890,10 @@ it.skipIf(MODE === 'record')('retains a wrapped code line and tree width across 
   const session = scaffold.ctx.sessions.get(sessionId)
   if (session === undefined) throw new Error('Session must stay loaded')
   scaffold.ctx.forgeSession.track(session, PULL)
+  // Keep the file tree and the Session sidebar visible together on every platform.
+  await page.setViewportSize({ width: 2400, height: 700 })
   await page.locator('[data-forge-header]').click()
   await page.locator(`[data-forge-change="${PULL}"]`).getByRole('button', { name: /查看 #7 的变更/ }).click()
-  await page.getByRole('button', { name: '全屏', exact: true }).click()
-  await page.setViewportSize({ width: 1280, height: 700 })
   const view = page.locator('[data-forge-changes="change"]')
   const scroll = view.locator('[data-forge-changes-scroll]')
   const file = view.locator('[data-forge-diff-file="src/server.ts"]')
@@ -931,7 +931,7 @@ it.skipIf(MODE === 'record')('retains a wrapped code line and tree width across 
     expect(position.offset).toBe(-7)
     for (const destination of ['tab', 'session', 'tab', 'session']) {
       if (destination === 'tab') await page.getByRole('tab').filter({ hasText: '变更请求' }).click()
-      else await page.keyboard.press('ControlOrMeta+Alt+n')
+      else await page.getByRole('button', { name: '新建会话', exact: true }).last().click()
       await expect.poll(() => view.isVisible()).toBe(false)
       await layout()
       expect(await scroll.evaluate(element => element.clientWidth)).toBe(0)
