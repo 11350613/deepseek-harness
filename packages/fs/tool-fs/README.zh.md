@@ -266,7 +266,7 @@ Read a file before editing it (the default fs-observation-policy requires it), u
 ##### 系统提示
 
 ```markdown
-Prefer apply_patch over separate edit calls for changes across files or separated regions. Give every hunk enough surrounding context lines to match one place in the current file. Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.
+Prefer apply_patch over separate edit calls for changes across files or separated regions. Give every hunk enough surrounding context lines to match one place in the current file. The whole patch is checked first (syntax, hunk matching, missing files) and a rejected patch changes nothing; once applying starts, operations run in order, stop at the first failure, and are not rolled back, so re-read affected files before retrying when needed.
 ```
 
 ##### 结果示例

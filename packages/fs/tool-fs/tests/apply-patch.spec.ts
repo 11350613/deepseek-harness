@@ -12,7 +12,7 @@ import { add, move, patch, remove, setup, update } from './patch/harness.ts'
 
 const guidance = 'Prefer apply_patch over separate edit calls for changes across files or separated regions. '
   + 'Read a file before updating, deleting, or moving it (the default fs-observation-policy requires it), unless you just created or edited it in this session. '
-  + 'Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.'
+  + 'The whole patch is checked first (syntax, hunk matching, missing files) and a rejected patch changes nothing; once applying starts, operations run in order, stop at the first failure, and are not rolled back, so re-read affected files before retrying when needed.'
 
 type Fixture = Awaited<ReturnType<typeof setup>>
 function call(t: Fixture, text: string) {
@@ -48,7 +48,7 @@ it('drops the read-first guidance and schema sentence when the guard is off', as
   const section = (await t.ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:apply_patch')
   expect(section?.text).toBe('Prefer apply_patch over separate edit calls for changes across files or separated regions. '
     + 'Give every hunk enough surrounding context lines to match one place in the current file. '
-    + 'Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.')
+    + 'The whole patch is checked first (syntax, hunk matching, missing files) and a rejected patch changes nothing; once applying starts, operations run in order, stop at the first failure, and are not rolled back, so re-read affected files before retrying when needed.')
   const guarded = await setup()
   const description = (fixture: Fixture) => (fixture.ctx.tools.get('apply_patch')?.parameters as { properties: { input: { description: string } } }).properties.input.description
   expect(description(guarded)).toContain('Read existing files before updating, deleting, or moving them.')

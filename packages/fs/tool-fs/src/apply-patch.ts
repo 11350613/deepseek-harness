@@ -27,7 +27,8 @@ export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController, 
     text: ({ scope }) => ctx.tools.get('apply_patch', scope) === undefined ? ''
       : 'Prefer apply_patch over separate edit calls for changes across files or separated regions. '
         + GUARD_GUIDANCE[guard]
-        + 'Operations run in order, stop at the first failure, and are not rolled back; re-read affected files before retrying when needed.',
+        + 'The whole patch is checked first (syntax, hunk matching, missing files) and a rejected patch changes nothing; '
+        + 'once applying starts, operations run in order, stop at the first failure, and are not rolled back, so re-read affected files before retrying when needed.',
   })
   ctx.tools.register(defineTool({
     name: 'apply_patch',
