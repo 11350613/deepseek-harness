@@ -2,10 +2,11 @@
 import { createHash } from 'node:crypto'
 import { access, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SandboxUnavailableError, type SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 import { inspectCheckout } from '../src/git.ts'
-import { localChanges, localDiff } from '../src/local-diff.ts'
+import { FilterConfigError, localChanges, localDiff } from '../src/local-diff.ts'
 import type { DiffConfig } from '../src/local-diff.ts'
 import { git, gitContext, plainSession, repository, sandboxRecord, scratch } from './harness.ts'
 
@@ -15,14 +16,15 @@ const CONFIG: DiffConfig = {
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
 
-async function setup() {
+async function setup(mode: SandboxMode = 'danger-full-access', real = false) {
   const { path: root, remove } = await scratch('dsh-forge-diff-helpers-')
   cleanups.push(remove)
   const repo = await repository(root)
-  const ctx = await gitContext(sandboxRecord(), repo)
+  const record = sandboxRecord()
+  const ctx = await gitContext(record, repo, real)
   cleanups.push(() => ctx.fiber.dispose())
   const session = plainSession(repo)
-  setSandboxMode(session, 'danger-full-access')
+  setSandboxMode(session, mode)
   const signal = new AbortController().signal
   const fork = { commit: await git(repo, 'rev-parse', 'HEAD'), label: 'main' }
   await git(repo, 'remote', 'add', 'origin', 'https://example.invalid/repo')
@@ -38,10 +40,73 @@ else process.exit(1);
 `)
   const quote = (value: string): string => `'${value.replaceAll('\\', '/').replaceAll("'", "'\\''")}'`
   const command = `${quote(process.execPath)} ${quote(script)}`
-  return { root, repo, ctx, session, signal, fork, inspection, marker, command }
+  return { root, repo, ctx, session, signal, fork, inspection, marker, command, record }
 }
 
 describe('diff helper restrictions', () => {
+  it.each(['read-only', 'workspace-write'] as const)('passes filter overrides to the subprocess after %s confinement', async (mode) => {
+    const b = await setup(mode)
+    await writeFile(join(b.repo, '.gitattributes'), 'tracked.txt filter=demo -text\n')
+    await git(b.repo, 'config', 'filter.demo.clean', `${b.command} clean`)
+    await writeFile(join(b.repo, 'tracked.txt'), 'changed\n')
+    const spawn = vi.spyOn(b.ctx.subprocess, 'spawn')
+
+    try {
+      await localDiff(b.ctx, CONFIG, b.session, b.repo, null, { kind: 'unstaged' }, b.signal)
+      await localChanges(b.ctx, CONFIG, b.session, b.inspection, null, b.signal)
+      const diffs = spawn.mock.calls.map(([spec]) => spec).filter(spec => spec.argv.includes('diff'))
+      expect(diffs).toHaveLength(2)
+      for (const spec of diffs) {
+        expect(spec.env).toMatchObject({
+          GIT_CONFIG_COUNT: '3',
+          GIT_CONFIG_KEY_0: 'filter.demo.clean', GIT_CONFIG_VALUE_0: '',
+          GIT_CONFIG_KEY_1: 'filter.demo.process', GIT_CONFIG_VALUE_1: '',
+          GIT_CONFIG_KEY_2: 'filter.demo.required', GIT_CONFIG_VALUE_2: 'false',
+        })
+      }
+      expect(b.record.calls.filter(call => call.argv.includes('diff')).map(call => call.policy.mode)).toEqual([mode, mode])
+      await expect(access(b.marker)).rejects.toThrow()
+    } finally { spawn.mockRestore() }
+  })
+
+  it.skipIf(process.platform !== 'darwin' && process.platform !== 'linux')('disables a writable helper through the real workspace-write sandbox', async ({ skip }) => {
+    let b: Awaited<ReturnType<typeof setup>>
+    try {
+      b = await setup('workspace-write', true)
+    } catch (error) {
+      if (!(error instanceof SandboxUnavailableError)) throw error
+      skip() // Hosts without an enforcing backend retain the recording-sandbox coverage above.
+      return
+    }
+    const marker = join(b.repo, 'helper-ran')
+    await writeFile(join(b.root, 'helper.cjs'), `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(marker)}, 'ran'); process.stdout.write(fs.readFileSync(0));\n`)
+    await writeFile(join(b.repo, '.gitattributes'), 'tracked.txt filter=demo -text\n')
+    await git(b.repo, 'config', 'filter.demo.clean', b.command)
+    await writeFile(join(b.repo, 'tracked.txt'), 'changed\n')
+    await git(b.repo, 'diff')
+    expect(await readFile(marker, 'utf8')).toBe('ran')
+    await rm(marker)
+
+    await localDiff(b.ctx, CONFIG, b.session, b.repo, null, { kind: 'unstaged' }, b.signal)
+    await localChanges(b.ctx, CONFIG, b.session, b.inspection, null, b.signal)
+    await expect(access(marker)).rejects.toThrow()
+  })
+
+  it('keeps built-in newline normalization when clean filters are disabled', async () => {
+    const b = await setup()
+    await writeFile(join(b.repo, '.gitattributes'), 'tracked.txt text eol=lf filter=demo\n')
+    await git(b.repo, 'add', '.gitattributes')
+    await git(b.repo, 'commit', '-m', 'newline attributes')
+    await git(b.repo, 'config', 'filter.demo.clean', `${b.command} clean`)
+    await writeFile(join(b.repo, 'tracked.txt'), 'initial\r\n')
+
+    const diff = await localDiff(b.ctx, CONFIG, b.session, b.repo, null, { kind: 'unstaged' }, b.signal)
+    const changes = await localChanges(b.ctx, CONFIG, b.session, b.inspection, null, b.signal)
+    expect(diff.files).toEqual([])
+    expect(changes?.files.some(file => file.path === 'tracked.txt')).toBe(false)
+    await expect(access(b.marker)).rejects.toThrow()
+  })
+
   it.each(['named', 'some.nested.driver', 'x=y', 'lfs'])('disables the required clean filter %s for patches and statistics without changing Git config or index', async (driver) => {
     const b = await setup()
     await writeFile(join(b.repo, '.gitattributes'), `tracked.txt filter=${driver} -text\n`)
@@ -123,8 +188,22 @@ describe('diff helper restrictions', () => {
     await writeFile(join(b.repo, '.gitattributes'), `tracked.txt filter=${'long'.repeat(200)}\n`)
     await writeFile(join(b.repo, 'tracked.txt'), 'changed\n')
     await expect(localDiff(b.ctx, { ...CONFIG, maxDiffBytes: 128 }, b.session, b.repo, null, { kind: 'unstaged' }, b.signal))
-      .rejects.toThrow('output exceeds maxOutputBytes')
+      .rejects.toBeInstanceOf(FilterConfigError)
+    await expect(localChanges(b.ctx, { ...CONFIG, maxOutputBytes: 128 }, b.session, b.inspection, null, b.signal))
+      .rejects.toBeInstanceOf(FilterConfigError)
     await expect(access(b.marker)).rejects.toThrow()
+  })
+
+  it('identifies a failed filter read before starting a comparison', async () => {
+    const b = await setup()
+    const failure = new Error('Git executable unavailable')
+    const resolve = vi.spyOn(b.ctx.subprocess, 'resolveExecutable').mockRejectedValue(failure)
+    const spawn = vi.spyOn(b.ctx.subprocess, 'spawn')
+    try {
+      await expect(localDiff(b.ctx, CONFIG, b.session, b.repo, null, { kind: 'unstaged' }, b.signal))
+        .rejects.toMatchObject({ name: 'FilterConfigError', cause: failure })
+      expect(spawn).not.toHaveBeenCalled()
+    } finally { resolve.mockRestore(); spawn.mockRestore() }
   })
 
   it('compares LFS pointers and materialized bytes without invoking LFS or downloading content', async () => {

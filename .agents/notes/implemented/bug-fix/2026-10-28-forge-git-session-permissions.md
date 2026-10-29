@@ -12,7 +12,7 @@ The [Forge panel](../feature/2026-10-09-forge-panel.md) forces read-only confine
 
 Git inspection uses the Session's resolved sandbox mode and subprocess provider. Full access requires no sandbox backend; confined modes retain their enforcement and never retry unconfined. The Session remains the authority for filesystem permissions, including workspace-write access. Query commands do not request repository mutations.
 
-Local patches and statistics disable clean/process filters through command-local Git configuration, without changing user configuration. Environment entries preserve subsection names containing equals signs. Existing hook, fsmonitor, external-diff, textconv, optional-lock, and lazy-fetch restrictions remain; submodule queries show commit changes without scanning internal dirty files. Configuration read failure stops the comparison. These restrictions follow the informational-diff approach in Codex while retaining DSH's execution-world and cancellation ownership.
+Local patches and statistics apply command-local Git configuration to disable clean/process filters without changing user configuration. Environment entries preserve subsection names containing equals signs. Existing hook, fsmonitor, external-diff, textconv, optional-lock, and lazy-fetch restrictions remain; submodule queries show commit changes without scanning internal dirty files. Configuration read failure stops the comparison; the changes view reports the filter configuration failure separately from oversized diffs and offers a retry. These restrictions follow the informational-diff approach in Codex while retaining DSH's execution-world and cancellation ownership.
 
 ## Alternatives considered
 
@@ -24,6 +24,8 @@ Local patches and statistics disable clean/process filters through command-local
 
 ## Consequences
 
-Operating-system write protection follows the Session mode rather than a separate panel policy. Comparisons use stored blobs and raw working-tree bytes: materialized LFS and other filtered files can appear changed even when ordinary Git considers them clean. Pointer-only checkouts compare normally. Uncommitted submodule contents are omitted. The original Forge note remains active for panel ownership and worktree lifecycle; this note supersedes only its unconditional read-only policy.
+Operating-system write protection follows the Session mode rather than a separate panel policy. With clean/process filters disabled, comparisons still apply Git's built-in newline, ident, and encoding conversions: materialized LFS and other filtered files can appear changed even when ordinary Git considers them clean. Pointer-only checkouts compare normally. Uncommitted submodule contents are omitted. The original Forge note remains active for panel ownership and worktree lifecycle; this note supersedes only its unconditional read-only policy.
+
+Filter overrides require Git 2.31 or newer; older Git can ignore them and execute configured helpers under Session permissions. Enumeration and diff run in separate processes, so a concurrently added driver can escape the overrides. These restrictions limit incidental helper execution; the Session sandbox determines the permissions of every process that runs.
 
 Real-repository tests cover permission modes, unavailable confinement, unchanged index/configuration, configured helper markers, submodule commits, filtered bytes, and failed filter enumeration. The Web replay covers permission changes through the picker and the resulting checkout and local-change view.

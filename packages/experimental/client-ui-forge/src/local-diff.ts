@@ -37,6 +37,11 @@ export class DiffTooLarge extends Error {
   override name = 'DiffTooLarge'
 }
 
+/** Thrown when filter configuration cannot be read completely; no comparison has run. */
+export class FilterConfigError extends Error {
+  override name = 'FilterConfigError'
+}
+
 /** Thrown for the `branch` scope of a checkout without a fork point. */
 export class NoForkPoint extends Error {
   override name = 'NoForkPoint'
@@ -45,9 +50,14 @@ export class NoForkPoint extends Error {
 /** No executable diff helpers or submodule working-tree inspection; preserve recorded submodule commit changes. */
 const DIFF = ['-c', 'core.quotePath=false', 'diff', '--no-ext-diff', '--no-textconv', '--submodule=short', '--ignore-submodules=dirty', '--no-color', '-M', '--src-prefix=a/', '--dst-prefix=b/'] as const
 
-/** Disable configured content conversion for one diff without modifying repository configuration. */
+/** Disable enumerated clean/process filters for one diff without modifying Git configuration. */
 async function diffFilterOverrides(git: Git): Promise<Readonly<Record<string, string>>> {
-  const configured = await bounded(git('filters', ['config', '--null', '--name-only', '--get-regexp', '^filter\\.'], [0, 1]))
+  let configured: GitOutput
+  try {
+    configured = await git('filters', ['config', '--null', '--name-only', '--get-regexp', '^filter\\.'], [0, 1])
+  } catch (error) {
+    throw new FilterConfigError('Cannot read complete Git filter configuration; comparison was not run', { cause: error })
+  }
   const overrides: Record<string, string> = {}
   for (const key of configured.stdout.split('\0')) {
     if (!key.endsWith('.clean') && !key.endsWith('.process')) continue
@@ -88,8 +98,8 @@ export async function forkPoint(git: Git, inspection: Inspection, created: Forge
 }
 
 /**
- * Read changes at `root` without configured content conversion or submodule
- * working-tree inspection; filtered working-tree bytes can differ from stored blobs.
+ * Read changes at `root` with command-local clean/process filter overrides and without
+ * submodule working-tree inspection. Git's built-in newline, ident, and encoding conversions still apply.
  * @param ctx - context that provides `fs`, `subprocess`, `sandbox`, and `sandboxPolicy`.
  * @param config - Git and size limits.
  * @param session - Session whose sandbox policy and execution world apply.
@@ -98,7 +108,8 @@ export async function forkPoint(git: Git, inspection: Inspection, created: Forge
  * @param scope - which changes to read.
  * @param signal - cancellation of every command and read.
  * @returns tracked files in Git's order, then untracked files unless the scope is `staged`.
- * @throws NoForkPoint for the `branch` scope without `fork`; DiffTooLarge over `maxDiffBytes`; an Error when Git fails.
+ * @throws NoForkPoint for the `branch` scope without `fork`; FilterConfigError when filter configuration
+ * cannot be read within `maxDiffBytes`; DiffTooLarge for oversized comparison output; an Error when Git fails.
  */
 export async function localDiff(
   ctx: Context,
@@ -173,7 +184,8 @@ export async function localText(
  * @param created - worktree the Session created, or null.
  * @param signal - cancellation of every command and read.
  * @returns the base and the changed files, or null without a fork point.
- * @throws DiffTooLarge when the untracked file list exceeds `maxDiffBytes`; an Error when Git fails.
+ * @throws FilterConfigError when filter configuration cannot be read within `maxOutputBytes`;
+ * DiffTooLarge when the untracked file list exceeds `maxDiffBytes`; an Error when Git fails.
  */
 export async function localChanges(
   ctx: Context,

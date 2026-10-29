@@ -217,11 +217,11 @@ interface PanelLaunch {
  * Launch the bundle against a GitHub checkout of `main` and `release` and open the New Session screen of that workspace.
  * @param failureShot - name of the screenshot saved when the test fails.
  * @param scenario - normal conversation, a restoration follow-up, or a numbered PR lookup.
- * @param options - desktop transport, initial checkout branch, and touch input for the browser.
+ * @param options - desktop transport, checkout branch, browser input, sandbox runner availability, and diff output limit.
  * @returns the scaffold, page, and checkout.
  */
 async function launchPanel(failureShot: string, scenario: 'normal' | 'follow-up' | 'reference' = 'normal',
-  options: { desktop?: 'darwin' | 'win32'; branch?: string; hasTouch?: boolean; missingSandbox?: boolean } = {}): Promise<PanelLaunch> {
+  options: { desktop?: 'darwin' | 'win32'; branch?: string; hasTouch?: boolean; missingSandbox?: boolean; maxDiffBytes?: number } = {}): Promise<PanelLaunch> {
   const { desktop } = options
   const resources: { scaffold?: WebScaffold; browser?: Browser } = {}
   const root = await mkdtemp(join(tmpdir(), 'dsh-forge-panel-'))
@@ -241,6 +241,7 @@ async function launchPanel(failureShot: string, scenario: 'normal' | 'follow-up'
   await writeFile(join(root, 'contents.json'), JSON.stringify({ [`src/panel.ts@${HEAD7}`]: panelText }))
   const overlay = join(root, 'forge.patch.yml')
   await writeFile(overlay, `- id: forge-github\n  config: ${JSON.stringify({ ghCommand: gh })}\n`
+    + (options.maxDiffBytes === undefined ? '' : `- id: forge-panel\n  config: ${JSON.stringify({ maxDiffBytes: options.maxDiffBytes })}\n`)
     + (options.missingSandbox ? `- id: sandbox\n  config: ${JSON.stringify({ runnerCommand: [join(root, 'missing-sandbox')], runnerFailureSignatures: ['sandbox startup failed'] })}\n` : ''))
   const override = join(root, 'replay.override.json')
   // The borrowed scenario records one model call, so index 1 appends the reply to the follow-up.
@@ -403,6 +404,33 @@ it.skipIf(MODE === 'record')('reads local Git with full access when the sandbox 
   await expect.poll(async () => (await readPersistedEvents(scaffold, sessionId))
     .filter(event => event.type === 'sandbox/mode').map(event => event.data.mode).slice(-2))
     .toEqual(['danger-full-access', 'workspace-write'])
+  expect(tripwire.pageErrors).toEqual([])
+  expect(tripwire.warnings).toEqual([])
+})
+
+it.skipIf(MODE === 'record')('reports incomplete filter configuration and retries after it is corrected', async () => {
+  const { scaffold, page, project, tripwire } = await launchPanel('web-e2e-forge-filter-config', 'normal', { maxDiffBytes: 512 })
+  await git(project, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+  await git(project, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+  await writeFile(join(project, 'README.md'), 'demo\nchanged\n')
+  const { settled } = await sendPrompt(page, scaffold)
+  await settled
+  await page.getByText('LIGHTHOUSE', { exact: true }).waitFor()
+  await page.locator('[data-forge-header]').click()
+  const openChanges = page.locator('[data-forge-local]').getByRole('button', { name: '查看本会话的变更：1 个文件，新增 1 行，删除 0 行', exact: true })
+  await openChanges.waitFor({ timeout: 20_000 })
+  const key = `filter.${'long'.repeat(200)}.clean`
+  await git(project, 'config', key, 'cat')
+  await openChanges.click()
+  const changes = page.locator('[data-forge-changes="local"]')
+  await changes.getByText('无法完整读取 Git 过滤器配置，尚未执行比较。请检查 Git 配置和读取上限后重试', { exact: true }).waitFor()
+  await compareOrRefreshGolden(join(EXPECTED, 'filter-config-failed.expected.md'),
+    await captureStableAria(page, '[data-forge-changes="local"]', scaffold.workspaceCwd), MODE)
+
+  await git(project, 'config', '--unset', key)
+  await changes.getByRole('button', { name: '重试', exact: true }).click()
+  await changes.locator('[data-forge-diff-file="README.md"]').getByText('changed', { exact: true }).waitFor()
+  expect(await changes.getByRole('status').count()).toBe(0)
   expect(tripwire.pageErrors).toEqual([])
   expect(tripwire.warnings).toEqual([])
 })

@@ -1,4 +1,4 @@
-/** Read-only Git inspection of a Session's current directory in the Session's execution world. */
+/** Git queries in a Session's current directory, using its permissions and execution world. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-fs'
@@ -81,8 +81,8 @@ const NOT_A_CHECKOUT = /not a git repository|must be run in a work tree/i
 /**
  * Inspect the checkout containing `directory`. Every command runs through the
  * mounted subprocess provider under the Session's sandbox policy and reads
- * refs and configuration only, never the working
- * tree. The top-level and shared Git directories Git prints are resolved
+ * refs and configuration only, never the working tree.
+ * The top-level and shared Git directories Git prints are resolved
  * through `ctx.fs` into canonical process paths, the form the
  * working-directory service records.
  * @param ctx - context that provides `fs`, `subprocess`, `sandbox`, and `sandboxPolicy`.
@@ -130,7 +130,7 @@ export async function inspectCheckout(
 
 /**
  * List the local branches that can start a worktree of the checkout containing
- * `directory`, under the same confinement as {@link inspectCheckout}.
+ * `directory`, using the Session's permissions as in {@link inspectCheckout}.
  * @param ctx - context that provides `subprocess`, `sandbox`, and `sandboxPolicy`.
  * @param config - executable and process limits.
  * @param session - Session whose sandbox policy and execution world apply.
@@ -175,7 +175,7 @@ async function together<T extends readonly Promise<unknown>[]>(
 }
 
 /**
- * Report whether a local branch exists, under the same confinement as {@link inspectCheckout}.
+ * Report whether a local branch exists, using the Session's permissions as in {@link inspectCheckout}.
  * @param ctx - context that provides `subprocess`, `sandbox`, and `sandboxPolicy`.
  * @param config - executable and process limits.
  * @param session - Session whose sandbox policy and execution world apply.

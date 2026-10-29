@@ -139,6 +139,7 @@ const FAILURE: Partial<Record<string, ForgePanelKey>> = {
   'forgePanel/not-a-checkout': 'checkout.none',
   'forgePanel/no-fork-point': 'diff.noForkPoint',
   'forgePanel/diff-too-large': 'diff.tooLarge',
+  'forgePanel/filter-config-failed': 'diff.filterConfigFailed',
 }
 
 async function readChanges(
@@ -435,10 +436,10 @@ export function ChangesTab({
   }, [tab.visible, wanted, data])
   const refresh = (): void => { setAttempt(value => value + 1) }
   const root = state !== null && state.checkout.state === 'ready' ? state.checkout.checkout.root : null
-  // A failure with its own message offers no retry; a change request's failure also offers its web page.
+  // Configuration reads may recover after the user fixes Git settings or raises the output limit.
   const message = failed === null ? undefined : FAILURE[failed]
   const changeUrl = source.kind === 'change' ? entry?.snapshot?.url ?? source.url : null
-  const retry = message === undefined
+  const retry = message === undefined || failed === 'forgePanel/filter-config-failed'
 
   /** Apply a change to the unchanged lines of `owner`, unless newer changes replaced it. */
   const update = (owner: ChangesData, change: (value: Expansion) => Expansion): void => {

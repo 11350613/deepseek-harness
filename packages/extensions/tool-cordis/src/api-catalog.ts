@@ -1326,7 +1326,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'forgePanel',
     summary: 'Serves the forge panel.',
-    description: 'Serves the forge panel. Following a Session inspects the checkout of its current directory read-only in the Session\'s execution world, recognizes the code host of the upstream remote or `origin`, probes sign-in for that host, and polls the Session\'s bound change requests through `ctx.forge` until the last follower of that Session leaves. A worktree request makes the panel create a branch and checkout through an optional `ctx.worktrees` and enter it while the Session\'s first message waits in the inbox, or at the first step proposal of a message no wait took. After a failed or stopped attempt the message keeps waiting for another attempt or for the request to be withdrawn. A message also waits while the worktree the Session works in is gone, until that worktree is checked out again or left for the source checkout. Changes to a Session\'s checkout run as Agent maintenance, so a message that arrives meanwhile waits for them.',
+    description: 'Serves the forge panel. Following a Session inspects the checkout of its current directory using the Session\'s permissions and execution world, recognizes the code host of the upstream remote or `origin`, probes sign-in for that host, and polls the Session\'s bound change requests through `ctx.forge` until the last follower of that Session leaves. A worktree request makes the panel create a branch and checkout through an optional `ctx.worktrees` and enter it while the Session\'s first message waits in the inbox, or at the first step proposal of a message no wait took. After a failed or stopped attempt the message keeps waiting for another attempt or for the request to be withdrawn. A message also waits while the worktree the Session works in is gone, until that worktree is checked out again or left for the source checkout. Changes to a Session\'s checkout run as Agent maintenance, so a message that arrives meanwhile waits for them.',
     methods: [
       {
         signature: '@Remote({ mode: \'stream\' }) async *follow(session: Session, signal: AbortSignal): AsyncIterable<ForgePanelState>',
@@ -1370,7 +1370,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Read the changes one scope covers in the checkout of the Session\'s current directory, with Git using the Session\'s sandbox policy.',
         parameters: [{ name: 'session', description: 'Session whose checkout is read.' }, { name: 'scope', description: 'which changes to read.' }, { name: 'signal', description: 'request cancellation.' }],
         returns: 'the files, the base of the `branch` scope, and the untracked files left out.',
-        throws: ['`forgePanel/not-a-checkout` outside a checkout; `forgePanel/no-fork-point` for the `branch` scope of a checkout without one; `forgePanel/diff-too-large` over `maxDiffBytes`; the Git error when Git fails.'],
+        throws: ['`forgePanel/not-a-checkout` outside a checkout; `forgePanel/no-fork-point` for the `branch` scope of a checkout without one; `forgePanel/filter-config-failed` when filter configuration cannot be read completely, before any comparison; `forgePanel/diff-too-large` over `maxDiffBytes`; the Git error when Git fails.'],
       },
       {
         signature: '@Remote async localText(session: Session, scope: ForgeLocalScope, path: string, signal: AbortSignal): Promise<string>',
