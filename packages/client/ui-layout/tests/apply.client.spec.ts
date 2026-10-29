@@ -117,7 +117,7 @@ describe('ui-layout client apply', () => {
     expect(width()).toBe(280)
   })
 
-  it('shares a pre-created instance between service actions, root rendering, and layout sources', async () => {
+  it('shares a pre-created instance between service actions, root rendering, and panelInfo', async () => {
     const { ctx, slots, rendererHost } = await bench()
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
@@ -135,18 +135,6 @@ describe('ui-layout client apply', () => {
     const panelInfo = host.root.getSnapshot().hooks.panelInfo!
     expect(panelInfo).toBe(layout.panelInfo)
     expect(panelInfo.getSnapshot()).toBe(instance.getSnapshot().panelInfo)
-    expect(layout.frameWidth.getSnapshot()).toBe(1920)
-    const measure = vi.fn(() => layout.frameWidth.getSnapshot())
-    const unsubscribe = layout.frameWidth.subscribe(measure)
-    try {
-      instance.actions.setViewportWidth(767)
-      expect(layout.frameWidth.getSnapshot()).toBe(767)
-      expect(measure).toHaveReturnedWith(767)
-      expect(window.innerWidth).toBe(1920)
-    } finally { unsubscribe() }
-    instance.actions.setViewportWidth(1920)
-    expect(layout.frameWidth.getSnapshot()).toBe(1920)
-    expect(measure).toHaveBeenCalledOnce()
     const panelId = 'panel-a' as MainPanelId
     const disposePanel = slots.register({ name: 'main', key: panelId }, () => null)
     layout.selectPanel(panelId)

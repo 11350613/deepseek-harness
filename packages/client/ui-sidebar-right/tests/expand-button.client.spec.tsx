@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 /**
- * Narrow overlays preserve the header control's identity; wide panels release
+ * Mobile devices preserve the header control's identity; desktops release
  * its header space while open.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import * as uiPrimitives from '@deepseek-ai/dsh-client-ui-primitives'
 import type { GlobalStandardProps, SessionStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -17,7 +17,10 @@ import type { ExpandButtonProps } from '../src/client/shell/ExpandButton.tsx'
 import { createSidebarRightStore } from '../src/client/stores.ts'
 
 const SESSION = 's-test' as SessionId
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 const unused = (): never => { throw new Error('This isolated component does not consume framework hooks') }
 const standard: GlobalStandardProps & SessionStandardProps = {
   sessionId: SESSION, useSession: unused, useProjection: unused, useConversation: unused,
@@ -38,13 +41,12 @@ function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapsho
 }
 
 /** Mount the button over its real store and an empty shortcut catalog. */
-function mountButton(shortcuts: readonly ShortcutCatalogEntry[] = [], narrow = false) {
+function mountButton(shortcuts: readonly ShortcutCatalogEntry[] = [], mobile = false) {
+  vi.spyOn(uiPrimitives, 'isMobileDevice').mockReturnValue(mobile)
   const instance = createSidebarRightStore(() => ({ kind: 'guide', title: 'Start' })).create()
-  const viewport = createSnapshotStore(narrow)
   const props: ExpandButtonProps = {
     ...standard,
     useShortcuts: <T,>(selector: (entries: readonly ShortcutCatalogEntry[]) => T): T => selector(shortcuts),
-    useNarrowViewport: hookOf(viewport),
     sessionId: SESSION,
     useStore: hookOf(instance),
     actions: instance.actions,
@@ -53,7 +55,7 @@ function mountButton(shortcuts: readonly ShortcutCatalogEntry[] = [], narrow = f
   }
   const view = render(<ExpandButton {...props} />)
   const control = (): HTMLButtonElement | null => view.container.querySelector('[data-sidebar-right-expand]')
-  return { instance, viewport, view, control }
+  return { instance, view, control }
 }
 
 describe('ExpandButton', () => {
@@ -80,11 +82,14 @@ describe('ExpandButton', () => {
     expect(control()?.disabled).toBe(false)
   })
 
-  it('retains the disabled control through a narrow overlay opening and closing', () => {
+  it.each(['push', 'fullscreen'] as const)('retains the disabled control through mobile %s panel opening and closing', (mode) => {
     const { instance, control } = mountButton([], true)
     const button = control()
     if (button === null) throw new Error('expected the expand control')
-    act(() => { instance.actions.setExpanded(SESSION, true) })
+    act(() => {
+      instance.actions.setMode(SESSION, mode)
+      instance.actions.setExpanded(SESSION, true)
+    })
     expect(control()).toBe(button)
     expect(button.disabled).toBe(true)
     act(() => { instance.actions.setExpanded(SESSION, false) })
@@ -92,20 +97,7 @@ describe('ExpandButton', () => {
     expect(button.disabled).toBe(false)
   })
 
-  it('keeps an available control across viewport changes and releases its space only for an open wide panel', () => {
-    const { instance, viewport, control } = mountButton()
-    const button = control()
-    act(() => { viewport.set(true) })
-    expect(control()).toBe(button)
-    act(() => { instance.actions.setExpanded(SESSION, true) })
-    expect(control()).toBe(button)
-    act(() => { viewport.set(false) })
-    expect(control()).toBeNull()
-    act(() => { viewport.set(true) })
-    expect(control()?.disabled).toBe(true)
-  })
-
-  it('releases header space for a manually fullscreen panel on a wide frame', () => {
+  it('releases header space for a manually fullscreen panel on desktop', () => {
     const { instance, control } = mountButton()
     act(() => {
       instance.actions.setMode(SESSION, 'fullscreen')

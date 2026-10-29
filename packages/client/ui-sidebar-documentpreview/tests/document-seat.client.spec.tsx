@@ -46,12 +46,7 @@ async function boot() {
     useContextMenu: contextMenuHook((target, point) => { rt.ctx.contextMenus.open(target, point) }),
   } })
   rt.ctx.provide('configForms', { developerTools: { enabled: createSnapshotStore(true) } } as never)
-  const layout = {
-    openRightbar: vi.fn(), closeRightbar: vi.fn(), panelInfo: rt.panelInfo,
-    frameWidth: createSnapshotStore(1440), selectPanel: vi.fn(), toggleSidebar: vi.fn(),
-    beginNavigation: vi.fn(() => new AbortController().signal),
-  } satisfies typeof rt.ctx.layout
-  rt.ctx.provide('layout', layout)
+  rt.ctx.provide('layout', { openRightbar: vi.fn(), closeRightbar: vi.fn(), panelInfo: rt.panelInfo } as never)
   rt.ctx.provide('shortcuts', { register: () => () => {}, catalog: { getSnapshot: () => SHORTCUT_CATALOG, subscribe: () => () => {} } } as never)
   const locale = new LocaleRuntime(rt.ctx)
   rt.ctx.provide('locale', locale)
@@ -77,7 +72,7 @@ async function boot() {
   }))
   await rt.mount({ inject: [...sidebarInject], apply: sidebarApply })
   await rt.mount({ inject: [...inject], apply })
-  const view = rt.renderSlot('rightbar', { width: 600, viewportWidth: layout.frameWidth.getSnapshot(), canShow: true })
+  const view = rt.renderSlot('rightbar', { width: 600, viewportWidth: 1440, canShow: true })
   const open = (name: string): void => {
     act(() => { rt.ctx.sidebarRight.openResource('dsh-resource://file/session/documents/' + name) })
   }

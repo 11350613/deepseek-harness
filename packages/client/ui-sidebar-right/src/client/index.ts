@@ -32,7 +32,6 @@ import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { ILayout } from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -86,9 +85,6 @@ export type { SidebarRightOpenTab } from './tab-inventory.ts'
 /** This package's copy namespace. */
 const NS = 'sidebarRight'
 
-/** Frames below this width present the right sidebar as an overlay. */
-const AUTO_FULLSCREEN_WIDTH = 768
-
 /** Required browser services: the slot registry, the frame's panel actions, copy, and the resource model. */
 export const inject = ['contextMenus', 'slots', 'layout', 'locale', 'resources', 'sessions', 'uiSession', 'shortcuts']
 
@@ -127,15 +123,14 @@ export function apply(ctx: ClientContext): void {
     return () => { unsubscribe(); views.dispose() }
   }, 'ui-sidebar-right: retained Session views')
   const layout: ILayout = ctx.layout
-  const narrowViewport: HostObservable<boolean> = {
-    getSnapshot: () => layout.frameWidth.getSnapshot() < AUTO_FULLSCREEN_WIDTH,
-    subscribe: listener => layout.frameWidth.subscribe(listener),
-  }
+  // The automatic fullscreen rule as the seats last rendered it: the frame
+  // hands them its width as owner props, and every seat reports the same rule.
+  let autoFullscreen = false
   const { controller, adopt, forget, show, measure } = createSidebarRightController(
     tabs,
     (address, signal) => { ctx.resources.pin(address, signal) },
     {
-      autoFullscreen: () => narrowViewport.getSnapshot(),
+      autoFullscreen: () => autoFullscreen,
       openWithFocus: (sessionId, open) => { openWithPaneFocus(document, sessionId, open) },
       closeWithFocus: (sessionId, paneId, close) => { closeWithPaneFocus(document, sessionId, paneId, close) },
     },
@@ -227,6 +222,7 @@ export function apply(ctx: ClientContext): void {
         if (shown) layout.openRightbar(track, fullscreen)
         else layout.closeRightbar()
       },
+      reportAutoFullscreen: (value) => { autoFullscreen = value },
       splitPane: (paneId) => { controller.split(paneId) },
       toggleFullscreen: () => { const target = controller.commandTarget(); if (target !== undefined) controller.toggleFullscreen(target) },
       openTab: (kind, options) => { controller.openTab(kind, options) },
@@ -254,8 +250,7 @@ export function apply(ctx: ClientContext): void {
         inject: (sessionId): SidebarRightInjected => ({
           ...injected,
           hooks: {
-            contextMenuTarget: ctx.contextMenus.active, shortcuts: ctx.shortcuts.catalog, tabTypes,
-            flash: controller.flashOf(sessionId), narrowViewport,
+            contextMenuTarget: ctx.contextMenus.active, shortcuts: ctx.shortcuts.catalog, tabTypes, flash: controller.flashOf(sessionId),
           },
           measureRoom: (canSplitPane) => { measure(sessionId, canSplitPane) },
           closeTab: (tabId) => {
@@ -267,13 +262,15 @@ export function apply(ctx: ClientContext): void {
         }),
       }, RightbarSeat)
     })
-    // Narrow frames retain the opener's width under the overlay. Wide frames
-    // collapse the corner seat even when the panel uses manual fullscreen.
+    // The expand button shares the panel's store: it only needs to know whether
+    // the panel is expanded, and to ask for it to be. The header's corner seat
+    // is its own place, past the utilities, so showing and hiding it moves
+    // nothing else in the row.
     const disposeExpand = ctx.slots.inject('conversation.session.header.corner', () => ctx.slots.register({
       name: 'conversation.session.header.corner',
       locale: NS,
       store,
-      inject: () => ({ hooks: { shortcuts: ctx.shortcuts.catalog, narrowViewport } }),
+      inject: () => ({ hooks: { shortcuts: ctx.shortcuts.catalog } }),
     }, ExpandButton))
     // Stage two for the guide: it declares the chain child it hosts and reads
     // the registry's entry boxes, which an ordinary type has no reason to do.

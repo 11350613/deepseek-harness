@@ -14,7 +14,6 @@ import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client
 import { IconCloseOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Shortcuts, ShortcutCommand } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { TabMenuContent } from '../src/client/shell/TabMenuContent.tsx'
@@ -72,7 +71,6 @@ async function boot(shortcuts: Partial<Shortcuts> = {}) {
   const layout = {
     openRightbar: vi.fn(), closeRightbar: vi.fn(),
     panelInfo: createSnapshotStore<{ activePanelId: string | null }>({ activePanelId: null }),
-    frameWidth: createSnapshotStore(1920),
   }
   const current = createSnapshotStore<{ key: SessionId | undefined }>({ key: undefined })
   const resources = { pin: vi.fn<(address: string, signal: AbortSignal) => void>() }
@@ -152,7 +150,7 @@ describe('ui-sidebar-right apply', () => {
       'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
     ])
     expect(seat('sidebar.right.pane.tab').children).toMatchObject({ 'sidebar.right.tab.guide': { kind: 'chain', scope: 'session' } })
-    // Both seats share the session's panel state.
+    // Both seats read one store: the button only needs to know whether the panel is expanded.
     expect(seat('rightbar.session').store).toBeDefined()
     expect(seat('conversation.session.header.corner').store).toBe(seat('rightbar.session').store)
   })
@@ -168,36 +166,6 @@ describe('ui-sidebar-right apply', () => {
     expect(ctx.sidebarRight.mounted.getSnapshot()).toBe(SESSION)
     current.set({ key: undefined })
     expect(ctx.sidebarRight.mounted.getSnapshot()).toBeUndefined()
-  })
-
-  it('shares measured frame width between the panel and opener and releases subscriptions', async () => {
-    onTestFinished(() => { vi.unstubAllGlobals() })
-    const matchMedia = vi.fn(() => Object.assign(new EventTarget(), { matches: false }))
-    vi.stubGlobal('matchMedia', matchMedia)
-    const { ctx, layout, seat, injectedOf } = await boot()
-    onTestFinished(async () => { await ctx.fiber.dispose() })
-    const entry = seat('conversation.session.header.corner')
-    const first = injectedOf(entry) as { hooks: { narrowViewport: HostObservable<boolean> } }
-    const second = injectedOf(entry) as typeof first
-    const panel = injectedOf(seat('rightbar.session')) as SidebarRightInjected
-    const viewport = first.hooks.narrowViewport
-    expect(second.hooks.narrowViewport).toBe(viewport)
-    expect(panel.hooks.narrowViewport).toBe(viewport)
-    expect(viewport.getSnapshot()).toBe(false)
-    const listener = vi.fn(() => viewport.getSnapshot())
-    const unsubscribe = viewport.subscribe(listener)
-    try {
-      layout.frameWidth.set(767)
-      expect(viewport.getSnapshot()).toBe(true)
-      expect(listener).toHaveLastReturnedWith(true)
-      layout.frameWidth.set(768)
-      expect(viewport.getSnapshot()).toBe(false)
-      expect(listener).toHaveLastReturnedWith(false)
-      expect(listener).toHaveBeenCalledTimes(2)
-    } finally { unsubscribe() }
-    layout.frameWidth.set(767)
-    expect(listener).toHaveBeenCalledTimes(2)
-    expect(matchMedia).not.toHaveBeenCalled()
   })
 
   it('hands the panel seat the frame report, the room rule, the opens, the observable registry, and the Tab domain', async () => {
@@ -245,11 +213,11 @@ describe('ui-sidebar-right apply', () => {
     injected.measureRoom(() => true)
     injected.splitPane(surface.layout.activePaneId)
     expect(panes()).toHaveLength(2)
-    // Commands read the current frame width even before a seat renders it.
+    // The fullscreen command follows the automatic fullscreen rule the seats report.
     const layoutOf = () => instance.getSnapshot().bySession[SESSION]?.layout
     injected.toggleFullscreen()
     expect(layoutOf()?.mode).toBe('fullscreen')
-    layout.frameWidth.set(767)
+    injected.reportAutoFullscreen(true)
     injected.toggleFullscreen()
     expect(layoutOf()?.expanded).toBe(false)
     expect(layoutOf()?.mode).toBe('push')

@@ -72,8 +72,7 @@ function transition(property = 'transform') {
 async function mountSeat(viewportWidth = 1440, canShow = true, entryCount = 0, opener = false, keepMounted = false) {
   const runtime = await SlotTestRuntime.create()
   runtimes.push(runtime)
-  const frame = { openRightbar: vi.fn(), closeRightbar: vi.fn(), panelInfo: runtime.panelInfo,
-    frameWidth: createSnapshotStore(viewportWidth) }
+  const frame = { openRightbar: vi.fn(), closeRightbar: vi.fn(), panelInfo: runtime.panelInfo }
   const pin = vi.fn<(address: string, signal: AbortSignal) => void>()
   runtime.ctx.provide('layout', frame as never)
   runtime.ctx.provide('resources', { pin } as never)
@@ -149,12 +148,6 @@ async function mountSeat(viewportWidth = 1440, canShow = true, entryCount = 0, o
     runtime.slots.register({ name: 'sidebar.right.pane.tab.title', key: 'test/text' }, Title)
   })
   const view = runtime.renderSlot('rightbar', { width: 420, viewportWidth, canShow })
-  const updateFrame = (props: Parameters<typeof view.update>[0]): void => {
-    act(() => {
-      frame.frameWidth.set(props.viewportWidth)
-      view.update(props)
-    })
-  }
   const registerPage = (kind: string, multiple = false): void => {
     runtime.ctx.sidebarRightTabs.register({ id: `test/${kind}`, kind, multiple, title: () => kind })
     runtime.slots.register({ name: 'sidebar.right.pane.tab', key: `test/${kind}` }, Body)
@@ -173,7 +166,7 @@ async function mountSeat(viewportWidth = 1440, canShow = true, entryCount = 0, o
   }
   return {
     runtime, feature, controller, instance, actions: instance.actions, layout,
-    open, selectSession, frame, pin, bodies, titles, hooks, view, updateFrame, arm, opened, registerPage, catalog,
+    open, selectSession, frame, pin, bodies, titles, hooks, view, arm, opened, registerPage, catalog,
     openerView: () => openerView!,
   }
 }
@@ -681,7 +674,7 @@ describe('RightbarSeat presentation', () => {
     expect(h.frame.openRightbar).toHaveBeenLastCalledWith(false, true)
     const stored = h.instance.getSnapshot()
     const body = element(h.view.container, '[data-tab-body]')
-    h.updateFrame({ width: 420, viewportWidth: 768, canShow: true })
+    h.view.update({ width: 420, viewportWidth: 768, canShow: true })
     expect(h.instance.getSnapshot()).toBe(stored)
     expect(element(h.view.container, '[data-tab-body]')).toBe(body)
     expect(h.frame.openRightbar).toHaveBeenLastCalledWith(true, false)
@@ -695,7 +688,7 @@ describe('RightbarSeat presentation', () => {
     expect(h.layout().expanded).toBe(false)
     expect(h.layout().mode).toBe('push')
     const stored = h.instance.getSnapshot()
-    h.updateFrame({ width: 420, viewportWidth: 1440, canShow: true })
+    h.view.update({ width: 420, viewportWidth: 1440, canShow: true })
     expect(h.instance.getSnapshot()).toBe(stored)
     expect(h.layout().tabs[tab.id]).toBeDefined()
     expect(signal.aborted).toBe(false)
@@ -706,12 +699,12 @@ describe('RightbarSeat presentation', () => {
     const h = await mountSeat()
     h.open()
     // Narrowed below the automatic fullscreen width, the command closes the panel.
-    h.updateFrame({ width: 420, viewportWidth: 700, canShow: false })
+    h.view.update({ width: 420, viewportWidth: 700, canShow: false })
     fireEvent.click(element(h.view.container, '[data-sidebar-right-mode]'))
     expect(h.layout().expanded).toBe(false)
     expect(h.layout().mode).toBe('push')
     // Widened again, the command switches the recorded mode.
-    h.updateFrame({ width: 420, viewportWidth: 1440, canShow: true })
+    h.view.update({ width: 420, viewportWidth: 1440, canShow: true })
     act(() => { h.controller.toggleExpanded() })
     fireEvent.click(element(h.view.container, '[data-sidebar-right-mode]'))
     expect(h.layout().expanded).toBe(true)
@@ -723,9 +716,9 @@ describe('RightbarSeat presentation', () => {
     h.open()
     fireEvent.click(element(h.view.container, '[data-sidebar-right-mode]'))
     const stored = h.instance.getSnapshot()
-    h.updateFrame({ width: 420, viewportWidth: 500, canShow: false })
+    h.view.update({ width: 420, viewportWidth: 500, canShow: false })
     expect(h.frame.openRightbar).toHaveBeenLastCalledWith(false, true)
-    h.updateFrame({ width: 420, viewportWidth: 1440, canShow: true })
+    h.view.update({ width: 420, viewportWidth: 1440, canShow: true })
     expect(h.frame.openRightbar).toHaveBeenLastCalledWith(true, true)
     expect(h.instance.getSnapshot()).toBe(stored)
   })
@@ -734,12 +727,12 @@ describe('RightbarSeat presentation', () => {
     const h = await mountSeat()
     const tab = h.open()
     const signal = h.bodies.get(tab.id)!.tab.signal
-    h.updateFrame({ width: 420, viewportWidth: 900, canShow: false })
+    h.view.update({ width: 420, viewportWidth: 900, canShow: false })
     expect(h.layout().expanded).toBe(false)
     expect(h.layout().tabs[tab.id]).toBeDefined()
     expect(signal.aborted).toBe(false)
     const stored = h.instance.getSnapshot()
-    h.updateFrame({ width: 420, viewportWidth: 1440, canShow: true })
+    h.view.update({ width: 420, viewportWidth: 1440, canShow: true })
     expect(h.instance.getSnapshot()).toBe(stored)
     expect(h.layout().expanded).toBe(false)
   })
@@ -830,7 +823,7 @@ describe('RightbarSeat fullscreen entry', () => {
     const slide = transition()
     vi.spyOn(element(h.view.container, '[data-sidebar-right-panel]'), 'getAnimations').mockReturnValue([slide.animation])
     h.open()
-    h.updateFrame({ width: 420, viewportWidth: 500, canShow: false })
+    h.view.update({ width: 420, viewportWidth: 500, canShow: false })
     expect(h.frame.openRightbar).not.toHaveBeenCalled()
     await act(async () => { slide.finish(); await slide.animation.finished })
     expect(h.frame.openRightbar).toHaveBeenCalledExactlyOnceWith(false, true)

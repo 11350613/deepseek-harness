@@ -4,7 +4,7 @@
  * The frame owns the right column's geometry; this package owns one content
  * tree at the column width or spanning the viewport. A shown wide panel
  * retains its track in fullscreen, preserving the conversation width. Below
- * 768px fullscreen is derived from frame width, without changing manual mode.
+ * 768px fullscreen is derived from viewport width, without changing manual mode.
  *
  * Docked content stays mounted while collapsed, translated off the frame's right
  * edge, so opening and closing are one gesture in both presentations: a slide
@@ -18,7 +18,7 @@
  * and collapse — ride the docking kit's chrome seat at the end of the top-right
  * pane's tab strip, so the strip is the panel's whole top edge. The way back in
  * while collapsed is not here either: it is one button in the conversation
- * header (`ExpandButton.tsx`), where it is visible only while this panel is
+ * header (`ExpandButton.tsx`), because it exists only while this panel is
  * hidden. Floating panels remain in the same content tree; untransformed
  * ancestors let their fixed-position frames cross the column and conversation.
  *
@@ -89,6 +89,14 @@ export interface SidebarRightInjected {
    */
   readonly measureRoom: (canSplitPane: (paneId: PaneId) => boolean) => void
   /**
+   * Record whether the frame width this seat renders at presents an expanded panel fullscreen automatically.
+   *
+   * The fullscreen command reads the latest report: while it holds, the command
+   * closes the panel instead of switching its recorded mode.
+   * @param autoFullscreen - whether the frame is narrower than the automatic fullscreen width.
+   */
+  readonly reportAutoFullscreen: (autoFullscreen: boolean) => void
+  /**
    * The navigation face's `openTab`, for the strip's add control: a new tab is
    * the guide opened by kind, through the same path as every other open.
    */
@@ -103,8 +111,6 @@ export interface SidebarRightInjected {
     readonly contextMenuTarget: HostObservable<ContextMenuTarget | null>
     readonly shortcuts: HostObservable<readonly ShortcutCatalogEntry[]>
     readonly tabTypes: HostObservable<readonly SidebarRightTabDefinition[]>
-    /** Whether the measured frame requires an automatic fullscreen overlay. */
-    readonly narrowViewport: HostObservable<boolean>
     /** This Session's latest request to make the pane holding a revealed tab glow. */
     readonly flash: HostObservable<SidebarRightFlash | undefined>
   }
@@ -373,12 +379,13 @@ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<H
  * The right column's occupant: stable tab containers, docked or floating.
  * It is also where the frame learns the panel's presentation, because this is
  * the seat that knows it. `ctx.sidebarRight` names the on-screen Session
- * itself; this seat reports its presentation and the room its kit measured.
+ * itself; this seat reports only what it renders with: the room its kit
+ * measured and the automatic fullscreen rule of its frame width.
  */
 export function RightbarSeat({
-  sessionId, width, canShow, useStore, actions, t, renderSlot, syncPresentation, measureRoom,
+  sessionId, width, viewportWidth, canShow, useStore, actions, t, renderSlot, syncPresentation, measureRoom, reportAutoFullscreen,
   openTab, closeTab, useContextMenu, useContextMenuTarget, useTabTypes, useTabNavigation, occurrence, retainTab,
-  active, useShortcuts, splitPane, toggleFullscreen, useFlash, useNarrowViewport,
+  active, useShortcuts, splitPane, toggleFullscreen, useFlash,
 }: RightbarSeatProps): ReactNode {
   const { getTriggerProps } = useContextMenu()
   const getTabTriggerProps: PanelProps['getTabTriggerProps'] = (tab, paneId, handlers) =>
@@ -388,7 +395,7 @@ export function RightbarSeat({
   const shortcuts = useShortcuts(entries => entries)
   const surface = useStore(state => state.bySession[sessionId])
   const shown = active && surface !== undefined && surface.layout.expanded
-  const autoFullscreen = useNarrowViewport(value => value)
+  const autoFullscreen = viewportWidth < 768
   const fullscreen = autoFullscreen || surface?.layout.mode === 'fullscreen'
   const panelRef = useRef<HTMLDivElement | null>(null)
   // A reading never re-renders anything: the service applies it when it splits.
@@ -404,6 +411,9 @@ export function RightbarSeat({
   useLayoutEffect(() => {
     if (shown && !fullscreen && !canShow) actions.setExpanded(sessionId, false)
   }, [actions, sessionId, shown, fullscreen, canShow])
+
+  // Read only when the fullscreen command runs, after this commit has settled.
+  useLayoutEffect(() => { reportAutoFullscreen(autoFullscreen) }, [reportAutoFullscreen, autoFullscreen])
 
   // The open/close slide needs no pulse of its own: the shell's window drag
   // watcher (ui-web) measures the marked rows every frame the surface moves and
