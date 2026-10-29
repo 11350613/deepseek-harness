@@ -2155,7 +2155,7 @@ describe('built-in conversation node Definitions', () => {
       .map(candidate => candidate.data)).toEqual([{ text: 'A' }, { text: 'B', update: true }, { text: 'C' }])
   })
 
-  it('hides a shown prompt card while a prepended replacement makes its prompt unknown', () => {
+  it('hides a published prompt node while a prepended replacement makes its prompt unknown', () => {
     const value = assembler([systemAt(10, 'Shown')], true)
     const { key } = node(snapshot(value), 'system-prompt')!
     expect(snapshot(value).nodes.get(key)?.visibility).toBe('visible')

@@ -56,8 +56,8 @@ function stableRequestPromptAnchor(
  * their step's input; in-history updates stay at their own positions. The
  * request-prompt Definition owns replacement and later-series cards. Positional
  * replacements advance the effective prompt without changing historical cards.
- * A shown card hides while a prepended replacement leaves its prompt order unknown,
- * then shows again with the same key once older history resolves that order.
+ * A published node becomes `hidden` under the same key while a prepended replacement
+ * leaves its prompt order unknown, and `visible` again once older history resolves it.
  * @param inspect - Pure surface interpretation supplied by uiConversation.
  * @returns The Chat system-prompt Definition.
  */
