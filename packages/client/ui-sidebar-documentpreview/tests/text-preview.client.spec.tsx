@@ -99,7 +99,7 @@ class PendingIntersectionObserver {
 function codeProps(h: ReturnType<typeof harness>, navigation: { params?: unknown; revision: number }): TextPreviewProps {
   const props = h.props(navigation)
   const definition: DocumentPreviewDefinition = {
-    id: 'code', extensions: ['md'], title: () => 'Code', loading: 'text-pages', wrap: true,
+    id: 'code', extensions: ['md'], title: () => 'Code', loading: 'text-pages', wrap: true, sourceLines: true,
   }
   return {
     ...props,
@@ -492,36 +492,85 @@ describe('TextPreview — navigation and view', () => {
     expect(h.instance.getSnapshot().byTab[TAB_ID]?.scrollTop).toBe(360)
   })
 
-  it.each([
-    ['Code', 'code', 2 * LINE_HEIGHT],
-    ['Plain text', PLAIN_BODY_ID, 2 * LINE_HEIGHT],
-  ])('retries a Markdown line navigation after switching to %s', async (_name, rendererId, expectedScrollTop) => {
-    PendingIntersectionObserver.instances = []
-    vi.stubGlobal('IntersectionObserver', PendingIntersectionObserver)
-    const h = harness({ 1: page(1, ['a', 'b', 'c'], true) })
-    const definitions: DocumentPreviewDefinition[] = [
-      { id: 'markdown', extensions: ['md'], title: () => 'Markdown', loading: 'text-pages', wrap: false },
-      { id: 'code', extensions: ['md'], title: () => 'Code', loading: 'text-pages', wrap: true },
-      { id: PLAIN_BODY_ID, extensions: [], title: () => 'Plain text', loading: 'text-pages', wrap: true },
-    ]
-    const base = h.props({ params: { line: 3 }, revision: 1 })
-    const props: TextPreviewProps = {
+  const CODE_DEFINITION: DocumentPreviewDefinition = {
+    id: 'code', extensions: ['md'], title: () => 'Code', loading: 'text-pages', wrap: true, sourceLines: true,
+  }
+  const PLAIN_DEFINITION: DocumentPreviewDefinition = {
+    id: PLAIN_BODY_ID, extensions: [], title: () => 'Plain text', loading: 'text-pages', wrap: true, sourceLines: true,
+  }
+
+  /**
+   * Offer `definitions` for a Markdown file; plain text renders lines, Code renders lines unless `codeDrawsLines` is false,
+   * and every other renderer draws no source lines.
+   */
+  function rendererProps(
+    h: ReturnType<typeof harness>,
+    navigation: { params?: unknown; revision: number },
+    definitions: DocumentPreviewDefinition[],
+    codeDrawsLines: boolean,
+  ): TextPreviewProps {
+    const base = h.props(navigation)
+    return {
       ...base,
       useDocumentPreviews: selector => selector(definitions),
       renderSlot: documentSlots((_key, owner, opts) => {
         const documentOwner = owner as unknown as OwnerOf<'sidebar.right.tab.document'>
-        if (opts.entryKey === 'code') return <CodeBody {...base} {...documentOwner} t={key => key} />
+        if (opts.entryKey === 'code' && codeDrawsLines) return <CodeBody {...base} {...documentOwner} t={key => key} />
         if (opts.entryKey === PLAIN_BODY_ID) return <TextBody {...base} {...documentOwner} />
         return <div data-test-no-lines />
       }),
     }
+  }
+
+  /** A Markdown file that also offers Code and plain text; only the latter two expose source lines. */
+  function markdownProps(h: ReturnType<typeof harness>, navigation: { params?: unknown; revision: number }): TextPreviewProps {
+    const markdown: DocumentPreviewDefinition = { id: 'markdown', extensions: ['md'], title: () => 'Markdown', loading: 'text-pages', wrap: false }
+    return rendererProps(h, navigation, [markdown, CODE_DEFINITION, PLAIN_DEFINITION], true)
+  }
+
+  it.each([['Code', 'code'], ['Plain text', PLAIN_BODY_ID]])(
+    'answers a line navigation in Markdown without moving, and switching to %s does not jump later',
+    async (_name, rendererId) => {
+      PendingIntersectionObserver.instances = []
+      vi.stubGlobal('IntersectionObserver', PendingIntersectionObserver)
+      const h = harness({ 1: page(1, ['a', 'b', 'c'], true) })
+      const view = render(<TextPreview {...markdownProps(h, { params: { line: 3 }, revision: 1 })} />)
+      await settle()
+      expect(body(view.container).scrollTop).toBe(0)
+      expect(h.instance.getSnapshot().byTab[TAB_ID]?.revision).toBe(1)
+      act(() => { h.instance.actions.selected(TAB_ID, rendererId) })
+      await settle()
+      expect(scrollport(view.container).scrollTop).toBe(0)
+      expect(marks(view.container)).toEqual([])
+    },
+  )
+
+  it('restores the reading position of a Markdown tab opened at a line, on a remount and after a reload', async () => {
+    const h = harness({ 1: page(1, ['a', 'b', 'c'], true) })
+    const navigation = { params: { line: 3 }, revision: 1 }
+    const first = render(<TextPreview {...markdownProps(h, navigation)} />)
+    await settle()
+    fireEvent.scroll(body(first.container), { target: { scrollTop: 300 } })
+    first.unmount()
+    const second = render(<TextPreview {...markdownProps(h, navigation)} />)
+    await settle()
+    expect(body(second.container).scrollTop).toBe(300)
+    h.script(1, page(1, ['A', 'B', 'C'], true, 'v2'))
+    click(second.container, '[data-textpreview-tool="reload"]')
+    body(second.container).scrollTop = 0
+    await settle()
+    expect(body(second.container).scrollTop).toBe(300)
+  })
+
+  it('keeps a line navigation pending while a source-line renderer has not drawn the line', async () => {
+    const h = harness({ 1: page(1, ['a', 'b', 'c'], true) })
+    const props = rendererProps(h, { params: { line: 3 }, revision: 1 }, [CODE_DEFINITION, PLAIN_DEFINITION], false)
     const view = render(<TextPreview {...props} />)
     await settle()
-    expect(body(view.container).scrollTop).toBe(0)
     expect(h.instance.getSnapshot().byTab[TAB_ID]?.revision).toBeUndefined()
-    act(() => { h.instance.actions.selected(TAB_ID, rendererId) })
+    act(() => { h.instance.actions.selected(TAB_ID, PLAIN_BODY_ID) })
     await waitFor(() => { expect(h.instance.getSnapshot().byTab[TAB_ID]?.revision).toBe(1) })
-    expect(scrollport(view.container).scrollTop).toBe(expectedScrollTop)
+    expect(body(view.container).scrollTop).toBe(2 * LINE_HEIGHT)
   })
 
   it('lands on code lines before and after syntax highlighting is ready', async () => {
@@ -725,4 +774,80 @@ it('opens a path menu with the preview pane and requested line', async () => {
   expect(openFileMenu).toHaveBeenLastCalledWith({ kind: 'file', value: {
     sessionId: SESSION, path: ABSOLUTE_PATH, line: 42, paneId: 'pane-1',
   } }, { x: 0, y: 0 })
+})
+
+describe('TextPreview — reading position across reloads', () => {
+  const VIEW_HEIGHT = 100
+  const numbered = (from: number, count: number): string[] => Array.from({ length: count }, (_, i) => `l${from + i}`)
+
+  /** Lay the body out like a browser: one line height per line, offsets clamped to the content. */
+  function layOut(element: HTMLElement): void {
+    const max = (): number => Math.max(0, element.querySelectorAll('[data-textpreview-line]').length * LINE_HEIGHT - VIEW_HEIGHT)
+    let top = 0
+    Object.defineProperty(element, 'clientHeight', { configurable: true, get: () => VIEW_HEIGHT })
+    Object.defineProperty(element, 'scrollHeight', { configurable: true, get: () => max() + VIEW_HEIGHT })
+    Object.defineProperty(element, 'scrollTop', {
+      configurable: true,
+      get: () => { top = Math.min(top, max()); return top },
+      set: (value: number) => { top = Math.max(0, Math.min(value, max())) },
+    })
+  }
+
+  it('returns to an offset past the first page after a reload emptied the body', async () => {
+    const h = harness({ 1: page(1, numbered(1, 10), false), 11: page(11, numbered(11, 10), true) })
+    const view = render(<TextPreview {...h.props()} />)
+    await settle()
+    const scrolled = body(view.container)
+    layOut(scrolled)
+    click(view.container, '[data-textpreview-more]')
+    await settle()
+    fireEvent.scroll(scrolled, { target: { scrollTop: 300 } })
+    h.script(1, page(1, numbered(1, 10), false, 'v2'))
+    h.script(11, page(11, numbered(11, 10), true, 'v2'))
+    click(view.container, '[data-textpreview-tool="reload"]')
+    // The emptied body pins the browser's offset to 0 and reports it as a scroll.
+    expect(scrolled.scrollTop).toBe(0)
+    fireEvent.scroll(scrolled)
+    expect(h.instance.getSnapshot().byTab[TAB_ID]?.scrollTop).toBe(300)
+    await settle()
+    expect(h.read).toHaveBeenLastCalledWith(SESSION, PATH, 11, h.controller.signal)
+    expect(scrolled.scrollTop).toBe(300)
+  })
+
+  it('keeps the remembered offset while a shorter file holds the view at its end', async () => {
+    const h = harness({ 1: page(1, numbered(1, 20), true) })
+    const view = render(<TextPreview {...h.props()} />)
+    await settle()
+    const scrolled = body(view.container)
+    layOut(scrolled)
+    fireEvent.scroll(scrolled, { target: { scrollTop: 300 } })
+    h.script(1, page(1, numbered(1, 10), true, 'v2'))
+    h.setVersion('v2')
+    view.rerender(<TextPreview {...h.props()} />)
+    await settle()
+    fireEvent.scroll(scrolled)
+    expect(scrolled.scrollTop).toBe(100)
+    expect(h.instance.getSnapshot().byTab[TAB_ID]?.scrollTop).toBe(300)
+    h.script(1, page(1, numbered(1, 20), true, 'v3'))
+    h.setVersion('v3')
+    view.rerender(<TextPreview {...h.props()} />)
+    await settle()
+    expect(scrolled.scrollTop).toBe(300)
+  })
+
+  it('remembers where the reader scrolls up to, and the next reload keeps that place', async () => {
+    const h = harness({ 1: page(1, numbered(1, 20), true) })
+    const view = render(<TextPreview {...h.props()} />)
+    await settle()
+    const scrolled = body(view.container)
+    layOut(scrolled)
+    fireEvent.scroll(scrolled, { target: { scrollTop: 300 } })
+    fireEvent.scroll(scrolled, { target: { scrollTop: 120 } })
+    expect(h.instance.getSnapshot().byTab[TAB_ID]?.scrollTop).toBe(120)
+    h.script(1, page(1, numbered(1, 20), true, 'v2'))
+    click(view.container, '[data-textpreview-tool="reload"]')
+    fireEvent.scroll(scrolled)
+    await settle()
+    expect(scrolled.scrollTop).toBe(120)
+  })
 })
