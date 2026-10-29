@@ -20,25 +20,23 @@ A pane's records follow the tabs whose navigator last drew there, using each tab
 
 Directory watches follow visible drawings rather than retained records. Hidden trees hold no Host directory watch; showing them again refreshes the root and expanded directories while retaining rows. A same-pane tab switch keeps the listing and watches across the replacement drawing. This extends the [directory watch lifetimes](../feature/2026-09-17-sidebar-file-and-directory-auto-refresh.md) from one tab to the pane's drawn tree.
 
-The files face owns ancestor reveal, scrolling, row measurement, and focus across drawings. Keyboard focus follows the current file's row when another tab replaces the focused tree in the same pane; a reveal in another pane leaves the initiating tree unchanged. The workspace command shows a registered navigator beside a docked tab, or opens the always-visible files page. [The navigator reference](../../../../packages/client/ui-sidebar-files/README.md#the-navigator) owns the layout thresholds and keyboard rules.
+The files face owns ancestor reveal, scrolling, row measurement, and focus across drawings, so replacing a drawing does not discard an ongoing interaction. [The navigator reference](../../../../packages/client/ui-sidebar-files/README.md#the-navigator) owns layout, workspace-command, and keyboard rules.
 
 ### The rows are a controlled Component Factory over flat entries
 
-The root-scoped `sidebar.files.tree` Factory keeps reusable rows, its local `accessory` slot, and localized copy with the files plugin. Callers own data access, expansion, opening, and reveal. The workspace navigator adapts its pane's directory states to these inputs; it does not enable the reusable Factory's optional new-tab menu. Other callers may enable that menu through `newTab` and receive `TreeOpenOptions`.
+The root-scoped `sidebar.files.tree` Factory keeps reusable rows, its local `accessory` slot, and localized copy with the files plugin. Callers own data access, expansion, opening, and reveal. The workspace navigator adapts its pane's directory states to these inputs.
 
 ### The plugin that mounts the tree decides where a file lands
 
 `FileNavigatorInput.onOpen(address)` is the containing plugin's callback. The navigator constructs the file address but neither chooses placement nor closes the initiating tree after the call. Its `page` input controls layout only. A callback keeps the same navigator usable for the files page and document previews without teaching its rows either host's opening policy.
 
-- The preview callback uses `tab.actions.openResource(address, { replaceTab: true })`. New content takes the preview's docked strip slot or floating panel, retaining the pane id, rectangle, and stacking order. Floating replacement does not expand the dock; focus raises the panel normally.
-- The files page callback uses `{ paneId: panel.id }` while docked and omits placement while floating. The page remains open; new content lands in that docked pane or the active docked pane. An empty dock expands its existing root pane without a split. The destination uses its own tree preference.
-- Existing content is revealed without closing the initiating tab. `replaceTab` controls new-content placement, not reveal cleanup. A page is deduplicated only in its target pane. A guide that must disappear after a reveal calls `close()` explicitly after opening; those two actions can produce two history entries.
+The [preview and files-page callbacks](../../../../packages/client/ui-sidebar-files/README.md#the-navigator) express different lifetimes: the preview gives way to new content, while the files page remains a directory browser. [Right Sidebar placement](../../../../packages/client/ui-sidebar-right/README.md#ctxsidebarright) owns replacement and reveal; the navigator does not duplicate those policies.
 
 ### Navigation is consumed by the destination tab
 
 The files face follows the existing navigation observable only for tabs attached to its navigator. It retains each tab's consumed revision independently of the drawing and releases that subscription on tab closure or plugin disposal. It does not require a layout inventory, navigation-origin field, or an opening result from the right Sidebar.
 
-A newer navigation revision closes the destination preview's tree only when that tree covers the content row. The face waits for the destination drawing and measures its current row rather than using the previous tab's width. Every navigation source follows the same rule, including a floating preview opening its own file. Hidden trees consume revisions too, so a later manual show does not replay a previous close. Ordinary tab switches, remounts after floating or docking, and revision `0` after reload or undo do not count as new navigation. The files page remains visible regardless of revision.
+The face waits for the destination drawing and measures its current row, so the previous tab's width cannot decide whether content is covered. It consumes navigation even while hidden to prevent a later manual show from replaying an old close. [The navigator reference](../../../../packages/client/ui-sidebar-files/README.md#the-navigator) defines the navigation sources and revision exclusions.
 
 ### Each package works without the others
 
@@ -66,11 +64,11 @@ The packages compose through the right Sidebar's tab information, the files Fact
 
 Tab remounts do not own or reset the pane's tree. Moving a tab selects the destination's state rather than copying the source's; hiding releases directory watches without deleting expansion and scroll. Navigation consumption is per tab, while display preferences remain per pane, so an open in another pane does not close the source tree.
 
-The files page retains directory reload and directory-action controls; a preview retains its file controls and handoff. A preview's picker replaces new content in place, while the files page opens ordinary docked tabs. The workspace picker exposes one open action; other consumers retain the generic tree Factory's new-tab option.
+The files page retains directory reload and directory-action controls; a preview retains its file controls and handoff. Opening policy remains with those hosts, not the reusable rows.
 
 ## Verification
 
 - `packages/client/ui-sidebar-right/tests/tab-info.client.spec.tsx`, `service.client.spec.ts`, and `seat.client.spec.tsx` cover live pane information, replacement, reveal, and framework tab hooks.
 - `packages/client/ui-sidebar-files/tests/` covers per-pane state, navigation consumption, drawing lifetimes, workspace roots, and file opening callbacks.
-- `packages/client/ui-sidebar-files/tests/file-tree.client.spec.tsx`, `file-tree-interactions.client.spec.tsx`, and `file-tree-factory.client.spec.tsx` cover generic rows, optional menus, local accessories, and real Factory composition with locale and fallback.
+- `packages/client/ui-sidebar-files/tests/file-tree.client.spec.tsx`, `file-tree-interactions.client.spec.tsx`, and `file-tree-factory.client.spec.tsx` cover generic rows, independent accessories, and real Factory composition with locale and fallback.
 - `apps/web/tests/file-browser.e2e.ts` and `apps/web/tests/file-browser-composition.e2e.ts` own browser evidence; the latter disables each of `ui-sidebar-documentpreview` and `ui-sidebar-files` in the shipped Web composition.

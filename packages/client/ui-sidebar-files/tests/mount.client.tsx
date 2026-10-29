@@ -81,7 +81,9 @@ export interface Mounted {
   /** The tab's address and the pane's presentation, read on every render. */
   readonly placement: Placement
   /** The width the navigator's row reports. */
-  readonly row: { width: number }
+  readonly row: ReturnType<typeof measureRows>['row']
+  /** The fullscreen media query, notified independently of row measurements. */
+  readonly viewport: ReturnType<typeof measureRows>['viewport']
   /** Whether a navigator that can draw a tree has the face placed beside a tab's content. */
   readonly beside: (tabId: TabId) => boolean
   /** Render again in place, after changing `placement` or `row`. */
@@ -170,15 +172,48 @@ function harness(placement: Placement, controller: AbortController) {
 /**
  * Report the spec's row width for the rows a navigator measures: the
  * preview's row this harness draws, and the files page's content row.
- * @param row - the width to report.
+ * @param recordObservers - capture navigator notifications; page specs may provide their own observers.
+ * @returns independently controlled row measurements and fullscreen media changes.
  */
-function measureRows(row: { width: number }): void {
+function measureRows(recordObservers: boolean) {
+  const callbacks = new Set<() => void>()
+  class RecordingResizeObserver implements ResizeObserver {
+    private readonly report: () => void
+    constructor(callback: ResizeObserverCallback) {
+      this.report = () => { callback([], this) }
+      callbacks.add(this.report)
+    }
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void { callbacks.delete(this.report) }
+  }
+  const row = {
+    width: 900,
+    observers: callbacks,
+    report(width: number): void {
+      row.width = width
+      for (const callback of callbacks) callback()
+    },
+  }
+  const viewport = Object.assign(new EventTarget(), {
+    matches: false,
+    report(matches: boolean): void {
+      viewport.matches = matches
+      viewport.dispatchEvent(new Event('change'))
+    },
+  })
+  if (recordObservers) {
+    vi.stubGlobal('ResizeObserver', RecordingResizeObserver)
+    vi.stubGlobal('matchMedia', () => viewport)
+    onTestFinished(() => { vi.unstubAllGlobals() })
+  }
   // jsdom lays nothing out, so every other box is empty as it would be anyway.
   const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const width = this.matches('[data-test-row], [data-files-content]') ? row.width : 0
     return { x: 0, y: 0, top: 0, left: 0, bottom: 0, right: width, width, height: 0, toJSON: () => ({}) }
   })
   onTestFinished(() => { spy.mockRestore() })
+  return { row, viewport }
 }
 
 function unusedFrameworkProp(): never {
@@ -242,21 +277,22 @@ function bodyProps(shared: object): FilesBodyProps {
  * Mount one drawing and wire its rerender and remount.
  * @param placement - the tab's address, the pane's presentation, and the session's working directory.
  * @param draw - the drawing over the shared props.
+ * @param recordObservers - capture navigator measurement notifications.
  * @returns the mounted hands.
  */
 function mount(
   given: Omit<Placement, 'tabId' | 'signal'>,
   draw: (shared: ReturnType<typeof harness>['shared']) => ReactNode,
+  recordObservers = false,
 ): Mounted {
   const controller = new AbortController()
   const placement: Placement = { ...given, tabId: TAB, signal: controller.signal }
   const { shared, ...hands } = harness(placement, controller)
-  const row = { width: 900 }
-  measureRows(row)
+  const { row, viewport } = measureRows(recordObservers)
   const element = (): ReactNode => <div data-test-row>{draw(shared)}</div>
   const view = render(element())
   return {
-    ...hands, shared, view, placement, row,
+    ...hands, shared, view, placement, row, viewport,
     rerender: () => { view.rerender(element()) },
     remount: () => render(element()),
   }
@@ -294,5 +330,5 @@ export function mountNavigator(contentId: string, placement: Partial<Placement> 
         <FileNavigator {...factoryProps(shared)} page={false} />
       </div>
     </>
-  ))
+  ), true)
 }

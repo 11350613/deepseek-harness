@@ -20,25 +20,23 @@ Status: implemented
 
 目录监听跟随可见的绘制，而不是保留的记录。隐藏的目录树不持有 Host 目录监听；再次显示时保留行并刷新根目录与已展开目录。同一分栏内切换 tab 时，替代绘制之间保留目录列表与监听。这把[目录监听生命周期](../feature/2026-09-17-sidebar-file-and-directory-auto-refresh.zh.md)从单个 tab 扩展为分栏中已绘制的目录树。
 
-files face 负责跨绘制的祖先定位、滚动、行宽测量与焦点。另一 tab 在同一分栏内替代持有焦点的目录树时，键盘焦点跟随当前文件所在行；揭示另一分栏时，发起侧目录树保持不变。工作区命令显示已登记在停靠 tab 旁的导航栏，否则打开始终可见的文件页。[导航栏参考](../../../../packages/client/ui-sidebar-files/README.zh.md#the-navigator)定义布局阈值与键盘规则。
+files face 负责跨绘制的祖先定位、滚动、行宽测量与焦点，因此替换绘制不会丢弃进行中的交互。[导航栏参考](../../../../packages/client/ui-sidebar-files/README.zh.md#the-navigator)定义布局、工作区命令与键盘规则。
 
 ### 各行是以扁平条目为输入的受控 Component Factory
 
-root 作用域的 `sidebar.files.tree` Factory 将可复用的行、局部 `accessory` slot 和本地化文案留在 files 插件。调用方负责数据访问、展开、打开与定位。工作区导航栏把分栏的目录状态转换为这些输入，不启用可复用 Factory 的可选新 tab 菜单。其他调用方仍可通过 `newTab` 启用该菜单，并接收 `TreeOpenOptions`。
+root 作用域的 `sidebar.files.tree` Factory 将可复用的行、局部 `accessory` slot 和本地化文案留在 files 插件。调用方负责数据访问、展开、打开与定位。工作区导航栏把分栏的目录状态转换为这些输入。
 
 ### 挂载目录树的插件决定文件落在哪里
 
 `FileNavigatorInput.onOpen(address)` 是容纳导航栏的插件提供的回调。导航栏构造文件地址，但不选择落位，也不在调用后关闭发起侧目录树。`page` 输入只控制布局。回调使同一导航栏能同时用于文件页与文档预览，不必让各行知道这两种宿主的打开策略。
 
-- 预览回调使用 `tab.actions.openResource(address, { replaceTab: true })`。新内容占据预览在停靠 tab 条上的位置或其浮窗，保留 pane id、矩形与叠放顺序。浮动替换不展开停靠区；聚焦按普通规则将浮窗提到最上层。
-- 文件页回调在停靠时传入 `{ paneId: panel.id }`，浮动时省略落位。文件页保持打开，新内容落在该停靠分栏或活动停靠分栏。停靠区为空时展开已有根分栏，不执行分栏。目标使用自己的目录树偏好。
-- 已有内容被揭示，不关闭发起的 tab。`replaceTab` 控制新内容落位，不负责揭示后的清理。页只在目标分栏内去重。揭示后必须消失的引导页在打开之后显式调用 `close()`；这两个动作可能产生两条历史。
+[预览与文件页的回调](../../../../packages/client/ui-sidebar-files/README.zh.md#the-navigator)表达不同的生命周期：预览让位给新内容，文件页则保持为目录浏览器。[右侧 Sidebar 落位](../../../../packages/client/ui-sidebar-right/README.zh.md#ctxsidebarright)负责替换与揭示，导航栏不重复这些策略。
 
 ### 导航由目标 tab 消费
 
 files face 仅跟随已关联到其导航栏的 tab 的现有导航可观察值。它独立于绘制保留各 tab 已消费的 revision，并在 tab 关闭或插件卸载时释放订阅。它不需要右侧 Sidebar 提供布局清单、导航来源字段或打开结果。
 
-更新的导航 revision 只在目标预览的目录树遮盖内容行时关闭它。face 等待目标绘制并测量其当前行宽，不使用上一个 tab 的宽度。任何导航来源都遵循同一规则，包括浮动预览打开自己的文件。隐藏的目录树也消费 revision，因此之后手动显示不会重放先前的关闭操作。普通 tab 切换、浮出或停靠后的重新挂载，以及刷新或 undo 后的 revision `0` 都不算新导航。文件页不受 revision 影响，始终可见。
+face 等待目标绘制并测量其当前行宽，因此上一个 tab 的宽度不能决定内容是否被覆盖。隐藏期间也消费导航，防止之后手动显示时重放旧的关闭操作。[导航栏参考](../../../../packages/client/ui-sidebar-files/README.zh.md#the-navigator)定义导航来源与 revision 排除规则。
 
 ### 每个包都可以单独工作
 
@@ -66,11 +64,11 @@ files face 仅跟随已关联到其导航栏的 tab 的现有导航可观察值�
 
 tab 重新挂载不拥有也不重置分栏目录树。移动 tab 时选择目标状态，不复制源状态；隐藏释放目录监听，但不删除展开与滚动状态。导航消费按 tab 保存，显示偏好仍按分栏保存，因此在另一分栏打开内容不会关闭源目录树。
 
-文件页保留目录重新读取与目录操作控件；预览保留文件控件与交接操作。预览的选择器原位替换新内容，文件页则打开普通停靠 tab。工作区选择器只提供一个打开动作；其他消费方保留通用目录树 Factory 的新 tab 选项。
+文件页保留目录重新读取与目录操作控件；预览保留文件控件与交接操作。打开策略由这些宿主拥有，不属于可复用的行。
 
 ## 验证
 
 - `packages/client/ui-sidebar-right/tests/tab-info.client.spec.tsx`、`service.client.spec.ts` 与 `seat.client.spec.tsx` 覆盖实时分栏信息、原位替换、揭示与框架 tab hook。
 - `packages/client/ui-sidebar-files/tests/` 覆盖逐分栏状态、导航消费、绘制生命周期、工作区根目录与文件打开回调。
-- `packages/client/ui-sidebar-files/tests/file-tree.client.spec.tsx`、`file-tree-interactions.client.spec.tsx` 与 `file-tree-factory.client.spec.tsx` 覆盖通用行、可选菜单、局部附件，以及带 locale 和 fallback 的真实 Factory 组合。
+- `packages/client/ui-sidebar-files/tests/file-tree.client.spec.tsx`、`file-tree-interactions.client.spec.tsx` 与 `file-tree-factory.client.spec.tsx` 覆盖通用行、独立附件，以及带 locale 和 fallback 的真实 Factory 组合。
 - `apps/web/tests/file-browser.e2e.ts` 与 `apps/web/tests/file-browser-composition.e2e.ts` 负责浏览器验证；后者在随包发布的 Web 组合中分别禁用 `ui-sidebar-documentpreview` 与 `ui-sidebar-files`。

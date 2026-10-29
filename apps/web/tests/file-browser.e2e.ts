@@ -125,6 +125,30 @@ it('browses workspace files in tabs that share one pane tree', async () => {
   await toggle.click()
   await expect.poll(() => toggle.getAttribute('aria-expanded')).toBe('true')
   await expect.poll(() => current.textContent()).toBe('a.txt')
+  // Picking the open file again while its glow plays restarts the glow, which then lasts its whole 600ms animation.
+  const openFile = navigator.getByRole('button', { name: 'a.txt', exact: true })
+  await openFile.click()
+  // A glow replaced before it starts is dropped without a cancellation, so the repeat waits until the first one plays.
+  await expect.poll(() => flash.evaluate(pane => pane.getAnimations({ subtree: true })
+    .some(glow => Number(glow.currentTime) > 100))).toBe(true)
+  const first = await flash.getAttribute('data-sidebar-right-flash')
+  const repeat = await openFile.evaluate((button) => {
+    const pane = button.closest<HTMLElement>('[data-sidebar-right-flash]')
+    if (pane === null) throw new Error('the open file is outside the glowing pane')
+    const since = performance.now()
+    return new Promise<{ mark: string | undefined; lasted: number }>((resolve) => {
+      let mark: string | undefined
+      new MutationObserver((_, observer) => {
+        mark = pane.dataset.sidebarRightFlash ?? mark
+        if (pane.dataset.sidebarRightFlash !== undefined) return
+        observer.disconnect()
+        resolve({ mark, lasted: performance.now() - since })
+      }).observe(pane, { attributes: true, attributeFilter: ['data-sidebar-right-flash'] })
+      ;(button as HTMLElement).click()
+    })
+  })
+  expect(repeat.mark).toBe(first === 'odd' ? 'even' : 'odd')
+  expect(repeat.lasted).toBeGreaterThan(450)
 
   // In a wide row the tree is a card beside the preview: the body narrows by the card and its 8px margins, and still scrolls.
   await column.locator('[data-files-navigator-mode="push"]:visible').waitFor()

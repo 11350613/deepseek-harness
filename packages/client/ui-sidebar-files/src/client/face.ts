@@ -194,7 +194,10 @@ export interface FilesInjected {
    * closes the navigator on Escape in that row. When a new width leaves the
    * focused resize edge removed or hidden, the tree takes keyboard focus.
    * When a closable navigator starts filling the row, including its first
-   * drawing, focus in the covered content moves to the tree without closing it.
+   * drawing, focus in the covered content moves to the tree without closing it;
+   * so does focus that hiding the covered content left on the document body,
+   * unless the reader moved the keyboard or pointer or the window lost focus
+   * before the width was reported.
    * @param paneId - the pane being drawn.
    * @param navigator - the navigator element, or `null` once it is removed.
    * @param closable - whether Escape closes this drawing; the `files` page's tree stays shown.
@@ -682,18 +685,35 @@ export function filesFace(
         }
         const viewport = closable && typeof matchMedia === 'function' ? matchMedia(FULLSCREEN_QUERY) : undefined
         let filling = false
+        const hidden = (element: Element): boolean => getComputedStyle(element).visibility === 'hidden'
+        // Covered content that a fill's `visibility: hidden` blurred to nowhere,
+        // until the next measurement or until the reader moves the keyboard or
+        // the pointer, or the window loses focus. The browser may blur it in a
+        // task before the observer or the media query reports the fill.
+        let covered: Element | undefined
+        const release = (event: FocusEvent): void => {
+          const target = event.target
+          covered = event.relatedTarget === null && target instanceof Element && !navigator.contains(target) && hidden(target)
+            ? target
+            : undefined
+        }
+        const forget = (): void => { covered = undefined }
         const measure = (): void => {
           // Layout can blur content that the fullscreen stylesheet hides.
           const active = document.activeElement
+          const blurred = covered
+          covered = undefined
           const width = row.getBoundingClientRect().width
           const fills = closable && (width < FILL_BELOW || viewport?.matches === true)
           const entering = fills && !filling
           filling = fills
           pane.width.set(width)
           answerDrawn(pane)
+          const inContent = active !== null && row.contains(active) && !navigator.contains(active)
+          const blurredByFill = blurred !== undefined && (active === null || active === document.body)
+            && row.contains(blurred) && hidden(blurred)
           if (entering && store.getSnapshot().byPane[paneId]?.open === true
-            && active !== null && row.contains(active) && !navigator.contains(active)
-            && pane.focus === undefined) focusTree(pane)
+            && (inContent || blurredByFill) && pane.focus === undefined) focusTree(pane)
           // React removes the edge in the commit it flushes in a microtask
           // queued before this one, so the check sees the new drawing.
           if (edge !== undefined) queueMicrotask(handOff)
@@ -711,13 +731,23 @@ export function filesFace(
         const observer = new ResizeObserver(measure)
         observer.observe(row)
         viewport?.addEventListener('change', measure)
-        if (closable) document.addEventListener('keydown', close)
+        if (closable) {
+          document.addEventListener('keydown', close)
+          row.addEventListener('focusout', release)
+          document.addEventListener('focusin', forget, true)
+          document.addEventListener('pointerdown', forget, true)
+          window.addEventListener('blur', forget)
+        }
         navigator.addEventListener('focusin', focusin)
         navigator.addEventListener('focusout', focusout)
         pane.unobserve = () => {
           observer.disconnect()
           viewport?.removeEventListener('change', measure)
           document.removeEventListener('keydown', close)
+          row.removeEventListener('focusout', release)
+          document.removeEventListener('focusin', forget, true)
+          document.removeEventListener('pointerdown', forget, true)
+          window.removeEventListener('blur', forget)
           navigator.removeEventListener('focusin', focusin)
           navigator.removeEventListener('focusout', focusout)
         }

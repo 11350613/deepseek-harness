@@ -9,80 +9,12 @@
  * complete until the tab knows how it was navigated to.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { LayoutState, PaneId, TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
+import type { PaneId, TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { dockPaneIds, findTabPane, getPane } from '@deepseek-ai/dsh-client-ui-dockkit'
-import { createSidebarRightController } from '../src/client/service.ts'
 import type { SidebarRightCloseHandler } from '../src/client/service.ts'
-import { SidebarRightTabRegistry } from '../src/client/tab-registry.ts'
 import { createSidebarRightStore } from '../src/client/stores.ts'
-import { guideDefinition } from '../src/client/tabs/guide/definition.ts'
-
-// The params map is empty in this package; a test-only scheme lets specs hand
-// parameters through the typed `open`/`navigate` faces.
-declare module '../src/client/contract/params.ts' {
-  interface SidebarRightResourceParamsMap {
-    test: { line?: number; x?: number }
-  }
-}
-
-const SESSION = 's-test' as SessionId
-
-/** Key-echoing translate: this file asserts behaviour, not copy. */
-const t = ((key: string) => key) as Parameters<typeof guideDefinition>[0]
-
-/** A controller over a real registry and a real store, adopted as the runtime mints it. */
-function harness() {
-  const ctx = new Context()
-  const tabs = new SidebarRightTabRegistry(ctx)
-  tabs.register(guideDefinition(t))
-  // A type claiming `file:` addresses, standing in for whatever package owns
-  // them: this service's contract is that SOME registered type claims, not that
-  // a particular one does.
-  tabs.register({
-    id: 'test/text',
-    kind: 'text',
-    patterns: ['dsh-resource://file/**'],
-    priority: 'fallback',
-    title: address => address.slice(address.lastIndexOf('/') + 1),
-  })
-  const pin = vi.fn<(address: string, signal: AbortSignal) => void>()
-  const { controller, adopt, show, measure } = createSidebarRightController(tabs, pin, {
-    autoFullscreen: () => false,
-    openWithFocus: (_sessionId, open) => { open() },
-    closeWithFocus: (_sessionId, _paneId, close) => { close() },
-  })
-  const instance = createSidebarRightStore(() => ({ kind: 'guide', title: 'seed' })).create()
-  // The runtime mints the Session's store before any seat renders, and the plugin adopts it.
-  const unadopt = adopt(SESSION, instance)
-  const layout = (): LayoutState => {
-    const surface = instance.getSnapshot().bySession[SESSION]
-    if (surface === undefined) throw new Error('expected a surface')
-    return surface.layout
-  }
-  /** The room rule's verdict the seat would report; a spec flips it to model a narrow pane. */
-  const room = { allowed: true }
-  /** Put the Session on screen the way the plugin does from the selection, with the room rule its seat reports. */
-  const publish = (): (() => void) => {
-    show(SESSION)
-    measure(SESSION, () => room.allowed)
-    return () => { show(undefined) }
-  }
-  const titles = (): string[] => {
-    const surface = instance.getSnapshot().bySession[SESSION]
-    return surface === undefined ? [] : Object.values(surface.layout.tabs).map(tab => tab.title)
-  }
-  const tabOf = (title: string): TabId => {
-    const found = Object.values(layout().tabs).find(tab => tab.title === title)
-    if (found === undefined) throw new Error(`expected a tab titled ${title}`)
-    return found.id
-  }
-  const entries = (): number => instance.getSnapshot().bySession[SESSION]?.history.entries.length ?? 0
-  // A surface starts empty; expanding seeds the default guide ('seed').
-  const expand = (): void => { instance.actions.setExpanded(SESSION, true) }
-  return { controller, adopt, unadopt, show, measure, tabs, instance, pin, publish, titles, tabOf, layout, entries, room, expand }
-}
+import { controllerHarness as harness, SESSION } from './controller-harness.client.ts'
 
 describe('SidebarRightController — opening', () => {
   it('keeps independently opened instances distinct when they return to the same pane', () => {
@@ -608,6 +540,46 @@ describe('SidebarRightController — layout operations', () => {
     controller.dock('pane-nowhere' as PaneId)
     expect(entries()).toBe(before)
   })
+
+  it('expands a collapsed column in the one entry that docks a panel, beside docked tabs or into an empty column', () => {
+    const { controller, instance, publish, layout, tabOf, titles, entries } = harness()
+    publish()
+    controller.openResource('dsh-resource://file/session/s-test/a.txt')
+    controller.openResource('dsh-resource://file/session/s-test/b.txt')
+    controller.float(tabOf('b.txt'))
+    controller.toggleExpanded()
+    expect(layout().expanded).toBe(false)
+    const floated = tabOf('b.txt')
+    const record = layout().tabs[floated]
+    const [float] = layout().floats
+    if (float === undefined) throw new Error('expected a float')
+    let before = entries()
+    instance.actions.unfloatPane(SESSION, float)
+    expect(layout().expanded).toBe(true)
+    expect(entries()).toBe(before + 1)
+    const pane = findTabPane(layout(), floated)
+    expect(pane.host).toBe('dock')
+    expect(pane.tabs).toEqual([tabOf('a.txt'), floated])
+    expect(pane.activeTabId).toBe(floated)
+    expect(layout().tabs[floated]).toBe(record)
+
+    // A collapsed column whose docked pane is empty shows only the docked tab, with no seeded page.
+    controller.close(tabOf('a.txt'))
+    controller.toggleExpanded()
+    controller.float(floated)
+    expect(layout().expanded).toBe(false)
+    const [empty] = dockPaneIds(layout())
+    if (empty === undefined) throw new Error('expected the docked pane')
+    expect(getPane(layout(), empty).tabs).toEqual([])
+    const [again] = layout().floats
+    if (again === undefined) throw new Error('expected a float')
+    before = entries()
+    controller.dock(again)
+    expect(layout().expanded).toBe(true)
+    expect(entries()).toBe(before + 1)
+    expect(findTabPane(layout(), floated).tabs).toEqual([floated])
+    expect(titles()).toEqual(['b.txt'])
+  })
 })
 
 describe('SidebarRightController — a tab\'s own actions', () => {
@@ -971,6 +943,11 @@ describe('SidebarRightController — flashing a reveal', () => {
     expect(h.controller.flashOf(SESSION)).toBe(flashes)
     h.controller.openResource('dsh-resource://file/session/s-test/b.txt')
     expect(flashes.getSnapshot()?.serial).toBe(2)
+    // Forgetting the Session releases its source; the next one starts with no request.
+    h.forget(SESSION)
+    const next = h.controller.flashOf(SESSION)
+    expect(next).not.toBe(flashes)
+    expect(next.getSnapshot()).toBeUndefined()
   })
 })
 

@@ -208,10 +208,7 @@ describe('FileNavigator beside a preview', () => {
     const h = mountNavigator(A)
     h.row.width = width
     await revealSrc(h)
-    if (fullscreen) {
-      vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
-      onTestFinished(() => { vi.unstubAllGlobals() })
-    }
+    if (fullscreen) act(() => { h.viewport.report(true) })
     const file = within(h.view.container.querySelector<HTMLElement>(`[data-files-path="${ROOT}/src/b.ts"]`)!).getByRole('button', { name: 'b.ts' })
     file.focus()
     fireEvent.click(file)
@@ -282,19 +279,9 @@ describe('FileNavigator beside a preview', () => {
   })
 
   it.each(['row', 'viewport'] as const)('hands covered content focus to the open tree only when the %s starts filling', async (source) => {
-    const callbacks = new Set<ResizeObserverCallback>()
-    class CapturingResizeObserver {
-      constructor(private readonly callback: ResizeObserverCallback) { callbacks.add(callback) }
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void { callbacks.delete(this.callback) }
-    }
-    const viewport = Object.assign(new EventTarget(), { matches: false })
-    const removed = vi.spyOn(viewport, 'removeEventListener')
-    vi.stubGlobal('ResizeObserver', CapturingResizeObserver)
-    vi.stubGlobal('matchMedia', () => viewport)
-    onTestFinished(() => { vi.unstubAllGlobals() })
     const h = mountNavigator(A)
+    const removed = vi.spyOn(h.viewport, 'removeEventListener')
+    onTestFinished(() => { removed.mockRestore() })
     await revealSrc(h)
     const row = h.view.container.querySelector('[data-test-row]')!
     const content = document.createElement('div')
@@ -305,11 +292,9 @@ describe('FileNavigator beside a preview', () => {
     const resize = async (fills: boolean): Promise<void> => {
       act(() => {
         if (source === 'row') {
-          h.row.width = fills ? 399 : 900
-          for (const callback of callbacks) callback([], {} as ResizeObserver)
+          h.row.report(fills ? 399 : 900)
         } else {
-          viewport.matches = fills
-          viewport.dispatchEvent(new Event('change'))
+          h.viewport.report(fills)
         }
       })
       await endTask()
@@ -346,7 +331,134 @@ describe('FileNavigator beside a preview', () => {
     }
     h.view.unmount()
     expect(removed).toHaveBeenCalledWith('change', expect.any(Function))
-    expect(callbacks.size).toBe(0)
+    expect(h.row.observers.size).toBe(0)
+  })
+
+  it.each(['row', 'viewport'] as const)('hands covered content that the fill blurred before the %s reported it to the open tree, and nothing the reader moved since', async (source) => {
+    const h = mountNavigator(A)
+    await revealSrc(h)
+    const row = h.view.container.querySelector('[data-test-row]')!
+    const content = document.createElement('div')
+    const button = document.createElement('button')
+    const frame = document.createElement('iframe')
+    content.append(button, frame)
+    row.prepend(content)
+    const outside = document.createElement('button')
+    document.body.append(outside)
+    onTestFinished(() => { outside.remove() })
+    const report = (fills: boolean): void => {
+      if (source === 'row') {
+        h.row.report(fills ? 399 : 900)
+      } else {
+        h.viewport.report(fills)
+      }
+    }
+    const resize = async (fills: boolean): Promise<void> => {
+      act(() => { report(fills) })
+      await endTask()
+    }
+    // The browser applies the fill's `visibility: hidden` and blurs the focused
+    // content, which leaves the keyboard on the body, before the observer or
+    // the media query reports the new width. jsdom applies neither, so the
+    // spec does both in that order.
+    const coverAndBlur = (focus: HTMLElement): void => {
+      act(() => { focus.focus() })
+      content.style.visibility = 'hidden'
+      act(() => { focus.blur() })
+      expect(document.activeElement).toBe(document.body)
+    }
+    const uncover = async (): Promise<void> => {
+      content.style.visibility = ''
+      await resize(false)
+    }
+    const navigator = h.view.container.querySelector<HTMLElement>('[data-files-navigator]')!
+    const current = navigator.querySelector<HTMLElement>('[aria-current="true"]')!
+    const focused = vi.spyOn(current, 'focus')
+    for (const focus of [frame, button]) {
+      coverAndBlur(focus)
+      focused.mockClear()
+      await resize(true)
+      expect(document.activeElement).toBe(current)
+      expect(focused).toHaveBeenCalledTimes(1)
+      // Another measurement at the same width is not a new transition.
+      act(() => { current.blur() })
+      await resize(true)
+      expect(document.activeElement).toBe(document.body)
+      expect(focused).toHaveBeenCalledTimes(1)
+      await uncover()
+    }
+    // Keyboard the reader moved after the fill blurred the content stays where it went.
+    const moves: ReadonlyArray<readonly [string, () => void, Element]> = [
+      ['another control', () => { outside.focus() }, outside],
+      ['a click on nothing focusable', () => { fireEvent.pointerDown(document.body) }, document.body],
+      ['the window losing focus', () => { fireEvent.blur(window) }, document.body],
+    ]
+    for (const [, move, expected] of moves) {
+      coverAndBlur(frame)
+      act(move)
+      focused.mockClear()
+      await resize(true)
+      expect(document.activeElement).toBe(expected)
+      expect(focused).not.toHaveBeenCalled()
+      act(() => { outside.blur() })
+      await uncover()
+    }
+    // A blur while the content was still shown is the reader's, not the fill's.
+    act(() => { button.focus() })
+    act(() => { button.blur() })
+    content.style.visibility = 'hidden'
+    await resize(true)
+    expect(document.activeElement).toBe(document.body)
+    expect(focused).not.toHaveBeenCalled()
+    await uncover()
+    // A measurement that is not a fill ends the blurred content's claim.
+    coverAndBlur(frame)
+    await resize(false)
+    await resize(true)
+    expect(document.activeElement).toBe(document.body)
+    expect(focused).not.toHaveBeenCalled()
+    await uncover()
+    // A reader who closes the tree before the fill is reported keeps it closed.
+    coverAndBlur(frame)
+    act(() => {
+      h.instance.actions.shown(PANE, false)
+      report(true)
+    })
+    await endTask()
+    expect(h.instance.getSnapshot().byPane[PANE]?.open).toBe(false)
+    expect(focused).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  it('releases the listeners it adds for covered content with its drawing', async () => {
+    // A spy on EventTarget.prototype does not see jsdom's window listeners.
+    const spies = [EventTarget.prototype, window].map(target => ({
+      add: vi.spyOn(target, 'addEventListener'),
+      remove: vi.spyOn(target, 'removeEventListener'),
+    }))
+    onTestFinished(() => {
+      for (const spy of spies) {
+        spy.add.mockRestore()
+        spy.remove.mockRestore()
+      }
+    })
+    const calls = (which: 'add' | 'remove') => spies.flatMap(spy => spy[which].mock.calls.map(([type, listener], index) => [spy[which].mock.contexts[index], type, listener] as const))
+    const h = mountNavigator(A)
+    act(() => { h.instance.actions.shown(PANE, true) })
+    await act(() => h.script.watches.ready(ROOT))
+    const row = h.view.container.querySelector('[data-test-row]')!
+    const added = calls('add')
+    const watched = (target: EventTarget, type: string) => {
+      const listeners = added.filter(([at, name]) => at === target && name === type).map(([, , listener]) => listener)
+      return [...new Set(listeners)].map(listener => [target, type, listener] as const)
+    }
+    const covering = [...watched(row, 'focusout'), ...watched(document, 'focusin'), ...watched(document, 'pointerdown'), ...watched(window, 'blur')]
+    expect(covering).toHaveLength(4)
+    h.view.unmount()
+    const removed = calls('remove')
+    for (const [target, type, listener] of covering) {
+      expect(removed.some(([at, name, gone]) => at === target && name === type && gone === listener)).toBe(true)
+    }
   })
 
   it.each(['show', 'shortcut'] as const)('hands body focus to the tree once on its first narrow drawing through %s', async (source) => {
@@ -375,20 +487,10 @@ describe('FileNavigator beside a preview', () => {
   })
 
   it('moves the keyboard from the resize edge to the tree when a new row width removes or hides the edge', async () => {
-    const callbacks: ResizeObserverCallback[] = []
-    class CapturingResizeObserver {
-      constructor(callback: ResizeObserverCallback) { callbacks.push(callback) }
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    }
-    vi.stubGlobal('ResizeObserver', CapturingResizeObserver)
-    onTestFinished(() => { vi.unstubAllGlobals() })
     const h = mountNavigator(A)
     await revealSrc(h)
     const resized = async (width: number): Promise<void> => {
-      h.row.width = width
-      act(() => { for (const callback of callbacks) callback([], {} as ResizeObserver) })
+      act(() => { h.row.report(width) })
       await endTask()
     }
     // Queried by attribute: the accessibility query skips the edge while it is hidden.
@@ -426,8 +528,7 @@ describe('FileNavigator beside a preview', () => {
     // Keyboard moved elsewhere in the meantime stays there.
     edge().style.display = ''
     act(() => { edge().focus() })
-    h.row.width = 399
-    act(() => { for (const callback of callbacks) callback([], {} as ResizeObserver) })
+    act(() => { h.row.report(399) })
     act(() => { h.view.getByRole('button', { name: zh['navigator.hide'] }).focus() })
     await endTask()
     expect(document.activeElement?.hasAttribute('data-files-navigator-toggle')).toBe(true)

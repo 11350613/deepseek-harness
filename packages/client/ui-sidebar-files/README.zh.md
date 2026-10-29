@@ -35,18 +35,18 @@ kind: "package-reference"
 - **开关**：Session 作用域的 Factory `sidebar.files.navigator.toggle`，在预览头部末端直接渲染，传入 `useTabInfo`。两个 Factory 共用文件页的 store handle 和 inject face，每个分栏保留一份开关状态；文件页正文没有开关。
 - **标签页标题**：以该 id 为键的 `sidebar.right.pane.tab.title` slot：类型标签前的一枚 16px 共享 `FileTypeIcon` 文件夹图标。树本身的行不画这枚图标。
 
-`src/client/` 下的源文件：`definition.tsx`（类型是什么）、`store.ts`（它保存什么，以及树的路径键、文件定位与导航栏尺寸计算）、`face.ts`（Remote 读取与监听、能打开文件的 tab 类型、定位、跨绘制保留的滚动与焦点、行宽测量）、`directory-node.ts`（打开的目录及其生命周期）、`FilesBody.tsx`（文件页）、`FileNavigator.tsx`（导航栏及其 Factory 声明）、`FileTree.tsx`（可复用的行及其 Factory 声明）、`workspace-tree.ts`（把分栏已列出的层转换为目录树的条目与目录状态，含失败行）、`NavigatorToggle.tsx`（开关及其 Factory 声明）、`FilesTitle.tsx`（标签页标题）、`locales.ts`（它说什么）、`index.ts`（接线与目录操作 slot 声明）。
+[注册入口](src/client/index.ts) 在共享 [files face](src/client/face.ts) 与[分栏 store](src/client/store.ts) 上组装文件页、导航栏、开关和目录树 Factory。
 
 <a id="the-navigator"></a>
 ## 导航栏
 
-用 `FileNavigatorInput` 渲染 `sidebar.files.navigator`：`{ useTabInfo, page, onOpen }`。必填的 `onOpen: (address: string) => void` 回调由容纳它的插件提供；导航栏构造文件地址并调用回调，不决定落位。`page` 只控制呈现：`true` 时始终铺满文件页，`false` 时遵循预览所在分栏的偏好与可用宽度。工作区导航栏不提供**在新标签页打开**行菜单；可复用的[目录树 Factory](#tree-factory) 仍为其他调用方保留这一可选功能。
+用 `FileNavigatorInput` 渲染 `sidebar.files.navigator`：`{ useTabInfo, page, onOpen }`。必填的 `onOpen: (address: string) => void` 回调由容纳它的插件提供；导航栏构造文件地址，不决定落位。`page` 只控制呈现：`true` 时始终铺满文件页，`false` 时遵循预览所在分栏的偏好与可用宽度。
 
 导航栏画在横跨分栏的预览标题行下方，位于它与正文共用的那一行的右侧。在预览旁，是否显示由其分栏的记录决定：分栏默认隐藏，这一选择对分栏内的每个文件 tab 都有效，直到开关、Escape、工作区命令，或导航到被目录树遮住的预览改变它。自身没有记录的分栏（例如 tab 拖出后所在的浮窗）从隐藏、默认宽度开始。点击目录树以外的地方不会隐藏它；在另一分栏打开内容也不会隐藏它。在文件页上，目录树铺满标题行下方的整页，停靠与浮动时都一样，不显示分隔条，且始终显示：文件页不画开关，Escape 也不关闭它。文件页打开的文件沿用落定分栏自己的选择，尚未做过选择的分栏为隐藏。
 
-其宽度是分栏的偏好，在读者用主键拖动左缘分隔条，或用方向键、Home（最窄）、End（最宽）调整之前为 260px，并限制在这一行内：行宽允许时至少 180px；与正文并排时至多为行宽减去 336px，悬浮时至多为行宽减去 120px。在预览旁、视口至少 768px 时，face 测得的行宽决定三种布局之一。行宽至少 560px 时，导航栏是正文旁的浮起面板，距行的上、右、下边缘各 8px，与正文相隔 8px；正文让出面板及其外边距的宽度而变窄，但至少保留 320px。行宽在 400px 到 560px 之间时，同样的面板悬浮在正文右侧之上，因此正文保持完整宽度，面板未覆盖的部分仍可滚动、可交互；正文的滚动条和渲染器的吸顶工具栏在面板下方的部分会被它遮住。两种面板都带圆角：浅色模式采用浮动停靠面板的背景与阴影，深色模式采用与紧凑目录树一致的深背景和柔和白色阴影。560px 这一界限只取决于行宽，因此调整目录树宽度不会让它在两种布局之间切换。在窄于 400px 的行中，或窄于 768px、右侧 Sidebar 以全屏呈现面板的视口中，导航栏铺满标题行下方的整行，不显示分隔条，导航到该预览后会隐藏目录树，让文件显示出来。铺满时，被覆盖的正文及其内嵌框架会隐藏，不能通过键盘进入。若行宽或视口进入此布局时正文持有焦点（包括目录树首次绘制时），焦点移到目录树内，不改变分栏的开关选择。停靠与浮动分栏遵循相同规则；目录树开启时，在每种布局下浮窗的缩放手柄都仍可操作。在预览旁，在这一行内任意位置按不带修饰键的 Escape，在任何行宽下都会关闭导航栏，并把键盘焦点移到开关上。Escape 在 document 上接收，晚于这一行自己的处理器，因此行内处理器若阻止了默认行为，这次按键就留给它。
+其宽度是分栏的偏好，在读者用主键拖动左缘分隔条，或用方向键、Home（最窄）、End（最宽）调整之前为 260px，并限制在这一行内：行宽允许时至少 180px；与正文并排时至多为行宽减去 336px，悬浮时至多为行宽减去 120px。在预览旁、视口至少 768px 时，face 测得的行宽决定三种布局之一。行宽至少 560px 时，导航栏是正文旁的浮起面板，距行的上、右、下边缘各 8px，与正文相隔 8px；正文让出面板及其外边距的宽度而变窄，但至少保留 320px。行宽在 400px 到 560px 之间时，同样的面板悬浮在正文右侧之上，因此正文保持完整宽度，面板未覆盖的部分仍可滚动、可交互；正文的滚动条和渲染器的吸顶工具栏在面板下方的部分会被它遮住。两种面板都带圆角：浅色模式采用浮动停靠面板的背景与阴影，深色模式采用与紧凑目录树一致的深背景和柔和白色阴影。560px 这一界限只取决于行宽，因此调整目录树宽度不会让它在两种布局之间切换。在窄于 400px 的行中，或窄于 768px、右侧 Sidebar 以全屏呈现面板的视口中，导航栏铺满标题行下方的整行，不显示分隔条，导航到该预览后会隐藏目录树，让文件显示出来。铺满时，被覆盖的正文及其内嵌框架会隐藏，不能通过键盘进入。若行宽或视口进入此布局时正文持有焦点（包括目录树首次绘制时），焦点移到目录树内，不改变分栏的开关选择。浏览器可能在新宽度报告之前就让被隐藏的正文失焦；除非读者在报告之前移动了键盘焦点或指针，或窗口失去焦点，这一焦点同样移到目录树内。停靠与浮动分栏遵循相同规则；目录树开启时，在每种布局下浮窗的缩放手柄都仍可操作。在预览旁，从这一行内的正文或目录树传到页面 document 的不带修饰键的 Escape，在任何行宽下都会关闭导航栏，并把键盘焦点移到开关上；内嵌框架的 document 持有焦点时，按键不会冒泡到页面 document，因此导航栏保持打开。Escape 在 document 上接收，晚于这一行自己的处理器，因此行内处理器若阻止了默认行为，这次按键就留给它。
 
-预览的 `onOpen` 回调传入右侧 Sidebar 的 [`replaceTab: true`](../ui-sidebar-right/README.zh.md#ctxsidebarright)，因此新内容占据停靠预览的 tab 条位置，或浮动预览的浮窗。文件页保持打开：停靠时其回调传入 `{ paneId: panel.id }`，`panel.isFloating` 为 true 时不传落位。文件遵循右侧 Sidebar 的[默认落位](../ui-sidebar-right/README.zh.md#ctxsidebarright)，落在文件页所在的停靠分栏；从浮动文件页发起时落在活动停靠分栏。停靠区为空时展开已有根分栏；这次打开不请求分栏。文件已打开时改为揭示，不关闭发起的 tab。原位替换保留分栏的目录树。目录树持有键盘焦点时，若打开操作在同一分栏内替换或切换 tab，下次绘制会聚焦当前文件所在行；揭示其他分栏时，发起侧的目录树与焦点保持不变。
+预览的 `onOpen` 传入 [`replaceTab: true`](../ui-sidebar-right/README.zh.md#ctxsidebarright)；文件页在停靠时传入 `{ paneId: panel.id }`，浮动时省略落位。右侧 Sidebar 负责原位替换、默认停靠落位与揭示。原位替换保留分栏的目录树。目录树持有键盘焦点时，若打开操作在同一分栏内替换或切换 tab，下次绘制会聚焦当前文件所在行；揭示其他分栏时，发起侧的目录树与焦点保持不变。
 
 新的 `tab.navigation.revision` 只关闭目标预览的目录树，而且仅在它按目标当前宽度铺满内容行时关闭。该规则适用于任何导航来源，包括从浮动预览自己的目录树发起的打开。隐藏的目录树也消费导航，因此手动显示它不会重放旧的关闭操作。普通 tab 切换、浮出或停靠，以及刷新或 undo 恢复的 revision `0` 都不关闭目录树。files face 的消费记录按 tab 生命周期保存；导航订阅在 tab 关闭或插件卸载时释放。文件页始终可见的目录树不因导航而关闭。
 
@@ -74,11 +74,11 @@ kind: "package-reference"
 <a id="tree-factory"></a>
 ## 复用目录树 Factory
 
-要绘制工作区列表、变更文件或本地 diff，在模块级声明 `const TREE_OPTIONS = { slots: { accessory: ModuleLevelComponent }, fallback: null }`，再调用 `renderFactorySlot('sidebar.files.tree', input, TREE_OPTIONS)`。保持 options 及其 `slots` 对象稳定；重新创建局部选择会让整棵树随父组件渲染而重画。该 root 作用域 Factory 仅在 files 插件加载时可用；未加载时，`renderFactorySlot` 绘制传入的 `fallback`，省略时不绘制内容。从 `@deepseek-ai/dsh-client-ui-sidebar-files/client` 仅以类型方式导入声明以及 `FileTreeInput`、`TreeEntry`、`TreeEntryMeta`、`TreeEntryKind`、`TreeDirectoryState` 和 `TreeOpenOptions`；不导出组件值。
+要绘制工作区列表、变更文件或本地 diff，在模块级声明 `const TREE_OPTIONS = { slots: { accessory: ModuleLevelComponent }, fallback: null }`，再调用 `renderFactorySlot('sidebar.files.tree', input, TREE_OPTIONS)`。保持 options 及其 `slots` 对象稳定；重新创建局部选择会让整棵树随父组件渲染而重画。该 root 作用域 Factory 仅在 files 插件加载时可用；未加载时，`renderFactorySlot` 绘制传入的 `fallback`，省略时不绘制内容。从 `@deepseek-ai/dsh-client-ui-sidebar-files/client` 仅以类型方式导入声明以及 `FileTreeInput`、`TreeEntry`、`TreeEntryMeta`、`TreeEntryKind`、`TreeDirectoryState`；不导出组件值。
 
-`FileTreeInput` 携带 `root`、扁平 `entries`、`expanded`、`onToggle(entry, expanded)` 和 `onOpen(entry, { newTab })`。可选的 `directories` 按键提供加载、已本地化的失败和截断状态；`current` 与 `currentRef` 标记并提供当前文件按钮。`canOpen(entry)` 可以拒绝打开文件而不禁用其附件，`newTab: true` 启用行菜单。`rowTriggerProps(entry, kind)` 为文件夹行和可打开的文件行返回右键菜单处理器；设置 `newTab` 时，行菜单接管文件行的指针手势。Factory 通过 files locale 拥有加载、空目录、截断、不可用与菜单文案。数据访问、展开、打开、祖先定位和滚动仍由调用方负责。
+`FileTreeInput` 携带 `root`、扁平 `entries`、`expanded`、`onToggle(entry, expanded)` 和 `onOpen(entry)`。可选的 `directories` 按键提供加载、本地化失败和截断状态；`current` 与 `currentRef` 标记并提供当前文件按钮。`canOpen(entry)` 可以拒绝打开文件而不禁用其附件。`rowTriggerProps(entry, kind)` 为文件夹行和可打开的文件行提供右键菜单处理器。Factory 通过 files locale 拥有加载、空目录、截断与不可用文案；调用方负责数据访问、展开、打开、祖先定位和滚动。
 
-`TreeEntry` 为 `{ path, name, meta?: { kind?, hidden?, size? } }`。只有 `/` 分隔层级；父级是最后一个 `/` 前的部分，没有 `/` 时为 `root`。名字保持调用方传入的值；重复路径保留首个条目。根键条目被忽略，包括空根。缺少的中间目录只补一次，显式条目优先。省略 kind 时，路径下有条目则为目录，否则为文件。隐藏行用弱化文字颜色显示，不过滤；大小不显示。只有可见层排序，目录优先，再按名字的自然顺序、不区分大小写排列；各层保留排序缓存，直到名字或目录类型变化。已打开的菜单使用当前条目与回调；其行不再可见或不再满足条件时，该次菜单永久结束。
+`TreeEntry` 为 `{ path, name, meta?: { kind?, hidden?, size? } }`。只有 `/` 分隔层级；父级是最后一个 `/` 前的部分，没有 `/` 时为 `root`。名字保持调用方传入的值；重复路径保留首个条目。根键条目被忽略，包括空根。缺少的中间目录只补一次，显式条目优先。省略 kind 时，路径下有条目则为目录，否则为文件。隐藏行用弱化文字颜色显示，不过滤；大小不显示。只有可见层排序，目录优先，再按名字的自然顺序、不区分大小写排列；各层保留排序缓存，直到名字或目录类型变化。
 
 局部 `accessory` slot 使用 root 作用域，owner props 为 `{ entry: TreeEntry }`；其组件还可使用派生的 `FactoryLocalComponentPropsOf<'sidebar.files.tree', 'accessory'>` 席位。它只收到 `entry` 和 Factory 自己的席位，拿不到调用方的 store 或 inject face。传入模块级组件以保持身份稳定。附件位于主按钮旁，不在其操作或禁用范围内。默认组件不渲染内容。附件包装容器始终存在于 DOM 中；未提供 slot 或其组件返回空内容时，CSS 将其隐藏且不占用行空间。
 
@@ -94,7 +94,7 @@ kind: "package-reference"
 ## 已知限制与暂缓事项
 
 <a id="known-limitations-and-deferred-work"></a>
-- **只有列目录。**没有搜索、产物过滤、拖拽或重命名；工作区导航栏的行不提供在新标签页打开的操作。
+- **只有列目录。**没有搜索、产物过滤、拖拽或重命名。
 - **只有一个根。**树以会话工作目录为根；没有办法浏览到它之上，而 Host 本来也拒绝工作区根之外的路径。
 
 <a id="dev-note"></a>

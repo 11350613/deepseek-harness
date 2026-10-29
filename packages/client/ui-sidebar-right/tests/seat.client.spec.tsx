@@ -208,8 +208,9 @@ it('keeps duplicate Session Tabs independent and preserves a body through dockin
   expect(h.controller.focusedTarget()?.tabId).toBe(tab.id)
   act(() => { h.controller.dock(floating.paneId) })
   expect(document.querySelector('[data-page-input]')).toBe(body)
-  expect(body.closest('[aria-hidden="true"]')).not.toBeNull()
-  act(() => { h.controller.toggleExpanded() })
+  // Docking expands the collapsed column, which shows the same body.
+  expect(h.controller.isExpanded()).toBe(true)
+  expect(body.closest('[aria-hidden="true"]')).toBeNull()
   expect(body.closest('[data-dockkit-host]')).toBe(cell)
 })
 
@@ -1115,8 +1116,8 @@ it('keeps a resource tab and reports a synchronous cleanup failure from its clos
   }
 })
 
-describe('the reveal outline', () => {
-  it('outlines the pane of a revealed tab, docked or floating, restarts on a repeat, and clears when the animation ends', async () => {
+describe('the reveal glow', () => {
+  it('marks the pane of a revealed tab, docked or floating, restarts on a repeat, and clears when the animation ends', async () => {
     const h = await mountSeat()
     const a = h.open('a.txt')
     h.open('b.txt')
@@ -1135,8 +1136,36 @@ describe('the reveal outline', () => {
     const floating = document.querySelector<HTMLElement>('[data-dockkit-float]')!
     expect(marked()).toEqual([floating])
     fireEvent.animationEnd(floating)
-    // An open that lands new content outlines nothing.
+    // An open that lands new content marks nothing.
     h.open('c.txt')
     expect(marked()).toEqual([])
+  })
+
+  it('plays each request once and only on screen: a hidden Session ends its glow and never replays it, and a later mount skips it', async () => {
+    const h = await mountSeat()
+    h.open('a.txt')
+    h.open('b.txt')
+    const marked = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[data-sidebar-right-flash]')]
+    h.open('a.txt')
+    expect(marked()).toHaveLength(1)
+    act(() => { h.runtime.panelInfo.set({ activePanelId: 'other-panel' as MainPanelId }) })
+    expect(marked()).toEqual([])
+    act(() => { h.runtime.panelInfo.set({ activePanelId: null }) })
+    expect(marked()).toEqual([])
+    // A request whose Session is hidden in the same commit is dropped, not deferred.
+    act(() => {
+      h.controller.openResource('dsh-resource://file/session/s-test/a.txt')
+      h.runtime.panelInfo.set({ activePanelId: 'other-panel' as MainPanelId })
+    })
+    expect(marked()).toEqual([])
+    act(() => { h.runtime.panelInfo.set({ activePanelId: null }) })
+    expect(marked()).toEqual([])
+    // A second panel for the Session mounts after the request and leaves it unplayed.
+    const again = h.runtime.renderSlot('rightbar', { width: 420, viewportWidth: 1440, canShow: true })
+    expect(again.container.querySelector('[data-dockkit-pane]')).not.toBeNull()
+    expect(marked()).toEqual([])
+    // A new request still plays.
+    h.open('b.txt')
+    expect(marked().length).toBeGreaterThan(0)
   })
 })

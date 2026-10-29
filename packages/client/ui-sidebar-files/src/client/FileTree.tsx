@@ -3,16 +3,16 @@
  * the data, which directories are expanded, each directory's listing
  * state, and what a click does; the tree derives each entry's level from its
  * path, adds the directories the paths imply, orders every drawn level, and
- * draws the rows, their icons, and the file rows' menu. It redraws when its
+ * draws the rows and their icons. It redraws when its
  * props or the occurrence's local selection change, and orders a drawn level
  * again only when the names or directory kinds in that level change.
  */
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { FactoryComponentPropsOf } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ContextMenuTriggerProps } from '@deepseek-ai/dsh-client-ui-context-menu/client'
-import { FileTypeIcon, classifyFileType, IconFolderCloseRegular, IconFolderOpenRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { FileTypeIcon, classifyFileType, IconFolderCloseRegular, IconFolderOpenRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from './locales.ts'
 import css from './FileTree.module.css'
 
@@ -53,12 +53,6 @@ export interface TreeDirectoryState {
   readonly truncated?: true
 }
 
-/** Whether a file opens in its own new tab. */
-export interface TreeOpenOptions {
-  /** The reader chose the file row's "Open in new tab". */
-  readonly newTab: boolean
-}
-
 /** The `sidebar.files.tree` Factory's input: data and callbacks only. */
 export interface FileTreeInput {
   /** The root's key; the root itself has no row and its entries are always shown. */
@@ -87,22 +81,18 @@ export interface FileTreeInput {
    */
   readonly onToggle: (entry: TreeEntry, expanded: boolean) => void
   /**
-   * An openable file row was pressed, or its menu item chosen.
+   * An openable file row was pressed.
    * @param entry - the caller's entry.
-   * @param options - whether it opens in a new tab.
    */
-  readonly onOpen: (entry: TreeEntry, options: TreeOpenOptions) => void
+  readonly onOpen: (entry: TreeEntry) => void
   /**
    * Whether a file opens; a file it refuses is dimmed and titled with the localized no-viewer message. Every file opens without it.
    * @param entry - the caller's entry.
    * @returns `false` to refuse it.
    */
   readonly canOpen?: ((entry: TreeEntry) => boolean) | undefined
-  /** File rows offer a localized new-tab action; an open menu uses the latest entry and ends when its row is hidden or ineligible. */
-  readonly newTab?: true | undefined
   /**
    * Context menu handlers for a directory row or an openable file row's main button.
-   * With `newTab`, the new-tab menu takes a file row's pointer gesture.
    * @param entry - the caller's entry, or the directory the tree added.
    * @param kind - the kind the tree resolved for the row.
    * @returns the handlers spread onto the row's button.
@@ -191,20 +181,18 @@ function orderOf(level: readonly TreeNode[]): readonly number[] {
   }).map(({ index }) => index)
 }
 
-/** What every level shares: the grouped entries, the input, and the menu request. */
+/** What every level shares: the grouped entries, input, locale, and accessory. */
 interface TreeContext {
   readonly levels: ReadonlyMap<string, readonly TreeNode[]>
   readonly expanded: ReadonlySet<string>
   readonly input: FileTreeInput
   readonly t: FactoryComponentPropsOf<'sidebar.files.tree'>['t']
   readonly Accessory: ReturnType<FactoryComponentPropsOf<'sidebar.files.tree'>['useFactorySlot']>
-  /** Ask for one file row's menu. @param entry - the file. @param row - the row. */
-  readonly onMenu: ((entry: TreeEntry, row: HTMLElement) => void) | undefined
 }
 
 /** One entry's row, and its children when it is an expanded directory. */
 function Entry({ node, tree }: { node: TreeNode; tree: TreeContext }): ReactNode {
-  const { input, onMenu, Accessory } = tree
+  const { input, Accessory } = tree
   const { entry, kind } = node
   const hidden = entry.meta?.hidden === true && css.hidden
   const label = <span className={css.name}>{entry.name}</span>
@@ -226,18 +214,13 @@ function Entry({ node, tree }: { node: TreeNode; tree: TreeContext }): ReactNode
   }
   if (kind === 'file' && input.canOpen?.(entry) !== false) {
     const current = entry.path === input.current
-    const trigger = input.rowTriggerProps?.(entry, 'file')
     return (
       <li className={css.item} data-files-entry="file" data-files-path={entry.path}>
         <div className={clsx(css.row, current && css.current)}>
           <button type="button" className={clsx(css.action, hidden)} aria-current={current || undefined}
             ref={current ? input.currentRef : undefined}
-            {...trigger}
-            onClick={() => { input.onOpen(entry, { newTab: false }) }}
-            onContextMenu={onMenu === undefined ? trigger?.onContextMenu : (event) => {
-              event.preventDefault()
-              onMenu(entry, event.currentTarget)
-            }}>
+            {...input.rowTriggerProps?.(entry, 'file')}
+            onClick={() => { input.onOpen(entry) }}>
             <FileTypeIcon kind={classifyFileType(entry.name)} size={16} className={css.fileIcon} />
             {label}
           </button>
@@ -285,81 +268,17 @@ function Level({ path, tree }: { path: string; tree: TreeContext }): ReactNode {
   )
 }
 
-/** The current file entry, only while its row is visible and still offers the menu. */
-function menuEntry(path: string, tree: TreeContext): TreeEntry | undefined {
-  const { input, levels, expanded } = tree
-  const nodeAt = (key: string) => levels.get(parentOf(key, input.root))?.find(node => node.entry.path === key)
-  const node = nodeAt(path)
-  if (input.newTab !== true || node?.kind !== 'file' || input.canOpen?.(node.entry) === false) return undefined
-  for (let parent = parentOf(path, input.root); ; parent = parentOf(parent, input.root)) {
-    if (input.directories?.[parent]?.loading === true) return undefined
-    if (parent === input.root) return node.entry
-    if (!expanded.has(parent) || nodeAt(parent)?.kind !== 'directory') return undefined
-  }
-}
-
-/** One file row's menu, positioned against the row that asked for it. */
-function RowMenu({ menu, entry, label, onOpen, onClose }: {
-  readonly menu: { readonly path: string; readonly row: HTMLElement }
-  readonly entry: TreeEntry
-  readonly label: string
-  readonly onOpen: FileTreeInput['onOpen']
-  readonly onClose: () => void
-}): ReactNode {
-  const anchorRect = useCallback(() => menu.row.getBoundingClientRect(), [menu])
-  return (
-    <Menu
-      open
-      anchor={<span hidden />}
-      getAnchorRect={anchorRect}
-      items={[{ id: 'new-tab', label }]}
-      onSelect={() => {
-        // Back on the row, the keyboard goes with the tree into the new tab's drawing of it.
-        if (menu.row.isConnected) {
-          menu.row.focus()
-          onOpen(entry, { newTab: true })
-        }
-        onClose()
-      }}
-      onClose={() => {
-        // The menu's own anchor is a hidden span that cannot hold the keyboard, so the row takes it back.
-        const active = menu.row.ownerDocument.activeElement
-        if (menu.row.isConnected && (active === null || active === menu.row.ownerDocument.body || active.closest('[role="menu"]') !== null)) menu.row.focus()
-        onClose()
-      }}
-      autoFocus
-      portal
-      dense
-    />
-  )
-}
-
 /**
- * The tree from its root, with the file rows' menu.
+ * The tree from its root.
  * @param props - the caller's entries, expansion, states, callbacks, and framework seats.
  * @returns the root level's list.
  */
 function FileTreeView({ t, useFactorySlot, ...input }: FactoryComponentPropsOf<'sidebar.files.tree'>): ReactNode {
   const Accessory = useFactorySlot('accessory', EmptyAccessory)
-  const [menu, setMenu] = useState<{ readonly path: string; readonly row: HTMLElement } | undefined>(undefined)
   const levels = useMemo(() => levelsOf(input.entries, input.root), [input.entries, input.root])
   const expanded = useMemo(() => new Set(input.expanded), [input.expanded])
-  const tree: TreeContext = {
-    levels, expanded, input, t, Accessory,
-    onMenu: input.newTab === true ? (entry, row) => { setMenu({ path: entry.path, row }) } : undefined,
-  }
-  const selected = menu === undefined ? undefined : menuEntry(menu.path, tree)
-  // Revoking a row ends this menu, even if the row becomes interactive again.
-  if (menu !== undefined && selected === undefined) setMenu(undefined)
-  return (
-    <>
-      <ul className={css.level}><Level path={input.root} tree={tree} /></ul>
-      {menu !== undefined && selected !== undefined && (
-        <RowMenu menu={menu} entry={selected} label={t('entry.openInNewTab')}
-          onOpen={input.onOpen} onClose={() => { setMenu(undefined) }} />
-      )}
-    </>
-  )
+  const tree: TreeContext = { levels, expanded, input, t, Accessory }
+  return <ul className={css.level}><Level path={input.root} tree={tree} /></ul>
 }
 
 /**

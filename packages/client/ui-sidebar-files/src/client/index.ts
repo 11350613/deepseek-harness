@@ -29,7 +29,7 @@ export type { DirLevel, FilesPaneState, FilesState, FilesTreeState, LevelState }
 export type { FilesInjected, ListWorkspaceDirectory, WorkspaceFilesListRemote } from './face.ts'
 export type { FilesBodyProps } from './FilesBody.tsx'
 // Also keeps the Factory declaration in this entry's emitted types, which an `import type {}` would not.
-export type { TreeEntry, TreeEntryMeta, TreeEntryKind, TreeDirectoryState, TreeOpenOptions, FileTreeInput } from './FileTree.tsx'
+export type { TreeEntry, TreeEntryMeta, TreeEntryKind, TreeDirectoryState, FileTreeInput } from './FileTree.tsx'
 export type { FileNavigatorInput } from './FileNavigator.tsx'
 export type { NavigatorToggleInput } from './NavigatorToggle.tsx'
 

@@ -6,50 +6,18 @@
  * Tab domain must keep a moved tab's occurrence across that commit.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { LayoutState, PaneId, TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
+import type { PaneId, TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { dockPaneIds, findTabPane, getPane } from '@deepseek-ai/dsh-client-ui-dockkit'
-import { createSidebarRightController } from '../src/client/service.ts'
-import { SidebarRightTabRegistry } from '../src/client/tab-registry.ts'
-import { createSidebarRightStore } from '../src/client/stores.ts'
-import { guideDefinition } from '../src/client/tabs/guide/definition.ts'
+import { controllerHarness, SESSION } from './controller-harness.client.ts'
 
-declare module '../src/client/contract/params.ts' {
-  interface SidebarRightResourceParamsMap {
-    test: { line?: number; x?: number }
-  }
-}
-
-const SESSION = 's-test' as SessionId
 const A = 'dsh-resource://file/session/s-test/a.txt'
 const B = 'dsh-resource://file/session/s-test/b.txt'
 
-const t = ((key: string) => key) as Parameters<typeof guideDefinition>[0]
-
 function harness() {
-  const tabs = new SidebarRightTabRegistry(new Context())
-  tabs.register(guideDefinition(t))
-  tabs.register({
-    id: 'test/text', kind: 'text', patterns: ['dsh-resource://file/**'], priority: 'fallback',
-    title: address => address.slice(address.lastIndexOf('/') + 1),
-  })
-  const { controller, adopt, show } = createSidebarRightController(tabs, vi.fn(), {
-    autoFullscreen: () => false,
-    openWithFocus: (_sessionId, open) => { open() },
-    closeWithFocus: (_sessionId, _paneId, close) => { close() },
-  })
-  const instance = createSidebarRightStore(() => ({ kind: 'guide', title: 'seed' })).create()
-  adopt(SESSION, instance)
+  const { controller, instance, layout, entries, show } = controllerHarness()
   show(SESSION)
   const closed = vi.fn()
   controller.registerCloseHandler('text', closed)
-  const layout = (): LayoutState => {
-    const surface = instance.getSnapshot().bySession[SESSION]
-    if (surface === undefined) throw new Error('expected a surface')
-    return surface.layout
-  }
-  const entries = (): number => instance.getSnapshot().bySession[SESSION]?.history.entries.length ?? 0
   const copies = (title: string): TabId[] => Object.values(layout().tabs).filter(tab => tab.title === title).map(tab => tab.id)
   const only = (title: string): TabId => {
     const [id, ...rest] = copies(title)

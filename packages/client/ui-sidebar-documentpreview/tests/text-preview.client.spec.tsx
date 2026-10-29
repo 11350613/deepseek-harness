@@ -864,26 +864,6 @@ describe('TextPreview — workspace navigator Factories', () => {
     }
   }
 
-  it('draws the toggle at the header\'s end and the navigator beside the body, loaded or waiting for a renderer', async () => {
-    const none: TextPreviewProps['useDocumentPreviews'] = select => select([])
-    const waiting = render(<TextPreview {...harness().props()} useDocumentPreviews={none} />)
-    expect(waiting.container.querySelector('[data-textpreview-state="loading"]')).not.toBeNull()
-    expect(seats(waiting.container)).toEqual({
-      toggle: 'sidebar.files.navigator.toggle', navigator: 'sidebar.files.navigator',
-    })
-    // The header's handoff seat precedes the toggle in this state too.
-    expect(waiting.container.querySelector('[data-slot="sidebar.right.tab.document.actions"]')?.getAttribute('data-slot-path'))
-      .toBe(ABSOLUTE_PATH)
-    waiting.unmount()
-    const h = harness({ 1: page(1, ['a'], true) })
-    const view = render(<TextPreview {...h.props()} />)
-    await settle()
-    expect(view.container.querySelector('[data-textpreview-state="text"]')).not.toBeNull()
-    expect(seats(view.container)).toEqual({
-      toggle: 'sidebar.files.navigator.toggle', navigator: 'sidebar.files.navigator',
-    })
-  })
-
   it('keeps the Factory positions\' and the handoff\'s DOM identity while the preview goes from waiting to loaded', async () => {
     const h = harness({ 1: page(1, ['a'], true) })
     const props = h.props()
@@ -894,16 +874,24 @@ describe('TextPreview — workspace navigator Factories', () => {
       ['sidebar.files.navigator.toggle', { useTabInfo: props.useTabInfo }],
       ['sidebar.files.navigator', { useTabInfo: props.useTabInfo, page: false, onOpen: expect.any(Function) as FileNavigatorInput['onOpen'] }],
     ])
+    expect(view.container.querySelector('[data-textpreview-state="loading"]')).not.toBeNull()
+    expect(seats(view.container)).toEqual({
+      toggle: 'sidebar.files.navigator.toggle', navigator: 'sidebar.files.navigator',
+    })
     const navigator = view.container.querySelector<HTMLElement>('[data-textpreview-content] > [data-navigator-factory]')!
     const toggle = view.container.querySelector('[data-textpreview-path]')?.parentElement?.lastElementChild
     const handoff = view.container.querySelector('[data-slot="sidebar.right.tab.document.actions"]')
-    expect(handoff).not.toBeNull()
+    expect(handoff?.getAttribute('data-slot-path')).toBe(ABSOLUTE_PATH)
+    expect(toggle?.previousElementSibling).toBe(handoff)
     navigator.tabIndex = 0
     navigator.focus()
     navigator.scrollTop = 64
     view.rerender(<TextPreview {...props} renderFactorySlot={renderFactorySlot} />)
     await settle()
     expect(view.container.querySelector('[data-textpreview-state="text"]')).not.toBeNull()
+    expect(seats(view.container)).toEqual({
+      toggle: 'sidebar.files.navigator.toggle', navigator: 'sidebar.files.navigator',
+    })
     expect(view.container.querySelector('[data-textpreview-content] > [data-navigator-factory]')).toBe(navigator)
     expect(view.container.querySelector('[data-textpreview-path]')?.parentElement?.lastElementChild).toBe(toggle)
     // The handoff keeps its seat between the tools and the toggle in every state.
@@ -957,7 +945,7 @@ describe('TextPreview — workspace navigator Factories', () => {
     const view = render(<TextPreview {...props} useDocumentPreviews={none} />)
     await settle()
     const nodes = () => ({
-      navigator: view.container.querySelector('[data-textpreview-content] > [data-navigator-factory]'),
+      navigator: view.container.querySelector('[data-textpreview-content]')?.lastElementChild,
       toggle: view.container.querySelector('[data-textpreview-path]')?.parentElement?.lastElementChild,
     })
     expect(view.container.querySelector('[data-textpreview-state="unsupported"]')).not.toBeNull()
@@ -994,17 +982,4 @@ describe('TextPreview — workspace navigator Factories', () => {
     expect(renderFactorySlot).not.toHaveBeenCalled()
   })
 
-  it('draws both Factories for a file it cannot preview', async () => {
-    const h = harness()
-    const base = h.props()
-    const info = base.useTabInfo()
-    const address = 'dsh-resource://file/session/s-1/work/clip.mp4'
-    const view = render(<TextPreview {...base}
-      useTabInfo={() => ({ ...info, tab: { ...info.tab, contentId: address, navigation: { ...info.tab.navigation, address } } })} />)
-    await settle()
-    expect(view.container.querySelector('[data-textpreview-state="unsupported"]')).not.toBeNull()
-    expect(seats(view.container)).toEqual({
-      toggle: 'sidebar.files.navigator.toggle', navigator: 'sidebar.files.navigator',
-    })
-  })
 })

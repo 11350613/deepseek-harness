@@ -480,14 +480,16 @@ export function createSidebarRightStore(
         d.bySession = seat(d, sessionId, s =>
           advance(s, (state, mint) => planFloatTab(state, mint, tabId, rect).ops, seed))
       },
-      // A floating pane holds one tab; docking it back lands in the active
-      // docked pane, and only a page is subject to the merge rule there.
+      // A floating pane holds one tab; docking it back expands the column and
+      // lands in the active docked pane, and only a page is subject to the
+      // merge rule there.
       unfloatPane: (d, sessionId: string, paneId: PaneId) => {
         d.bySession = seat(d, sessionId, s => advance(s, (state) => {
           const floated = getPane(state, paneId).tabs[0]
           const plan = (): readonly LayoutOp[] => planUnfloatPane(state, paneId)
           /* v8 ignore next -- a floating pane holds exactly one tab. */
-          return floated === undefined ? plan() : arriving(state, floated, activeDockPaneId(state), plan)
+          const ops = floated === undefined ? plan() : arriving(state, floated, activeDockPaneId(state), plan)
+          return [...planSetExpanded(state, true), ...ops]
         }, seed))
       },
       moveFloat: (d, sessionId: string, paneId: PaneId, x: number, y: number) => {

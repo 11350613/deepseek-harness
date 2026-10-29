@@ -111,7 +111,7 @@ export interface SidebarRightInjected {
     readonly contextMenuTarget: HostObservable<ContextMenuTarget | null>
     readonly shortcuts: HostObservable<readonly ShortcutCatalogEntry[]>
     readonly tabTypes: HostObservable<readonly SidebarRightTabDefinition[]>
-    /** This Session's latest request to outline the pane holding a revealed tab. */
+    /** This Session's latest request to make the pane holding a revealed tab glow. */
     readonly flash: HostObservable<SidebarRightFlash | undefined>
   }
   readonly keyedHooks: {
@@ -314,8 +314,16 @@ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<H
   const { expanded } = surface.layout
   const types = panel.useTabTypes(value => value)
   const flash = panel.useFlash(value => value)
-  // The outline is DOM-only: the docking kit owns the pane elements it marks.
-  useLayoutEffect(() => flashPane(panelRef.current, flash), [flash, panelRef])
+  // Each request plays at most once, and only on screen: the request current
+  // when the panel mounts, or one arriving while its Session is hidden, is
+  // already past. Hiding the Session ends a glow in progress.
+  const played = useRef(flash?.serial)
+  // The glow is DOM-only: the docking kit owns the pane elements it marks.
+  useLayoutEffect(() => {
+    if (flash === undefined || flash.serial === played.current) return undefined
+    played.current = flash.serial
+    return panel.active ? flashPane(panelRef.current, flash) : undefined
+  }, [flash, panel.active, panelRef])
   // True from the render that opens the on-screen panel until a transition in
   // it ends, the panel closes, or it leaves the screen, which cancels the
   // slide; the stylesheet starts items mounted meanwhile at the closed position.

@@ -12,7 +12,7 @@ import type { FileTreeInput, TreeEntry } from '../src/client/FileTree.tsx'
 afterEach(() => { cleanup() })
 
 const labels = {
-  loading: en.loading, empty: en.empty, truncated: en.truncated, noViewer: en['entry.noViewer'], other: en['entry.other'], openInNewTab: en['entry.openInNewTab'],
+  loading: en.loading, empty: en.empty, truncated: en.truncated, noViewer: en['entry.noViewer'], other: en['entry.other'],
 }
 
 type TestInput = FileTreeInput & { accessory?: Accessory | undefined }
@@ -87,7 +87,7 @@ describe('FileTree', () => {
   it('hands a pressed file to the caller, and lists anything else without opening it', () => {
     const { view, onOpen } = draw({ entries: CHANGES })
     fireEvent.click(row(view.container, 'pr/README.md'))
-    expect(onOpen).toHaveBeenCalledWith(CHANGES[1], { newTab: false })
+    expect(onOpen).toHaveBeenCalledWith(CHANGES[1])
     const other = row(view.container, 'pr/link')
     expect(other.getAttribute('aria-disabled')).toBe('true')
     expect(other.title).toBe(labels.other)
@@ -108,39 +108,12 @@ describe('FileTree', () => {
     expect(canOpen).not.toHaveBeenCalledWith(expect.objectContaining({ meta: { kind: 'directory' } }))
   })
 
-  it('offers no menu on a file row unless the caller opens files in new tabs', () => {
+  it('leaves the browser context menu available without caller-supplied handlers', () => {
     const { view } = draw({ entries: CHANGES })
     const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
     act(() => { row(view.container, 'pr/README.md').dispatchEvent(event) })
     expect(event.defaultPrevented).toBe(false)
     expect(view.queryByRole('menuitem')).toBeNull()
-  })
-
-  it('opens a file in a new tab from its menu, returning the keyboard to the row as the menu closes', () => {
-    const { view, onOpen } = draw({ entries: CHANGES, newTab: true, expanded: ['pr/src'] })
-    const file = row(view.container, 'pr/src/file10.ts')
-    act(() => { fireEvent.contextMenu(file) })
-    act(() => { fireEvent.click(view.getByRole('menuitem', { name: labels.openInNewTab })) })
-    expect(onOpen).toHaveBeenCalledWith(CHANGES[0], { newTab: true })
-    expect(onOpen.mock.calls[0]![0]).toBe(CHANGES[0])
-    expect(view.queryByRole('menuitem')).toBeNull()
-    expect(document.activeElement).toBe(file)
-    act(() => { fireEvent.contextMenu(file) })
-    act(() => { fireEvent.keyDown(view.getByRole('menuitem'), { key: 'Escape' }) })
-    expect(view.queryByRole('menuitem')).toBeNull()
-    expect(document.activeElement).toBe(file)
-    expect(onOpen).toHaveBeenCalledTimes(1)
-    // A press elsewhere that took the keyboard keeps it.
-    const outside = document.body.appendChild(document.createElement('button'))
-    try {
-      act(() => { fireEvent.contextMenu(file) })
-      act(() => { outside.focus() })
-      act(() => { fireEvent.pointerDown(outside) })
-      expect(view.queryByRole('menuitem')).toBeNull()
-      expect(document.activeElement).toBe(outside)
-    } finally {
-      outside.remove()
-    }
   })
 
   it('draws each directory\'s state: loading in place of its entries, then failure, empty, and truncation notes', () => {
