@@ -525,6 +525,28 @@ describe('forgePanel local changes', () => {
   })
 })
 
+describe('forgePanel complete checks', () => {
+  it('reads only visible bindings and refuses a different head without changing polling state', async () => {
+    const { repo } = await project()
+    const opened = await open(repo)
+    shellTurn(opened.session, 1, [{ callId: 'create', command: 'gh pr create --fill', output: `${pullUrl(7)}\n` }])
+    await reader(opened).until(state => ready(state) && polled(state, pullUrl(7)))
+    const target = opened.provider.changeRequestFromUrl(pullUrl(7))!
+    const original = snapshot(target)
+    const complete = vi.fn(async () => original)
+    Object.assign(opened.provider, { fetchChecks: complete })
+    await expect(opened.ctx.forgePanel.changeRequestChecks(opened.session, pullUrl(7), original.headSha, signal)).resolves.toEqual(original)
+    await expect(opened.ctx.forgePanel.changeRequestChecks(opened.session, pullUrl(8), original.headSha, signal))
+      .rejects.toMatchObject({ code: 'forgePanel/not-bound' })
+    expect(complete).toHaveBeenCalledTimes(1)
+    await expect(opened.ctx.forgePanel.changeRequestChecks(opened.session, pullUrl(7), 'b'.repeat(40), signal))
+      .rejects.toMatchObject({ code: 'forgePanel/stale-head' })
+    Object.assign(opened.provider, { fetchChecks: async () => ({ code: 'too-large', message: 'Checks exceed limit' }) })
+    await expect(opened.ctx.forgePanel.changeRequestChecks(opened.session, pullUrl(7), original.headSha, signal))
+      .rejects.toMatchObject({ code: 'forgePanel/checks-failed', message: 'Checks exceed limit' })
+  })
+})
+
 describe('forgePanel change request diffs', () => {
   const PATCH = 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n'
 

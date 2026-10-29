@@ -5,7 +5,7 @@ import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
 import { changeRequestKey } from '@deepseek-ai/dsh-experimental-forge'
-import type { ForgeActionFailure, ForgeFailure, ForgeReviewRequest, ForgeReviewResult, MergeMethod } from '@deepseek-ai/dsh-experimental-forge'
+import type { ChangeRequestSnapshot, ForgeActionFailure, ForgeFailure, ForgeReviewRequest, ForgeReviewResult, MergeMethod } from '@deepseek-ai/dsh-experimental-forge'
 import type { SessionChangeRequest } from '@deepseek-ai/dsh-experimental-forge-session'
 import type {} from '@deepseek-ai/dsh-experimental-worktree'
 import { appendPluginRecord } from '@deepseek-ai/dsh-session'
@@ -269,6 +269,26 @@ export class ForgePanelController extends TypertRemoteService {
     signal.throwIfAborted()
     const inspection = await this.checkoutOf(session, signal)
     return await diffing(localText(this.home, this.config, session, inspection.checkout.root, scope, path, signal))
+  }
+
+  /**
+   * Load complete checks for the change request whose list the user opened.
+   * @param session - Session retaining the visible binding.
+   * @param url - binding URL.
+   * @param headSha - commit displayed by the card; a different head rejects the result.
+   * @param signal - cancellation when the list closes.
+   * @returns the complete snapshot at the displayed head.
+   * @throws `forgePanel/not-bound` for an invisible binding, `forgePanel/stale-head` for a moved head,
+   * or `forgePanel/checks-failed` when the provider cannot complete the read.
+   */
+  @Remote
+  async changeRequestChecks(session: Session, url: string, headSha: string, signal: AbortSignal): Promise<ChangeRequestSnapshot> {
+    signal.throwIfAborted()
+    const result = await this.home.forge.fetchChecks(this.bound(session, url).ref, signal)
+    this.bound(session, url)
+    if ('code' in result) throw new RemoteError('forgePanel/checks-failed', result.message, {})
+    if (result.headSha !== headSha) throw new RemoteError('forgePanel/stale-head', 'The change request head changed; refresh its status', {})
+    return result
   }
 
   /**
