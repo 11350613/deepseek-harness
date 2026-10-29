@@ -13,6 +13,7 @@ import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
+import type { FileNavigatorInput } from '@deepseek-ai/dsh-client-ui-sidebar-files/client'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { OwnerOf } from '@deepseek-ai/dsh-client-ui-slots'
 import { TextPreview } from '../src/client/TextPreview.tsx'
@@ -850,4 +851,135 @@ describe('TextPreview — reading position across reloads', () => {
     await settle()
     expect(scrolled.scrollTop).toBe(120)
   })
+})
+
+describe('TextPreview — workspace navigator Factories', () => {
+  /** The navigator occurrences a render holds: the header's toggle, and the content row's navigator after the body. */
+  function seats(container: HTMLElement) {
+    const row = container.querySelector('[data-textpreview-content]')
+    const header = container.querySelector('[data-textpreview-path]')?.parentElement
+    return {
+      toggle: header?.lastElementChild?.getAttribute('data-navigator-factory'),
+      navigator: row?.lastElementChild?.getAttribute('data-navigator-factory'),
+    }
+  }
+
+  it('keeps the Factory positions\' and the handoff\'s DOM identity while the preview goes from waiting to loaded', async () => {
+    const h = harness({ 1: page(1, ['a'], true) })
+    const props = h.props()
+    const renderFactorySlot = vi.fn(props.renderFactorySlot)
+    const none: TextPreviewProps['useDocumentPreviews'] = select => select([])
+    const view = render(<TextPreview {...props} renderFactorySlot={renderFactorySlot} useDocumentPreviews={none} />)
+    expect(renderFactorySlot.mock.calls).toEqual([
+      ['sidebar.files.navigator.toggle', { useTabInfo: props.useTabInfo }],
+      ['sidebar.files.navigator', { useTabInfo: props.useTabInfo, page: false, onOpen: expect.any(Function) as FileNavigatorInput['onOpen'] }],
+    ])
+    expect(view.container.querySelector('[data-textpreview-state="loading"]')).not.toBeNull()
+    expect(seats(view.container)).toEqual({
+      toggle: 'sidebar.files.navigator.toggle', navigator: 'sidebar.files.navigator',
+    })
+    const navigator = view.container.querySelector<HTMLElement>('[data-textpreview-content] > [data-navigator-factory]')!
+    const toggle = view.container.querySelector('[data-textpreview-path]')?.parentElement?.lastElementChild
+    const handoff = view.container.querySelector('[data-slot="sidebar.right.tab.document.actions"]')
+    expect(handoff?.getAttribute('data-slot-path')).toBe(ABSOLUTE_PATH)
+    expect(toggle?.previousElementSibling).toBe(handoff)
+    navigator.tabIndex = 0
+    navigator.focus()
+    navigator.scrollTop = 64
+    view.rerender(<TextPreview {...props} renderFactorySlot={renderFactorySlot} />)
+    await settle()
+    expect(view.container.querySelector('[data-textpreview-state="text"]')).not.toBeNull()
+    expect(seats(view.container)).toEqual({
+      toggle: 'sidebar.files.navigator.toggle', navigator: 'sidebar.files.navigator',
+    })
+    expect(view.container.querySelector('[data-textpreview-content] > [data-navigator-factory]')).toBe(navigator)
+    expect(view.container.querySelector('[data-textpreview-path]')?.parentElement?.lastElementChild).toBe(toggle)
+    // The handoff keeps its seat between the tools and the toggle in every state.
+    expect(view.container.querySelector('[data-slot="sidebar.right.tab.document.actions"]')).toBe(handoff)
+    expect(toggle?.previousElementSibling).toBe(handoff)
+    expect(document.activeElement).toBe(navigator)
+    expect(navigator.scrollTop).toBe(64)
+  })
+
+  it.each([false, true])('owns the navigator open callback and replaces itself (floating: %s)', async (isFloating) => {
+    const h = harness({ 1: page(1, ['a'], true) })
+    const props = h.props()
+    const info = props.useTabInfo()
+    const openResource = vi.fn()
+    const useTabInfo: TextPreviewProps['useTabInfo'] = () => ({
+      ...info, panel: { ...info.panel, isFloating }, tab: { ...info.tab, actions: { ...info.tab.actions, openResource } },
+    })
+    let open: ((address: string) => void) | undefined
+    const renderFactorySlot: TextPreviewProps['renderFactorySlot'] = (name, input) => {
+      if (name === 'sidebar.files.navigator') open = (input as FileNavigatorInput).onOpen
+      return null
+    }
+    render(<TextPreview {...props} useTabInfo={useTabInfo} renderFactorySlot={renderFactorySlot} />)
+    await settle()
+    expect(open).toBeTypeOf('function')
+    open!('dsh-resource://file/session/s-1/b.txt')
+    expect(openResource).toHaveBeenCalledExactlyOnceWith('dsh-resource://file/session/s-1/b.txt', { replaceTab: true })
+  })
+
+  it('starts a text preview without a notice with its header', async () => {
+    const h = harness({ 1: page(1, ['a'], true) })
+    const view = render(<TextPreview {...h.props()} />)
+    await settle()
+    const preview = view.container.querySelector('[data-textpreview-state="text"]')
+    expect(preview?.firstElementChild?.contains(view.container.querySelector('[data-textpreview-path]'))).toBe(true)
+    expect(view.container.querySelector('[data-textpreview-changed], [data-textpreview-meta-failed]')).toBeNull()
+  })
+
+  it('keeps the navigator\'s and the toggle\'s DOM nodes from unsupported through loading to text', async () => {
+    const h = harness({ 1: page(1, ['a'], true) })
+    const base = h.props()
+    const info = base.useTabInfo()
+    const address = 'dsh-resource://file/session/s-1/work/clip.mp4'
+    const useTabInfo: TextPreviewProps['useTabInfo'] = () => (
+      { ...info, tab: { ...info.tab, contentId: address, navigation: { ...info.tab.navigation, address } } }
+    )
+    const video: DocumentPreviewDefinition = { id: 'video', extensions: ['mp4'], title: () => 'Video', loading: 'text-pages' }
+    const none: TextPreviewProps['useDocumentPreviews'] = select => select([])
+    const some: TextPreviewProps['useDocumentPreviews'] = select => select([video])
+    const props = { ...base, useTabInfo }
+    const view = render(<TextPreview {...props} useDocumentPreviews={none} />)
+    await settle()
+    const nodes = () => ({
+      navigator: view.container.querySelector('[data-textpreview-content]')?.lastElementChild,
+      toggle: view.container.querySelector('[data-textpreview-path]')?.parentElement?.lastElementChild,
+    })
+    expect(view.container.querySelector('[data-textpreview-state="unsupported"]')).not.toBeNull()
+    const first = nodes()
+    expect(first.navigator?.getAttribute('data-navigator-factory')).toBe('sidebar.files.navigator')
+    expect(first.toggle?.getAttribute('data-navigator-factory')).toBe('sidebar.files.navigator.toggle')
+    const live = h.useResource()
+    h.useResource.mockReturnValue({ status: 'none', value: undefined, failure: undefined })
+    view.rerender(<TextPreview {...props} useDocumentPreviews={some} />)
+    await settle()
+    expect(view.container.querySelector('[data-textpreview-state="loading"]')).not.toBeNull()
+    expect(nodes().navigator).toBe(first.navigator)
+    expect(nodes().toggle).toBe(first.toggle)
+    h.useResource.mockReturnValue(live)
+    view.rerender(<TextPreview {...props} useDocumentPreviews={some} />)
+    await settle()
+    expect(view.container.querySelector('[data-textpreview-state="text"]')).not.toBeNull()
+    expect(nodes().navigator).toBe(first.navigator)
+    expect(nodes().toggle).toBe(first.toggle)
+  })
+
+  it('does not re-render the navigator Factories for a preview-only update', async () => {
+    const h = harness({ 1: page(1, ['a', 'b'], true) })
+    const props = h.props()
+    const renderFactorySlot = vi.fn(props.renderFactorySlot)
+    const view = render(<TextPreview {...props} renderFactorySlot={renderFactorySlot} />)
+    await settle()
+    renderFactorySlot.mockClear()
+    h.useResource.mockClear()
+    fireEvent.scroll(body(view.container), { target: { scrollTop: 40 } })
+    expect(h.instance.getSnapshot().byTab[TAB_ID]?.scrollTop).toBe(40)
+    // The preview read its metadata again, so it re-rendered.
+    expect(h.useResource).toHaveBeenCalled()
+    expect(renderFactorySlot).not.toHaveBeenCalled()
+  })
+
 })
