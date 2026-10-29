@@ -1,0 +1,12 @@
+[
+  {
+    "role": "toggleDevTools",
+    "label": "Toggle developer tools"
+  },
+  {
+    "role": "toggleDevTools",
+    "label": "Toggle developer tools",
+    "visible": false,
+    "accelerator": "F12"
+  }
+]

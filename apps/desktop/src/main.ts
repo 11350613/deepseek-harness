@@ -1074,15 +1074,15 @@ async function main(): Promise<void> {
     { role: 'quit', ...(darwin ? { label: currentDesktopLocale().messages.quitApplication }
       : process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
   ]
-  const devToolsItems: MenuItemConstructorOptions[] = [
-    { role: 'toggleDevTools' },
-    { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
+  const devToolsItems = (): MenuItemConstructorOptions[] => [
+    { role: 'toggleDevTools', label: currentDesktopLocale().messages.toggleDevToolsMenu },
+    { role: 'toggleDevTools', label: currentDesktopLocale().messages.toggleDevToolsMenu, visible: false, accelerator: 'F12' },
   ]
   const refreshApplicationMenu = (): void => {
     Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32'
-      ? devToolsItems.map(item => ({ ...item, visible: false })) : [{
+      ? devToolsItems().map(item => ({ ...item, visible: false })) : [{
         label: darwin ? app.name : currentDesktopLocale().messages.application,
-        submenu: [...applicationItems(), ...devToolsItems],
+        submenu: [...applicationItems(), ...devToolsItems()],
       }, ...platformMenus()]))
     tray?.relabel()
   }
@@ -1129,7 +1129,7 @@ async function main(): Promise<void> {
           shortcuts.sendEditingKey(keyCode, modifiers)
         },
       })
-      const items: MenuItemConstructorOptions[] = name === 'application' ? [...applicationItems(), ...devToolsItems] : [
+      const items: MenuItemConstructorOptions[] = name === 'application' ? [...applicationItems(), ...devToolsItems()] : [
         editItem(currentDesktopLocale().messages.undo, 'Z', ['control'], 'Ctrl+Z'),
         editItem(currentDesktopLocale().messages.redo, 'Y', ['control'], 'Ctrl+Y'),
         { type: 'separator' },

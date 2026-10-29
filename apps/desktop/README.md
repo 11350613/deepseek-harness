@@ -53,7 +53,7 @@ A server-expired account credential returns to Welcome when no official API key 
 
 Desktop microphone access is restricted to audio requests from the primary `dsh-app://app` frame. macOS uses system microphone authorization, a packaged usage description, and `com.apple.security.device.audio-input` in the main application and Helper signatures.
 
-Press F12 (Fn+F12 on media-key keyboards), Command+Option+I on macOS, or Ctrl+Shift+I on Windows to toggle DevTools for the focused application page, including in packaged builds. The application menu also shows a DevTools toggle; F12 remains available as a hidden shortcut alias. Update overlays and packaged embedded browser guests disable DevTools.
+Press F12 (Fn+F12 on media-key keyboards), Command+Option+I on macOS, or Ctrl+Shift+I on Windows to toggle DevTools for the focused application page, including in packaged builds. The application menu also shows a DevTools toggle in the selected Desktop language; F12 remains available as a hidden shortcut alias. Update overlays and packaged embedded browser guests disable DevTools.
 
 <a id="terminal-command"></a>
 

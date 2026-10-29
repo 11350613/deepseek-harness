@@ -550,11 +550,24 @@ describe('desktop main startup', () => {
     expect((await handler(new Request('dsh-app://unknown/update-dialog.html'))).status).toBe(404)
   })
 
-  it.each(['darwin', 'win32', 'linux'] as const)('shows one DevTools command and retains native shortcuts on %s', async (platform) => {
+  it.each([
+    ['darwin', 'en'], ['darwin', 'zh-CN'], ['win32', 'en'], ['win32', 'zh-CN'], ['linux', 'en'], ['linux', 'zh-CN'],
+  ] as const)('localizes one DevTools command and retains native shortcuts on %s (%s)', async (platform, locale) => {
     vi.stubGlobal('process', { ...process, platform })
+    vi.spyOn(harness.app, 'getPreferredSystemLanguages').mockReturnValue([locale])
     await readyForUpdate()
     await expect(JSON.stringify(applicationMenuItems().slice(-2), null, 2) + '\n')
-      .toMatchFileSnapshot('./expected/devtools-menu.json')
+      .toMatchFileSnapshot(`./expected/devtools-menu-${locale}.json`)
+    const sender = harness.windows[0]!.webContents
+    const nextLocale = locale === 'en' ? 'zh' : 'en'
+    harness.ipcOn.mock.calls.find(([channel]) => channel === DESKTOP_IPC.localeChanged)![1](
+      { sender, senderFrame: sender.mainFrame }, nextLocale,
+    )
+    const refreshed = platform === 'win32' ? applicationMenuItems()
+      : harness.menu.mock.lastCall![0][0]!.submenu as MenuItemConstructorOptions[]
+    expect(refreshed.filter(item => item.role === 'toggleDevTools').map(item => item.label))
+      .toEqual([nextLocale === 'en' ? en.toggleDevToolsMenu : zh.toggleDevToolsMenu,
+        nextLocale === 'en' ? en.toggleDevToolsMenu : zh.toggleDevToolsMenu])
     expect(harness.windows[0]!.options).toMatchObject({ webPreferences: { devTools: true } })
   })
 
@@ -863,8 +876,8 @@ describe('desktop main startup', () => {
       expect(window.options).toMatchObject({ titleBarStyle: 'hidden', titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT } })
       expect(window.options).not.toHaveProperty('vibrancy')
       expect(harness.menu.mock.calls[0]![0]).toEqual([
-        { role: 'toggleDevTools', visible: false },
-        { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
+        { role: 'toggleDevTools', label: en.toggleDevToolsMenu, visible: false },
+        { role: 'toggleDevTools', label: en.toggleDevToolsMenu, visible: false, accelerator: 'F12' },
       ])
     } else {
       expect(window.options).not.toHaveProperty('titleBarStyle')
@@ -1029,7 +1042,7 @@ describe('desktop main startup', () => {
     expect(() => handler(event, 'application', NaN, 34)).toThrow('invalid popup request')
     const application = handler(event, 'application', 48, 34)
     expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type ?? item.role)).toEqual([
-      '关于 DeepSeek Harness', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', '退出', 'toggleDevTools', 'toggleDevTools',
+      '关于 DeepSeek Harness', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', '退出', zh.toggleDevToolsMenu, zh.toggleDevToolsMenu,
     ])
     expect(harness.popup.mock.lastCall![0]).toMatchObject({ window, x: 48, y: 34 })
     expect(harness.popup.mock.lastCall![0].callback).toBeTypeOf('function')
