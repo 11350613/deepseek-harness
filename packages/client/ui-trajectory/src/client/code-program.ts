@@ -31,22 +31,23 @@ function parseRecord(value: string | undefined): Record<string, unknown> | undef
 function recordedLanguage(schemaRaw: string | undefined): CodeProgram['language'] {
   const schema = parseRecord(schemaRaw)
   const declaredLanguage = typeof schema?.description === 'string'
-    ? /^Execute a program in `([^`]+)`/i.exec(schema.description)?.[1]?.toLowerCase()
+    ? /^Execute a program in `([^`]+)`/.exec(schema.description)?.[1]?.toLowerCase()
     : undefined
   if (declaredLanguage !== undefined
     && declaredLanguage !== 'typescript' && declaredLanguage !== 'python') return undefined
   const properties = record(record(schema?.parameters)?.properties)
-  const description = [declaredLanguage, record(properties?.code)?.description]
-    .filter(hint => typeof hint === 'string')
-    .join('\n')
-  const typescript = /\bTypeScript\b/i.test(description)
-  const python = /\bPython\b/i.test(description)
+  const description = record(properties?.code)?.description
+  const typescript = declaredLanguage === 'typescript'
+    || (typeof description === 'string' && /\bTypeScript\b/i.test(description))
+  const python = declaredLanguage === 'python'
+    || (typeof description === 'string' && /\bPython\b/i.test(description))
   if (typescript === python) return undefined
   return typescript ? 'typescript' : 'python'
 }
 
 /**
  * Resolve a PTC program without guessing its language from source or current runtime settings.
+ * Unknown explicit languages or conflicting recorded hints leave the source unhighlighted.
  * @param cell - Recorded tool arguments and the schema visible at call time.
  * @returns The program, or undefined for another tool or unsupported arguments.
  */
