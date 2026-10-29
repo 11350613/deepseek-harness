@@ -262,7 +262,7 @@ function ChecksRow({ snapshot, openLink, readChecks, t }: {
         </button>
       )}
       footer={footer}
-      onSelect={(id) => { if (id === 'retry') setAttempt(value => value + 1) }}
+      onSelect={() => { setAttempt(value => value + 1) }}
     >
       {orderedChecks(displayed.checks).map((check, index) => {
         const { url } = check

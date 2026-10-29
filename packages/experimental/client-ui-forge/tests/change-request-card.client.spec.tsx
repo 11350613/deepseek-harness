@@ -278,7 +278,10 @@ describe('expanded ChangeRequestCard', () => {
     expect(within(b.item).getByText('+12')).toBeTruthy()
   })
 
-  it('lists the checks failed first, then running, then the rest, with their times and links', () => {
+  it.each([
+    ['a partial preview', true, '8 checks loaded; more available', null],
+    ['a complete list', false, '1 failed · 2 running · 2 passed · 1 cancelled · 2 other', 'error'],
+  ] as const)('lists %s with failures first, then running checks, and their times and links', (_label, checksTruncated, text, tone) => {
     const checks = [
       check('build'),
       check('docs', { state: 'neutral' }),
@@ -289,12 +292,12 @@ describe('expanded ChangeRequestCard', () => {
       check('package', { completedAt: null }),
       check('perf', { state: 'cancelled', startedAt: '2026-10-09T10:00:00Z', completedAt: '2026-10-09T11:30:20Z' }),
     ]
-    const b = card(entry(1, snapshot(1, { checks, checksRollup: 'failure', checksTruncated: true })), { expanded: true })
+    const b = card(entry(1, snapshot(1, { checks, checksRollup: 'failure', checksTruncated })), { expanded: true })
     const toggle = within(b.item).getByText(en['change.row.checks']).closest('button')
     if (toggle === null) throw new Error('the checks row does not open a list')
     const summary = rowValue(b.item, en['change.row.checks'])
-    expect(summary.textContent).toBe('8 checks loaded; more available')
-    expect(summary.getAttribute('data-tone')).toBeNull()
+    expect(summary.textContent).toBe(text)
+    expect(summary.getAttribute('data-tone')).toBe(tone)
     // The row leads with the combined outcome.
     expect(toggle.querySelector('[data-forge-check]')?.getAttribute('data-forge-check')).toBe('failure')
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
@@ -312,7 +315,7 @@ describe('expanded ChangeRequestCard', () => {
       'skipped|e2e||no link',
       'cancelled|perf|1h 30m|no link',
     ])
-    expect(screen.getAllByText('8 checks loaded; more available')).toBeTruthy()
+    expect(screen.queryAllByText('8 checks loaded; more available')).toHaveLength(checksTruncated ? 2 : 0)
 
     fireEvent.click(screen.getAllByRole('menuitem')[0]!)
     expect(b.openLink).toHaveBeenCalledWith('https://ci.example.test/lint')
@@ -320,7 +323,10 @@ describe('expanded ChangeRequestCard', () => {
     expect(checkRows()).toEqual([])
   })
 
-  it('loads complete checks only while their list is open and retries without losing the preview', async () => {
+  it.each([
+    [new Error('timeout'), 'timeout'],
+    ['offline', 'offline'],
+  ])('retains the preview after rejection %s and retries loading complete checks', async (failure, message) => {
     const partial = snapshot(1, { checks: [check('old lint', { state: 'failure' })], checksTruncated: true })
     const waiting = Promise.withResolvers<ReturnType<typeof snapshot>>()
     const readChecks = vi.fn<NonNullable<ChangeRequestActions['readChecks']>>()
@@ -331,14 +337,44 @@ describe('expanded ChangeRequestCard', () => {
     fireEvent.click(within(b.item).getByText(en['change.row.checks']))
     expect(readChecks).toHaveBeenCalledWith(partial.url, partial.headSha, expect.any(AbortSignal))
     expect(screen.getByText('old lint')).toBeTruthy()
-    expect(screen.getByText(en['change.checks.loading'])).toBeTruthy()
-    await act(async () => { waiting.reject(new Error('timeout')); await Promise.resolve() })
+    const loading = screen.getByRole('menuitem', { name: en['change.checks.loading'] })
+    expect(loading).toHaveProperty('disabled', true)
+    fireEvent.click(loading)
+    expect(readChecks).toHaveBeenCalledTimes(1)
+    await act(async () => { waiting.reject(failure); await Promise.resolve() })
     expect(screen.getByText('old lint')).toBeTruthy()
-    expect(screen.getByText('Could not load more checks: timeout')).toBeTruthy()
+    expect(screen.getByText(`Could not load more checks: ${message}`)).toBeTruthy()
     await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: en['change.checks.retry'] })) })
     expect(screen.queryByText('old lint')).toBeNull()
     expect(screen.getByText('current lint')).toBeTruthy()
     expect(rowValue(b.item, en['change.row.checks']).textContent).toBe('1 passed')
+  })
+
+  it('keeps a reopened list loading when its cancelled read rejects late', async () => {
+    const partial = snapshot(1, { checks: [check('preview')], checksTruncated: true })
+    const older = Promise.withResolvers<ReturnType<typeof snapshot>>()
+    const newer = Promise.withResolvers<ReturnType<typeof snapshot>>()
+    const readChecks = vi.fn<NonNullable<ChangeRequestActions['readChecks']>>()
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(newer.promise)
+    const b = card(entry(1, partial), { expanded: true, actions: { readChecks } })
+    const toggle = within(b.item).getByText(en['change.row.checks'])
+    fireEvent.click(toggle)
+    fireEvent.click(toggle)
+    fireEvent.click(toggle)
+    expect(readChecks).toHaveBeenCalledTimes(2)
+    expect(readChecks.mock.calls[0]![2].aborted).toBe(true)
+    expect(readChecks.mock.calls[1]![2].aborted).toBe(false)
+
+    await act(async () => { older.reject(new Error('cancelled request')); await Promise.resolve() })
+    expect(screen.getByText(en['change.checks.loading'])).toBeTruthy()
+    expect(screen.getByText('preview')).toBeTruthy()
+    expect(screen.queryByText('Could not load more checks: cancelled request')).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: en['change.checks.retry'] })).toBeNull()
+
+    await act(async () => { newer.resolve(snapshot(1, { checks: [check('current result')] })); await Promise.resolve() })
+    expect(screen.getByText('current result')).toBeTruthy()
+    expect(screen.queryByText('preview')).toBeNull()
   })
 
   it.each(['close', 'unmount', 'head'] as const)('cancels a check read on %s and ignores its late completion', async (change) => {
