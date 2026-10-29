@@ -27,7 +27,7 @@ import threading
 root = Path(sys.argv[1])
 lock = threading.Lock()
 stop = threading.Event()
-wait_id = None
+session_id = None
 serial = 0
 
 def send(frame):
@@ -44,11 +44,18 @@ def ask(session_id):
                        "intent": {"kind": "plan-review", "approve": "Approve"}}],
     }})
 
+def finish():
+    # These cases isolate input handling from native plan turn outcomes.
+    send({"method": "session.query.completed", "params": {
+        "sessionId": session_id, "commandId": "plan-command",
+        "finalResponse": "", "finishReason": "completed",
+    }})
+
 def cancel():
     while not stop.wait(0.01):
         if (root / "cancel").exists():
-            send({"method": "user-question.cancelled", "params": {"requestId": "review-1"}})
-            send({"id": wait_id, "result": {}})
+            send({"method": "user-question.cancelled", "params": {"requestId": "review-" + str(serial)}})
+            finish()
             return
 
 watcher = threading.Thread(target=cancel)
@@ -65,15 +72,20 @@ try:
             if answers and answers[0].get("selected") == ["Keep planning"]:
                 ask(session_id)
             else:
-                send({"id": wait_id, "result": {}})
+                finish()
         elif method == "initialize":
             send({"id": frame["id"], "result": {"serverInfo": {"name": "plan-input-peer"}}})
         elif method == "session/query":
+            session_id = frame["params"]["sessionId"]
+            for event_type, data in [
+                ("command/run", {"commandId": "plan-command", "name": "plan"}),
+                ("command/done", {"commandId": "plan-command", "kind": "success"}),
+            ]:
+                send({"method": "session.event", "params": {
+                    "sessionId": session_id, "event": {"type": event_type, "data": data},
+                }})
             send({"id": frame["id"], "result": {"kind": "command", "execution": {
                 "commandId": "plan-command", "result": {"kind": "success", "text": "Plan mode entered"}}}})
-        elif method == "session/wait":
-            wait_id = frame["id"]
-            session_id = frame["params"]["sessionId"]
             ask(session_id)
         elif method == "shutdown":
             (root / "shutdown").write_text("done")
