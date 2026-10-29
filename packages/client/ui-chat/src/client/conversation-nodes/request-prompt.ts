@@ -56,7 +56,8 @@ function stableRequestPromptAnchor(
  * their step's input; in-history updates stay at their own positions. The
  * request-prompt Definition owns replacement and later-series cards. Positional
  * replacements advance the effective prompt without changing historical cards.
- * A shown card hides while a prepended replacement leaves its prompt order unknown.
+ * A shown card hides while a prepended replacement leaves its prompt order unknown,
+ * then shows again with the same key once older history resolves that order.
  * @param inspect - Pure surface interpretation supplied by uiConversation.
  * @returns The Chat system-prompt Definition.
  */
@@ -77,9 +78,9 @@ export function systemMessageDefinition(inspect: SystemPromptInspector): Convers
       const state = context.state?.introduced
       if (state === undefined || state.text === ''
         || context.start?.event.type !== 'system/message' || context.start.event.surfaceOp !== 'append') {
-        // A materialized card may only hide.
-        const current = context.current.get('chat') as ChatNode<'system-prompt'> | null | undefined
-        return current == null ? null : { ...current, visibility: 'hidden' }
+        const current = context.current.get('chat') as ChatNode | null | undefined
+        if (current?.kind !== 'system-prompt') return null
+        return chatNode(context, 'system-prompt', current.anchorSeq, current.data, { visibility: 'hidden' })
       }
       const anchor = state.update ? state.seq : requestPromptAnchor(context.start, undefined, true)
       return chatNode(context, 'system-prompt', anchor, { text: state.text, ...state.update ? { update: true } : {} })

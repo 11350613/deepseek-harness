@@ -2161,7 +2161,7 @@ describe('built-in conversation node Definitions', () => {
     expect(snapshot(value).nodes.get(key)?.visibility).toBe('visible')
     value.prepend([systemAt(5, 'Older', 2)], true)
     value.flush()
-    expect(snapshot(value).nodes.get(key)?.visibility).toBe('hidden')
+    expect(snapshot(value).nodes.get(key)).toMatchObject({ visibility: 'hidden', data: { text: 'Shown' } })
     value.prepend([systemAt(1, 'First')], false)
     value.flush()
     expect(snapshot(value).nodes.get(key)).toMatchObject({ visibility: 'visible', data: { text: 'Shown', update: true } })
