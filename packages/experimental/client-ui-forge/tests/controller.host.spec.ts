@@ -448,6 +448,26 @@ describe('forgePanel.follow', () => {
 })
 
 describe('forgePanel local changes', () => {
+  it('reports filter configuration overflow separately and recovers after it is reduced', async () => {
+    const { repo } = await project()
+    await withDefaultBranch(repo)
+    await writeFile(join(repo, 'tracked.txt'), 'changed\n')
+    const key = `filter.${'long'.repeat(200)}.clean`
+    await git(repo, 'config', key, 'cat')
+    const opened = await open(repo, { maxDiffBytes: 512, maxOutputBytes: 512 })
+    const follower = reader(opened)
+
+    await expect(follower.until(ready)).resolves.toMatchObject({ checkout: { state: 'ready' }, local: null })
+    await expect(opened.ctx.forgePanel.localDiff(opened.session, { kind: 'unstaged' }, signal))
+      .rejects.toMatchObject({ code: 'forgePanel/filter-config-failed' })
+
+    await git(repo, 'config', '--unset', key)
+    await opened.ctx.forgePanel.refresh(opened.session, signal)
+    await expect(follower.until(state => state.local !== null)).resolves.toMatchObject({ local: { files: [{ path: 'tracked.txt' }] } })
+    await expect(opened.ctx.forgePanel.localDiff(opened.session, { kind: 'unstaged' }, signal))
+      .resolves.toMatchObject({ files: [{ path: 'tracked.txt' }] })
+  })
+
   it('measures the branch scope at each inspection', async () => {
     const { repo } = await project()
     await withDefaultBranch(repo)
@@ -606,6 +626,23 @@ describe('forgePanel change request diffs', () => {
 })
 
 describe('forgePanel worktree blockers', () => {
+  it('recovers checkout inspection when the Session switches to full access on a host without a sandbox', async () => {
+    const { repo } = await project()
+    const opened = await open(repo)
+    opened.sandbox.failure = new Error('sandbox unavailable')
+    const follower = reader(opened)
+    await follower.until(state => state.checkout.state === 'failed')
+
+    setSandboxMode(opened.session, 'danger-full-access')
+    const full = await follower.next(ready)
+    expect(full.checkout).toMatchObject({ state: 'ready', checkout: { root: repo, branch: 'main' } })
+
+    setSandboxMode(opened.session, 'workspace-write')
+    await expect(follower.next(state => state.checkout.state === 'failed')).resolves.toMatchObject({
+      checkout: { state: 'failed', message: 'sandbox unavailable' },
+    })
+  })
+
   it('reinspects when the sandbox mode changes, and blocks a worktree while the Session is read-only', async () => {
     const { repo } = await project()
     const opened = await open(repo)

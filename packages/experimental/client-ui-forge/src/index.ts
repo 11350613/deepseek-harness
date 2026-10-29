@@ -18,7 +18,7 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import { gitIn, inspectCheckout, listBranches } from './git.ts'
 import type { Inspection } from './git.ts'
 import { parseDiff } from './diff.ts'
-import { aheadOf, DiffTooLarge, forkPoint, localDiff, localText, NoForkPoint } from './local-diff.ts'
+import { aheadOf, DiffTooLarge, FilterConfigError, forkPoint, localDiff, localText, NoForkPoint } from './local-diff.ts'
 import { missingWorktree, SessionPanel } from './panel.ts'
 import { PatchCache } from './patch-cache.ts'
 import { ChangeRequestStates, changeRequestStatesDomain } from './states.ts'
@@ -44,7 +44,7 @@ type ControllerConfig = PanelConfig & { readonly maxBranches: number; readonly w
 
 /**
  * Serves the forge panel. Following a Session inspects the checkout of its
- * current directory read-only in the Session's execution world, recognizes the
+ * current directory using the Session's permissions and execution world, recognizes the
  * code host of the upstream remote or `origin`, probes sign-in for that host,
  * and polls the Session's bound change requests through `ctx.forge` until the
  * last follower of that Session leaves. A worktree request makes the panel
@@ -233,13 +233,14 @@ export class ForgePanelController extends TypertRemoteService {
 
   /**
    * Read the changes one scope covers in the checkout of the Session's
-   * current directory, with Git confined to the Session's read-only sandbox.
+   * current directory, with Git using the Session's sandbox policy.
    * @param session - Session whose checkout is read.
    * @param scope - which changes to read.
    * @param signal - request cancellation.
    * @returns the files, the base of the `branch` scope, and the untracked files left out.
    * @throws `forgePanel/not-a-checkout` outside a checkout; `forgePanel/no-fork-point` for the `branch`
-   * scope of a checkout without one; `forgePanel/diff-too-large` over `maxDiffBytes`; the Git error when Git fails.
+   * scope of a checkout without one; `forgePanel/filter-config-failed` when filter configuration cannot be read
+   * completely, before any comparison; `forgePanel/diff-too-large` over `maxDiffBytes`; the Git error when Git fails.
    */
   @Remote
   async localDiff(session: Session, scope: ForgeLocalScope, signal: AbortSignal): Promise<ForgeLocalDiff> {
@@ -680,6 +681,7 @@ async function diffing<T>(reading: Promise<T>): Promise<T> {
   try {
     return await reading
   } catch (error) {
+    if (error instanceof FilterConfigError) throw new RemoteError('forgePanel/filter-config-failed', error.message, {}, { cause: error })
     if (error instanceof DiffTooLarge) throw new RemoteError('forgePanel/diff-too-large', error.message, {}, { cause: error })
     if (error instanceof NoForkPoint) throw new RemoteError('forgePanel/no-fork-point', error.message, {}, { cause: error })
     throw error
