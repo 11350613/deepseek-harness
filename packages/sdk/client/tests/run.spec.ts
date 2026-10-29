@@ -44,9 +44,9 @@ it('returns generated Session identities that can receive subsequent input', asy
   expect(continued.sessionId).toBe(first.sessionId)
   expect(continued.finalResponse).toBe('reply:continue')
   expect(await harness.client.request('test/state')).toHaveProperty('queries', [
-    { sessionId: first.sessionId, contentBlocks: [{ type: 'text', text: '/compact' }], delivery: 'queue' },
-    { sessionId: second.sessionId, contentBlocks: [{ type: 'text', text: '/compact' }], delivery: 'queue' },
-    { sessionId: first.sessionId, contentBlocks: [{ type: 'text', text: 'continue' }], delivery: 'queue' },
+    { sessionId: first.sessionId, contentBlocks: [{ type: 'text', text: '/compact' }] },
+    { sessionId: second.sessionId, contentBlocks: [{ type: 'text', text: '/compact' }] },
+    { sessionId: first.sessionId, contentBlocks: [{ type: 'text', text: 'continue' }] },
   ])
 })
 
@@ -83,24 +83,24 @@ it.each(['session', 'harness'])('forwards native command content blocks through 
     : await harness.run(contentBlocks, { sessionId: 'images' })
   expect(result).toMatchObject({ sessionId: 'images', finalResponse: '', finishReason: 'completed' })
   expect(await harness.client.request('test/state')).toHaveProperty('queries', [
-    { sessionId: 'images', contentBlocks, delivery: 'queue' },
+    { sessionId: 'images', contentBlocks },
   ])
 })
 
 it.each([
-  { entry: 'session', text: ' explain the diagram\n', delivery: 'queue' },
-  { entry: 'harness', text: 'explain the diagram', delivery: 'steer' },
-  { entry: 'harness', text: '/unknown explain the diagram', delivery: 'queue' },
-  { entry: 'session', text: undefined, delivery: 'steer' },
-] as const)('preserves image content for $entry text "$text" with $delivery delivery', async ({ entry, text, delivery }) => {
+  { entry: 'session', text: ' explain the diagram\n' },
+  { entry: 'harness', text: 'explain the diagram' },
+  { entry: 'harness', text: '/unknown explain the diagram' },
+  { entry: 'session', text: undefined },
+] as const)('preserves image content for $entry text "$text"', async ({ entry, text }) => {
   const harness = harnessWith()
   const contentBlocks: SdkPromptContentBlock[] = text === undefined ? images : [{ type: 'text', text }, ...images]
   const result = entry === 'session'
-    ? await harness.session('images').run(contentBlocks, { delivery })
-    : await harness.run(contentBlocks, { sessionId: 'images', delivery })
+    ? await harness.session('images').run(contentBlocks)
+    : await harness.run(contentBlocks, { sessionId: 'images' })
   expect(result.finalResponse).toBe(`reply:${text ?? ''}`)
   expect(await harness.client.request('test/state')).toHaveProperty('queries', [
-    { sessionId: 'images', contentBlocks, delivery },
+    { sessionId: 'images', contentBlocks },
   ])
 })
 
@@ -110,17 +110,13 @@ it('normalizes text and preserves block order through run', async () => {
   const contentBlocks: SdkPromptContentBlock[] = [
     images[0], { type: 'text', text: 'inspect ' }, images[1], { type: 'text', text: 'both' },
   ]
-  expect((await harness.run(' inspect\n', { sessionId: 'images', delivery: 'steer' })).finalResponse).toBe('reply: inspect\n')
+  expect((await harness.run(' inspect\n', { sessionId: 'images' })).finalResponse).toBe('reply: inspect\n')
   expect((await harness.run(contentBlocks, { sessionId: 'images' })).finalResponse).toBe('reply:inspect \nboth')
-  expect(await harness.client.executeCommand('images', ' /plan inspect ')).toEqual({
-    commandId: 'strict-command-1', result: { kind: 'success' },
-  })
   const state = await harness.client.request('test/state')
   expect(state).toHaveProperty('queries', [
-    { sessionId: 'images', contentBlocks: [{ type: 'text', text: ' inspect\n' }], delivery: 'steer' },
-    { sessionId: 'images', contentBlocks, delivery: 'queue' },
+    { sessionId: 'images', contentBlocks: [{ type: 'text', text: ' inspect\n' }] },
+    { sessionId: 'images', contentBlocks },
   ])
-  expect(state).toHaveProperty('commands', [{ sessionId: 'images', line: ' /plan inspect ' }])
 })
 
 it('returns native command results for text-only blocks', async () => {
@@ -130,7 +126,7 @@ it('returns native command results for text-only blocks', async () => {
     sessionId: 'blocks', finalResponse: 'compacted', finishReason: 'completed',
   })
   expect(await harness.client.request('test/state')).toHaveProperty('queries', [
-    { sessionId: 'blocks', contentBlocks, delivery: 'queue' },
+    { sessionId: 'blocks', contentBlocks },
   ])
 })
 
@@ -140,13 +136,6 @@ it('retains a rejected command outcome without retrying its content as a prompt'
   expect(await harness.session('images').run([{ type: 'text', text: '/plan off' }, ...images]))
     .toMatchObject({ sessionId: 'images', finalResponse: 'command rejected images', finishReason: 'error' })
   expect(await harness.client.request('test/state')).toHaveProperty('methods', ['initialize', 'session/query', 'test/state'])
-})
-
-it('steers ordinary text when delivery requests the next step', async () => {
-  const result = await harnessWith().session('main').run('next', { delivery: 'steer' })
-  expect(result.notifications[0]).toMatchObject({ params: { event: {
-    type: 'agent/inbox/spliced', data: { target: 'next-step' },
-  } } })
 })
 
 it('keeps root result events separate from descendant notifications', async () => {
@@ -263,6 +252,23 @@ it.each([
     .rejects.toThrow(SdkProtocolError)
 })
 
+it.each([
+  null,
+  {},
+  { commandId: '', result: { kind: 'success' } },
+  { commandId: 'c', result: { kind: 'unknown' } },
+  { commandId: 'c', result: { kind: 'success', text: 1 } },
+  { commandId: 'c', result: { kind: 'success', text: null } },
+  { commandId: 'c', result: { kind: 'success', sourceEventSeq: -1 } },
+  { commandId: 'c', result: { kind: 'success', sourceEventSeq: '1' } },
+  { commandId: 'c', result: { kind: 'success', sourceEventSeq: null } },
+  { commandId: 'c', result: { kind: 'success', sourceEventSeq: Number.MAX_SAFE_INTEGER + 1 } },
+  { commandId: 'c', result: { kind: 'error', text: '  ' } },
+])('rejects an invalid native result through run: %j', async (execution) => {
+  await expect(harnessWith({ QUERY_RESULT: JSON.stringify({ kind: 'command', execution }) }).session('main').run('/compact'))
+    .rejects.toThrow(SdkProtocolError)
+})
+
 it('reports command timeout without cancelling the runtime operation', async () => {
   const harness = harnessWith({ QUERY_HOLD_COMMAND: '1' }, 50)
   await expect(harness.session('main').run('/compact')).rejects.toThrow(RequestTimeoutError)
@@ -272,13 +278,6 @@ it('reports command timeout without cancelling the runtime operation', async () 
 
 it('reports runtime loss from run', async () => {
   await expect(harnessWith({ QUERY_DISCONNECT: '1' }).session('main').run('disconnect')).rejects.toThrow(TransportClosedError)
-})
-
-it('steers text content blocks when delivery requests the next step', async () => {
-  const result = await harnessWith().session('main').run([{ type: 'text', text: 'next' }], { delivery: 'steer' })
-  expect(result.notifications[0]).toMatchObject({ params: { event: {
-    type: 'agent/inbox/spliced', data: { target: 'next-step' },
-  } } })
 })
 
 it('keeps run pending after the plan command until its model output arrives', async () => {

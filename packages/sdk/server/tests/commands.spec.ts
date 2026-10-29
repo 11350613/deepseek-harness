@@ -7,7 +7,7 @@ import CommandRuntime, { CommandDefinitionId, type CommandDefinition, type Comma
 import { AttachmentId, type AttachmentStore, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { JsonRpcLineTransport, JsonRpcResponseError, type JsonRpcTransportPeer } from '@deepseek-ai/dsh-sdk-protocol'
+import { JsonRpcLineTransport, type JsonRpcTransportPeer } from '@deepseek-ai/dsh-sdk-protocol'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { HarnessSdkJsonRpcServer } from '../src/server.ts'
 
@@ -54,18 +54,22 @@ async function setup(registry = true, peer?: JsonRpcTransportPeer) {
   const register = (handler: CommandDefinition['handler']) => {
     ctx.effect(() => ctx.commands.register({ name: 'compact', definitionId: CommandDefinitionId('@deepseek-ai/dsh-command-compact'), description: 'Fixture command', handler }))
   }
-  const command = () => server.executeCommand({ sessionId: SessionId('commands'), line: '/compact' })
+  const command = async () => {
+    const result = await server.query({ sessionId: SessionId('commands'), contentBlocks: [{ type: 'text', text: '/compact' }] })
+    if (result.kind !== 'command') throw new Error('Fixture command was routed as a prompt')
+    return result.execution
+  }
   return { ctx, server, loop, initialize, register, command }
 }
 
 describe('SDK command dispatch', () => {
-  it.each([' ', '\t\n', '\u3000'])('accepts leading whitespace through the strict wire endpoint: %j', async (prefix) => {
+  it.each([' ', '\t\n', '\u3000'])('accepts leading whitespace through the query wire endpoint: %j', async (prefix) => {
     const h = await setup()
     await h.initialize()
     const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const }))
     h.register(handler)
-    await expect(h.server.handleRequest('session/command', { sessionId: 'strict-space', line: `${prefix}/compact` }))
-      .resolves.toMatchObject({ result: { kind: 'success' } })
+    await expect(h.server.handleRequest('session/query', { sessionId: 'query-space', contentBlocks: [{ type: 'text', text: `${prefix}/compact` }] }))
+      .resolves.toMatchObject({ kind: 'command', execution: { result: { kind: 'success' } } })
     expect(handler).toHaveBeenCalledOnce()
     expect(handler.mock.calls[0]![0].rawInput).toBe('')
   })
@@ -90,14 +94,6 @@ describe('SDK command dispatch', () => {
     ])
   })
 
-  it.each([undefined, {}, { sessionId: '' }, { sessionId: 's', line: 1 },
-    { sessionId: 's', line: '/compact', extra: true }, { sessionId: 's', line: '/compact', attachments: [] }])('rejects malformed wire parameters %j before creating a Session', async (params) => {
-    const h = await setup()
-    await h.initialize()
-    await expect(h.server.handleRequest('session/command', params)).rejects.toThrow('requires only')
-    expect(h.ctx.agents.list()).toEqual([])
-  })
-
   it('rejects malformed content before creating a Session', async () => {
     const h = await setup()
     await h.initialize()
@@ -112,7 +108,7 @@ describe('SDK command dispatch', () => {
       [{ ...image, attachment: { attachmentId: 'other-session' } }]]
     for (const contentBlocks of invalid) {
       await expect(h.server.handleRequest('session/query', {
-        sessionId: 'invalid-content', delivery: 'queue', contentBlocks,
+        sessionId: 'invalid-content', contentBlocks,
       })).rejects.toThrow(TypeError)
       expect(h.ctx.agents.list()).toEqual([])
     }
@@ -124,7 +120,7 @@ describe('SDK command dispatch', () => {
     const handler = vi.fn(() => ({ kind: 'success' as const }))
     h.register(handler)
     const response = await h.server.handleRequest('session/query', {
-      sessionId: 'refused-image', delivery: 'queue',
+      sessionId: 'refused-image',
       contentBlocks: [{ type: 'text', text: '/compact' },
         { type: 'image', data: 'AQ==', mimeType, ...mimeType === 'image/png' ? {} : { name: 'example' } }],
     })
@@ -152,7 +148,7 @@ describe('SDK command dispatch', () => {
     const attachments = [{ type: 'image', data: 'AQ==', mimeType: 'image/png', name: 'diagram.png' }]
     const text = { type: 'text', text: '/plan inspect' }
     const response = await h.server.handleRequest('session/query', {
-      sessionId: 'images', delivery: 'steer',
+      sessionId: 'images',
       contentBlocks: order === 'image-first' ? [...attachments, text] : [text, ...attachments],
     })
     expect(response).toMatchObject({ kind: 'command', execution: { result: { kind: 'success' } } })
@@ -177,7 +173,7 @@ describe('SDK command dispatch', () => {
       name: 'plan', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
     }))
     await expect(h.server.handleRequest('session/query', {
-      sessionId: 'refused-content', delivery: 'queue', contentBlocks: [
+      sessionId: 'refused-content', contentBlocks: [
         { type: 'image', data: 'AQ==', mimeType: 'image/png' },
         { type: 'text', text: '/plan off' }, extra,
       ],
@@ -199,7 +195,7 @@ describe('SDK command dispatch', () => {
     h.ctx.effect(() => h.ctx.commands.register({
       name: 'plan', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Plan', input: { hint: 'Task', attachments: true }, handler,
     }))
-    const request = h.server.query({ sessionId: SessionId('image-shutdown'), delivery: 'queue',
+    const request = h.server.query({ sessionId: SessionId('image-shutdown'),
       contentBlocks: [{ type: 'text', text: '/plan inspect' }, { type: 'image', data: 'AQ==', mimeType: 'image/png' }],
     })
     const rejected = expect(request).rejects.toThrow('shutting down')
@@ -211,23 +207,12 @@ describe('SDK command dispatch', () => {
     expect(h.ctx.agents.list()).toEqual([])
   })
 
-  it.each(['text', '/model', '/unknown', '/permission', '/permission \t\n'])('rejects unsupported input %s without invoking another command', async (line) => {
-    const h = await setup()
-    await h.initialize()
-    const handler = vi.fn(() => ({ kind: 'success' as const }))
-    h.register(handler)
-    await expect(h.server.handleRequest('session/command', { sessionId: 's', line })).rejects.toThrow()
-    expect(handler).not.toHaveBeenCalled()
-    expect(h.ctx.agents.list().flatMap(agent => agent.session.snapshotEvents())).toEqual([])
-    expect(h.ctx.agents.list()).toHaveLength(line === 'text' ? 0 : 1)
-  })
-
   it.each([
     ['compact', '@deepseek-ai/dsh-command-compact', '/compact', '/压缩'],
     ['permission', '@deepseek-ai/dsh-permission-presets', '/permission read-only', '/权限 read-only'],
     ['plan', '@deepseek-ai/dsh-plan-mode', '/plan', '/计划'],
     ['goal', '@deepseek-ai/dsh-command-goal', '/goal', '/目标'],
-  ])('accepts the %s alias only through query and delivers its lifecycle before resolution', async (name, definitionId, line, alias) => {
+  ])('accepts the %s English and Chinese aliases and delivers their lifecycle before resolution', async (name, definitionId, line, alias) => {
     const input = new PassThrough()
     const output = new PassThrough()
     const serverWire = new JsonRpcLineTransport(input, output)
@@ -257,19 +242,11 @@ describe('SDK command dispatch', () => {
       name, definitionId: CommandDefinitionId(definitionId), description: 'Fixture command', handler,
     }))
     const sessionId = SessionId('alias-command')
-    const rejected = client.request('session/command', { sessionId, line: alias })
-    await expect(rejected).rejects.toBeInstanceOf(JsonRpcResponseError)
-    await expect(rejected).rejects.toMatchObject({ code: -32603 })
-    await expect(rejected).rejects.toThrow('only /compact')
-    expect(handler).not.toHaveBeenCalled()
-    expect(received).toEqual([])
-    expect(h.ctx.agents.list()).toEqual([])
-
-    await expect(client.request('session/command', { sessionId, line }))
-      .resolves.toMatchObject({ result: { kind: 'success', text: 'native outcome' } })
+    await expect(client.request('session/query', { sessionId, contentBlocks: [{ type: 'text', text: line }] }))
+      .resolves.toMatchObject({ kind: 'command', execution: { result: { kind: 'success', text: 'native outcome' } } })
     expect(handler).toHaveBeenCalledOnce()
     received.length = 0
-    const result = await client.request('session/query', { sessionId, contentBlocks: [{ type: 'text', text: alias }], delivery: 'queue' })
+    const result = await client.request('session/query', { sessionId, contentBlocks: [{ type: 'text', text: alias }] })
     expect(handler).toHaveBeenCalledTimes(2)
     const commandId = handler.mock.calls[1]![0].commandId
     expect(result).toMatchObject({ kind: 'command', execution: { commandId, result: { kind: 'success', text: 'native outcome' } } })
@@ -286,7 +263,7 @@ describe('SDK command dispatch', () => {
     ['permission', '@deepseek-ai/dsh-permission-presets', '权限', ' read-only'],
     ['plan', '@deepseek-ai/dsh-plan-mode', '计划', ' task'],
     ['goal', '@deepseek-ai/dsh-command-goal', '目标', ' task'],
-  ])('dispatches the renamed %s definition through both SDK entries', async (name, id, alias, args) => {
+  ])('dispatches the renamed %s definition through its registered name and aliases', async (name, id, alias, args) => {
     const h = await setup()
     await h.initialize()
     const registered = `renamed-${name}`
@@ -297,18 +274,14 @@ describe('SDK command dispatch', () => {
     const sessionId = SessionId('renamed')
     for (const token of [name, alias, registered]) {
       await expect(h.server.handleRequest('session/query', {
-        sessionId, contentBlocks: [{ type: 'text', text: `/${token}${args}` }], delivery: 'queue',
+        sessionId, contentBlocks: [{ type: 'text', text: `/${token}${args}` }],
       })).resolves.toMatchObject({ kind: 'command', execution: { result: { kind: 'success' } } })
     }
-    for (const token of [name, registered]) {
-      await expect(h.server.handleRequest('session/command', { sessionId, line: `/${token}${args}` }))
-        .resolves.toMatchObject({ result: { kind: 'success' } })
-    }
-    expect(handler).toHaveBeenCalledTimes(5)
-    expect(handler.mock.calls.map(([invocation]) => invocation.rawInput)).toEqual(Array.from({ length: 5 }, () => args))
+    expect(handler).toHaveBeenCalledTimes(3)
+    expect(handler.mock.calls.map(([invocation]) => invocation.rawInput)).toEqual(Array.from({ length: 3 }, () => args))
     const events = h.ctx.agents.get(sessionId)!.session.snapshotEvents()
     expect(events.filter(event => event.type === 'command/run').map(event => event.data.name))
-      .toEqual(Array.from({ length: 5 }, () => registered))
+      .toEqual(Array.from({ length: 3 }, () => registered))
     expect(events.every(event => event.type === 'command/run' || event.type === 'command/done')).toBe(true)
   })
 
@@ -325,10 +298,8 @@ describe('SDK command dispatch', () => {
     }))
     const sessionId = SessionId('unrelated')
     const line = `/${name}${args}`
-    await expect(h.server.handleRequest('session/command', { sessionId, line })).rejects.toThrow('only /compact')
-    expect(h.ctx.agents.get(sessionId)!.session.snapshotEvents()).toEqual([])
     await expect(h.server.handleRequest('session/query', {
-      sessionId, contentBlocks: [{ type: 'text', text: line }], delivery: 'queue',
+      sessionId, contentBlocks: [{ type: 'text', text: line }],
     })).resolves.toMatchObject({ kind: 'prompt' })
     await h.server.wait({ sessionId })
     expect(handler).not.toHaveBeenCalled()
@@ -338,18 +309,23 @@ describe('SDK command dispatch', () => {
     expect(h.ctx.agents.get(sessionId)!.session.snapshotEvents().some(event => event.type === 'command/run')).toBe(false)
   })
 
-  it('requires a preset for a renamed permission definition', async () => {
+  it('keeps a renamed permission command without a preset as ordinary input', async () => {
     const h = await setup()
-    await h.initialize()
+    const model = new TextModel()
+    h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
+    await h.server.initialize({ cwd: process.cwd(), provider: 'query-model', model: 'model' })
     const handler = vi.fn(() => ({ kind: 'success' as const }))
     h.ctx.effect(() => h.ctx.commands.register({
       name: 'access', definitionId: CommandDefinitionId('@deepseek-ai/dsh-permission-presets'),
       description: 'Permission', handler,
     }))
-    await expect(h.server.executeCommand({ sessionId: SessionId('empty-preset'), line: '/access' }))
-      .rejects.toThrow('only /compact')
+    const sessionId = SessionId('empty-preset')
+    await expect(h.server.query({ sessionId, contentBlocks: [{ type: 'text', text: '/access' }] }))
+      .resolves.toMatchObject({ kind: 'prompt' })
+    await h.server.wait({ sessionId })
     expect(handler).not.toHaveBeenCalled()
-    expect(h.ctx.agents.get(SessionId('empty-preset'))!.session.snapshotEvents()).toEqual([])
+    expect(model.requests[0]!.messages.some(message => message.content.some(block => block.type === 'text' && block.text === '/access'))).toBe(true)
+    expect(h.ctx.agents.get(sessionId)!.session.snapshotEvents().some(event => event.type === 'command/run')).toBe(false)
   })
 
   it('reports an execution unavailable after catalog resolution', async () => {
@@ -357,35 +333,21 @@ describe('SDK command dispatch', () => {
     await h.initialize()
     h.register(() => ({ kind: 'success' }))
     vi.spyOn(h.ctx.commands, 'execute').mockResolvedValue(undefined)
-    await expect(h.command()).rejects.toThrow('/compact is unavailable')
+    await expect(h.command()).rejects.toThrow('selected command is unavailable')
   })
 
-  it('requires initialization and the composed registry and command', async () => {
-    const absent = await setup(false)
-    await expect(absent.command()).rejects.toThrow('not initialized')
-    await absent.initialize()
-    await expect(absent.command()).rejects.toThrow('Commands are unavailable')
-    const empty = await setup()
-    await empty.initialize()
-    await expect(empty.command()).rejects.toThrow('/compact is unavailable')
-    await expect(empty.server.executeCommand({ sessionId: SessionId('commands'), line: '/permission read-only' }))
-      .rejects.toThrow('/permission is unavailable')
-  })
-
-  it.each(['strict', 'query'] as const)('passes explicit permission input to the native handler through %s', async (entry) => {
+  it('passes explicit permission input to the native handler', async () => {
     const h = await setup()
     await h.initialize()
     const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'error' as const, text: 'native preset refusal' }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', definitionId: CommandDefinitionId('@deepseek-ai/dsh-permission-presets'), description: 'Fixture permission', input: { hint: 'Preset' }, handler }))
     const sessionId = SessionId('permission')
     const line = '/permission  deployment-preset'
-    const result = entry === 'strict'
-      ? await h.server.executeCommand({ sessionId, line })
-      : await h.server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }], delivery: 'steer' })
+    const result = await h.server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }] })
     expect(handler).toHaveBeenCalledOnce()
     expect(handler.mock.calls[0]![0].rawInput).toBe('  deployment-preset')
     const expected = { result: { kind: 'error', text: 'native preset refusal' } }
-    expect(result).toMatchObject(entry === 'strict' ? expected : { kind: 'command', execution: expected })
+    expect(result).toMatchObject({ kind: 'command', execution: expected })
     expect(h.ctx.agents.get(sessionId)!.session.snapshotEvents().map(event => event.type))
       .toEqual(['command/run', 'command/done'])
   })
@@ -395,7 +357,7 @@ describe('SDK command dispatch', () => {
     await h.initialize()
     const handler = vi.fn((_invocation: CommandInvocation) => ({ kind: 'success' as const, text: 'native plan result' }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'plan', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Plan', input: { hint: '[off|message]' }, handler }))
-    const result = await h.server.query({ sessionId: SessionId('plan'), contentBlocks: [{ type: 'text', text: line }], delivery: 'queue' })
+    const result = await h.server.query({ sessionId: SessionId('plan'), contentBlocks: [{ type: 'text', text: line }] })
     expect(result).toMatchObject({ kind: 'command', execution: { result: { kind: 'success', text: 'native plan result' } } })
     expect(handler.mock.calls[0]![0].rawInput).toBe(line.slice('/plan'.length))
     expect(h.ctx.agents.get(SessionId('plan'))!.session.snapshotEvents().map(event => event.type))
@@ -417,7 +379,7 @@ describe('SDK command dispatch', () => {
       name, definitionId: CommandDefinitionId(definitionId), description: 'Fixture command', input: { hint: 'Input' }, handler,
     }))
     const sessionId = SessionId('unicode-command')
-    const result = await h.server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }], delivery: 'queue' })
+    const result = await h.server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }] })
     expect(result).toMatchObject({ kind: 'command', execution: { result: { kind: 'success', text: 'native outcome' } } })
     expect(handler).toHaveBeenCalledOnce()
     expect(handler.mock.calls[0]![0].rawInput).toBe(rawInput)
@@ -430,8 +392,11 @@ describe('SDK command dispatch', () => {
   it('passes arguments unchanged and propagates handler failures', async () => {
     const h = await setup()
     await h.initialize()
-    h.register(({ rawInput }) => { throw new Error(`handler saw:${rawInput}`) })
-    await expect(h.server.handleRequest('session/command', { sessionId: 'commands', line: '/compact  extra' }))
+    h.ctx.effect(() => h.ctx.commands.register({
+      name: 'plan', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Plan',
+      handler: ({ rawInput }) => { throw new Error(`handler saw:${rawInput}`) },
+    }))
+    await expect(h.server.handleRequest('session/query', { sessionId: 'commands', contentBlocks: [{ type: 'text', text: '/plan  extra' }] }))
       .rejects.toThrow('handler saw:  extra')
     expect(h.ctx.agents.get(SessionId('commands'))!.session.snapshotEvents().at(-1)?.type).toBe('command/done')
   })
@@ -443,8 +408,6 @@ describe('SDK command dispatch', () => {
     await h.command()
     await h.loop.dispose()
     await expect(h.command()).rejects.toThrow('disposed outside the server')
-    await expect(h.server.query({ sessionId: SessionId('commands'), contentBlocks: [{ type: 'text', text: '/compact' }], delivery: 'queue' }))
-      .rejects.toThrow('disposed outside the server')
   })
 
   it('cancels an in-flight command on shutdown and rejects later admission', async () => {
@@ -467,7 +430,7 @@ describe('SDK command dispatch', () => {
     await expect(h.command()).rejects.toThrow('shutting down')
   })
 
-  it.each(['command', 'query-command', 'query-prompt'] as const)('does not execute %s while its Session is being created at shutdown', async (entry) => {
+  it.each(['command', 'prompt'] as const)('does not execute %s while its Session is being created at shutdown', async (entry) => {
     const h = await setup()
     await h.initialize()
     const handler = vi.fn(() => ({ kind: 'success' as const }))
@@ -482,8 +445,9 @@ describe('SDK command dispatch', () => {
       await release.promise
       return handle
     })
-    const execution = entry === 'command' ? h.command()
-      : h.server.query({ sessionId: SessionId('commands'), contentBlocks: [{ type: 'text', text: entry === 'query-command' ? '/compact' : 'ordinary input' }], delivery: 'queue' })
+    const execution = h.server.query({ sessionId: SessionId('commands'),
+      contentBlocks: [{ type: 'text', text: entry === 'command' ? '/compact' : 'ordinary input' }],
+    })
     const rejected = expect(execution).rejects.toThrow('shutting down')
     await created.promise
     const shutdown = h.server.shutdown()
@@ -495,11 +459,11 @@ describe('SDK command dispatch', () => {
 })
 
 describe('SDK query dispatch', () => {
-  it.each([undefined, {}, { sessionId: '', contentBlocks: [{ type: 'text', text: 'go' }], delivery: 'queue' },
-    { sessionId: 'q', text: 'go', delivery: 'queue' },
-    { sessionId: 'q', contentBlocks: [{ type: 'text', text: 'go' }], delivery: 'later' },
-    { sessionId: 'q', contentBlocks: [{ type: 'text', text: 'go' }], delivery: 'queue', permission: 'full' },
-    { sessionId: 'q', contentBlocks: [{ type: 'text', text: 'go' }], delivery: 'queue', attachments: [] },
+  it.each([undefined, {}, { sessionId: '', contentBlocks: [{ type: 'text', text: 'go' }] },
+    { sessionId: 'q', text: 'go' },
+    { sessionId: 'q', contentBlocks: [{ type: 'text', text: 'go' }], delivery: 'queue' },
+    { sessionId: 'q', contentBlocks: [{ type: 'text', text: 'go' }], permission: 'full' },
+    { sessionId: 'q', contentBlocks: [{ type: 'text', text: 'go' }], attachments: [] },
   ])('rejects invalid query fields %j', async (params) => {
     const h = await setup()
     await h.initialize()
@@ -509,7 +473,7 @@ describe('SDK query dispatch', () => {
 
   it.each(['/compact', '/permission read-only'])('preserves %s without a command registry and requires a live initialized server', async (text) => {
     const h = await setup(false)
-    const params = { sessionId: SessionId('q'), contentBlocks: [{ type: 'text' as const, text }], delivery: 'queue' as const }
+    const params = { sessionId: SessionId('q'), contentBlocks: [{ type: 'text' as const, text }] }
     await expect(h.server.query(params)).rejects.toThrow('not initialized')
     const model = new TextModel()
     h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
@@ -526,7 +490,7 @@ describe('SDK query dispatch', () => {
     await h.initialize()
     h.register(() => ({ kind: 'error', text: 'native refusal' }))
     const response = await h.server.handleRequest('session/query', {
-      sessionId: 'q', contentBlocks: [{ type: 'text', text: ' \n/compact\t ' }], delivery: 'queue',
+      sessionId: 'q', contentBlocks: [{ type: 'text', text: ' \n/compact\t ' }],
     })
     expect(response).toMatchObject({ kind: 'command', execution: { result: { kind: 'error', text: 'native refusal' } } })
     expect(h.ctx.agents.get(SessionId('q'))!.session.snapshotEvents().map(event => event.type))
@@ -539,7 +503,7 @@ describe('SDK query dispatch', () => {
     const model = new TextModel()
     h.ctx.effect(() => h.ctx.llm.registerAdapter(['query-model'], model))
     await h.server.initialize({ cwd: process.cwd(), provider: 'query-model', model: 'model' })
-    expect(await h.server.query({ sessionId: SessionId('q'), contentBlocks: [{ type: 'text', text }], delivery: 'queue' })).toMatchObject({ kind: 'prompt' })
+    expect(await h.server.query({ sessionId: SessionId('q'), contentBlocks: [{ type: 'text', text }] })).toMatchObject({ kind: 'prompt' })
     await h.server.wait({ sessionId: 'q' })
     expect(model.requests).toHaveLength(1)
     expect(model.requests[0]!.messages.some(message => message.role === 'user'
@@ -547,7 +511,7 @@ describe('SDK query dispatch', () => {
     expect(h.ctx.agents.get(SessionId('q'))!.session.snapshotEvents().some(event => event.type === 'command/run')).toBe(false)
   })
 
-  it.each(['queue', 'steer'] as const)('preserves ordinary mixed blocks in order with %s delivery', async (delivery) => {
+  it('queues ordinary mixed blocks in their original order', async () => {
     const h = await setup()
     await h.initialize()
     h.register(() => ({ kind: 'success' }))
@@ -572,32 +536,16 @@ describe('SDK query dispatch', () => {
       { type: 'reasoning', text: 'existing content' },
     ]
     expect(await h.server.handleRequest('session/query', {
-      sessionId: 'commands', contentBlocks, delivery,
+      sessionId: 'commands', contentBlocks,
     })).toMatchObject({ kind: 'prompt' })
     expect(saveImages).toHaveBeenCalledWith([
       { data: Uint8Array.of(1), mediaType: 'image/png' }, { data: Uint8Array.of(2), mediaType: 'image/png' },
     ])
     const admitted = [contentBlocks[0], { type: 'image', attachment: refs[0] }, contentBlocks[2], contentBlocks[3],
       { type: 'image', attachment: refs[1] }, contentBlocks[5], contentBlocks[6]]
-    const selected = delivery === 'queue' ? queued : steer
-    const other = delivery === 'queue' ? steer : queued
-    expect(selected).toHaveBeenCalledWith(expect.objectContaining({ content: admitted }))
-    expect(other).not.toHaveBeenCalled()
+    expect(queued).toHaveBeenCalledWith(expect.objectContaining({ content: admitted }))
+    expect(steer).not.toHaveBeenCalled()
     expect(agent.session.snapshotEvents().map(event => event.type)).toEqual(['command/run', 'command/done'])
-  })
-
-  it('delivers a steer query through the existing Agent operation', async () => {
-    const h = await setup()
-    await h.initialize()
-    h.register(() => ({ kind: 'success' }))
-    await h.command()
-    const agent = h.ctx.agents.get(SessionId('commands'))!
-    const steer = vi.spyOn(agent, 'steer').mockImplementation(() => {})
-    const queued = vi.spyOn(agent, 'followup').mockImplementation(() => {})
-    const result = await h.server.query({ sessionId: SessionId('commands'), contentBlocks: [{ type: 'text', text: 'next step' }], delivery: 'steer' })
-    expect(result).toMatchObject({ kind: 'prompt' })
-    expect(steer).toHaveBeenCalledWith(expect.objectContaining({ content: [{ type: 'text', text: 'next step' }] }))
-    expect(queued).not.toHaveBeenCalled()
   })
 
   it.each(['/feedback inspect', '/model', '/file', '/export', '/permission', ' \n/权限\t '])('preserves existing prompt behavior for unimplemented input %s', async (text) => {
@@ -608,7 +556,7 @@ describe('SDK query dispatch', () => {
     const handler = vi.fn(() => ({ kind: 'success' as const }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'feedback', description: 'Feedback', input: { hint: 'Task' }, handler }))
     h.ctx.effect(() => h.ctx.commands.register({ name: 'permission', definitionId: CommandDefinitionId('@deepseek-ai/dsh-permission-presets'), description: 'Permission', input: { hint: 'Preset' }, handler }))
-    await expect(h.server.query({ sessionId: SessionId('q'), contentBlocks: [{ type: 'text', text }], delivery: 'queue' })).resolves.toMatchObject({ kind: 'prompt' })
+    await expect(h.server.query({ sessionId: SessionId('q'), contentBlocks: [{ type: 'text', text }] })).resolves.toMatchObject({ kind: 'prompt' })
     await h.server.wait({ sessionId: 'q' })
     expect(handler).not.toHaveBeenCalled()
     expect(model.requests[0]!.messages.some(message => message.content.some(block => block.type === 'text' && block.text === text))).toBe(true)

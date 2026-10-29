@@ -9,7 +9,8 @@ import threading
 import pytest
 from pathlib import Path
 
-from deepseek_harness import CommandExecution, RunResult, Session
+from deepseek_harness.models import CommandExecution
+from deepseek_harness import RunResult, Session
 from deepseek_harness.client import NotificationSubscription
 from test_commands_runtime import (
     _Completion, _Runtime, _SESSION_ID, _WAIT_SECONDS, _WaitResult, _assert_request_permission,
@@ -19,7 +20,7 @@ from test_commands_runtime import (
 
 
 def _command(runtime: _Runtime, session: Session, text: str, *, kind: str = "success") -> CommandExecution:
-    result = runtime.call(runtime.harness.client._query, session.id, text, "queue")
+    result = runtime.call(runtime.harness.client._query, session.id, text)
     assert isinstance(result, CommandExecution)
     assert result.result.kind == kind, result.result.text
     return result

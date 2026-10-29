@@ -95,25 +95,12 @@ export interface SessionPromptResult {
   messageId: string
 }
 
-/** Strict invocation of the supported compact, permission, plan, or goal commands. */
-export interface SessionCommandParams {
-  /** SDK-owned Session identity; an unknown id creates its Agent. */
-  sessionId: SessionId
-  /**
-   * Complete line using an ASCII registered name or canonical English alias.
-   * Leading whitespace is ignored; the native command validates arguments.
-   */
-  line: string
-}
-
 /** Content submitted through the SDK's ordinary-input and slash-command entry. */
 export interface SessionQueryParams {
   /** SDK-owned Session identity; an unknown id creates its Agent. */
   sessionId: SessionId
   /** Ordered prompt blocks; a native command occupies its only text block and may accompany encoded images. */
   contentBlocks: SdkPromptContentBlock[]
-  /** Ordinary prompt delivery; commands keep their native execution timing. */
-  delivery: 'queue' | 'steer'
 }
 
 /**
@@ -223,7 +210,6 @@ export interface HarnessSdkNotificationMap {
 export interface HarnessSdkRequestMap {
   'initialize': { params: InitializeParams; result: InitializeResult }
   'session/prompt': { params: SessionPromptParams; result: SessionPromptResult }
-  'session/command': { params: SessionCommandParams; result: CommandExecution }
   'session/query': { params: SessionQueryParams; result: SessionQueryResult }
   'session/resume': { params: SessionResumeParams; result: Record<string, never> }
   'session/wait': { params: SessionWaitParams; result: Record<string, never> }

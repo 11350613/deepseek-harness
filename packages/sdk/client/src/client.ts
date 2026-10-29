@@ -20,7 +20,6 @@ import {
   type InitializeParams,
   type InitializeResult,
   type SessionPromptParams,
-  type SessionCommandParams,
   type SessionQueryParams,
   type SessionQueryResult,
   type SdkPromptContentBlock,
@@ -362,19 +361,6 @@ export class HarnessClient {
   }
 
   /**
-   * Execute a strict command without waiting for an inbox receipt or Agent idle.
-   * @param sessionId - target Session; an unknown id creates it.
-   * @param line - supported compact, permission, plan, or goal input; handlers validate arguments.
-   * @returns the native command result, including a business error when the handler refuses it.
-   * @throws on protocol rejection, malformed response, timeout or transport loss; never retries.
-   */
-  async executeCommand(sessionId: string, line: string): Promise<CommandExecution> {
-    const params: SessionCommandParams = { sessionId: SessionId(sessionId), line }
-    const value = await this.request('session/command', { ...params })
-    return commandExecution(value, 'session/command')
-  }
-
-  /**
    * Restore persisted history without sending a prompt; failures propagate without creating a session.
    * @param sessionId - persisted identity in this runtime's configured persistence store.
    * @returns after the session is ready for prompts.
@@ -599,17 +585,15 @@ export function createProcessHarnessClient(options: RuntimeProcessOptions): Harn
  * @param client - client owning the initialized runtime connection.
  * @param sessionId - target Session; an unknown id creates it.
  * @param input - text or content blocks, without client-side command interpretation.
- * @param delivery - ordinary prompt delivery; commands retain their own admission rules.
  * @returns the validated prompt receipt or native command execution.
  */
 export async function queryInput(
   client: HarnessClient,
   sessionId: string,
   input: string | SdkPromptContentBlock[],
-  delivery: SessionQueryParams['delivery'],
 ): Promise<SessionQueryResult> {
   const params: SessionQueryParams = {
-    sessionId: SessionId(sessionId), contentBlocks: normalizeInput(input), delivery,
+    sessionId: SessionId(sessionId), contentBlocks: normalizeInput(input),
   }
   const value = await client.request('session/query', params)
   if (isRecord(value)) {
@@ -617,7 +601,7 @@ export async function queryInput(
       return { kind: 'prompt', messageId: value.messageId }
     }
     if (value.kind === 'command') {
-      return { kind: 'command', execution: commandExecution(value.execution, 'session/query') }
+      return { kind: 'command', execution: commandExecution(value.execution) }
     }
   }
   throw new SdkProtocolError(`session/query returned an invalid routing result: ${JSON.stringify(value)}`)
@@ -641,8 +625,8 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Decode the native command result shared by strict execution and unified input. */
-function commandExecution(value: unknown, method: string): CommandExecution {
+/** Decode the native handler result returned by session/query. */
+function commandExecution(value: unknown): CommandExecution {
   if (isRecord(value) && typeof value.commandId === 'string' && value.commandId.length > 0 && isRecord(value.result)) {
     const commandId = value.commandId as CommandExecution['commandId']
     const { kind, text, sourceEventSeq } = value.result
@@ -659,7 +643,7 @@ function commandExecution(value: unknown, method: string): CommandExecution {
       return { commandId, result: { kind, text } }
     }
   }
-  throw new SdkProtocolError(`${method} returned an invalid command result: ${JSON.stringify(value)}`)
+  throw new SdkProtocolError(`session/query returned an invalid command result: ${JSON.stringify(value)}`)
 }
 
 /** The message of a thrown value (the transport only throws `Error`s; `String` covers the rest). */

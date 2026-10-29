@@ -13,8 +13,6 @@ import { SdkUserQuestionBridge } from './user-questions.ts'
 import { queryCommand } from './query-input.ts'
 import { queryCommandImages, queryContent } from './query-content.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { parseCommand } from '@deepseek-ai/dsh-commands'
-import { builtinCommandName, resolveCommand } from '@deepseek-ai/dsh-commands/builtin'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { admitEncodedImages, type EncodedImageAttachment, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, ReasoningEffortId, type ContentBlock, type LlmRuntime } from '@deepseek-ai/dsh-llm'
@@ -34,7 +32,6 @@ import type {
   InitializeResult,
   JsonRpcTransportPeer,
   SessionEventNotification,
-  SessionCommandParams,
   SessionQueryParams,
   SessionQueryResult,
   SessionPromptParams,
@@ -48,8 +45,6 @@ import type {
   SubagentFinishedNotification,
   SubagentStartedNotification,
 } from '@deepseek-ai/dsh-sdk-protocol'
-
-const COMMAND_USAGE = 'The SDK command endpoint supports only /compact, /permission <preset>, /plan [off|message], or /goal [objective|clear|edit objective|pause|resume]'
 
 interface SessionRecord {
   handle: AgentHandle
@@ -273,10 +268,6 @@ export class HarnessSdkJsonRpcServer {
    * @returns the durable message identity.
    */
   async prompt(params: SessionPromptParams): Promise<SessionPromptResult> {
-    return this.submitPrompt(params, 'queue')
-  }
-
-  private async submitPrompt(params: SessionPromptParams, delivery: 'queue' | 'steer'): Promise<SessionPromptResult> {
     if (!this.initialized) throw new Error('SDK server is not initialized')
     const rec = await this.getOrCreateSession(params.sessionId)
     this.lifetime.signal.throwIfAborted()
@@ -293,14 +284,13 @@ export class HarnessSdkJsonRpcServer {
       content,
       source: { kind: 'user' },
     })
-    if (delivery === 'steer') rec.handle.agent.steer(message)
-    else rec.handle.agent.followup(message)
+    rec.handle.agent.followup(message)
     return { messageId: message.id }
   }
 
   /**
    * Dispatch text as a Desktop-style input; native commands own Session state changes.
-   * @param params - ordered content blocks, receiving Session and ordinary-prompt delivery.
+   * @param params - ordered content blocks and receiving Session.
    * @returns a prompt receipt or native command acknowledgment; command activity completes by notification.
    * @throws on runtime failure; a recognized command failure never falls back to a prompt.
    */
@@ -322,10 +312,19 @@ export class HarnessSdkJsonRpcServer {
             (current) => { this.queryActivities.delete(current) })
           this.queryActivities.add(activity)
           try {
-            const execution = await this.queryInvocation.run(activity,
-              () => this.runCommand({ sessionId: params.sessionId, line }, images))
-            activity.accept(execution)
-            return { kind: 'command', execution }
+            const task = this.queryInvocation.run(activity, () => commands.execute(rec.handle.agent, line, images.map(image => ({
+              type: 'image', data: image.data, mediaType: image.mimeType,
+              ...image.name === undefined ? {} : { name: image.name },
+            })), this.lifetime.signal))
+            this.commandTasks.add(task)
+            try {
+              const execution = await task
+              if (execution === undefined) throw new Error('The selected command is unavailable in this SDK profile')
+              activity.accept(execution)
+              return { kind: 'command', execution }
+            } finally {
+              this.commandTasks.delete(task)
+            }
           } catch (error) {
             activity.close()
             throw error
@@ -333,60 +332,11 @@ export class HarnessSdkJsonRpcServer {
         }
       }
     }
-    const receipt = await this.submitPrompt({
+    const receipt = await this.prompt({
       sessionId: params.sessionId,
       contentBlocks: params.contentBlocks,
-    }, params.delivery)
+    })
     return { kind: 'prompt', ...receipt }
-  }
-
-  /**
-   * Execute supported compact, permission, plan, or goal input through the native command registry.
-   * ASCII registered names and canonical English aliases are accepted; Chinese aliases use query.
-   * @param params - target Session and complete command line.
-   * @returns the native handler result; command errors remain result values.
-   * @throws for unsupported input, unavailable commands, or runtime/transport failure.
-   */
-  async executeCommand(params: SessionCommandParams): Promise<CommandExecution> {
-    return this.runCommand(params, [])
-  }
-
-  private async runCommand(params: SessionCommandParams, images: SdkEncodedImageBlock[]): Promise<CommandExecution> {
-    if (!this.initialized) throw new Error('SDK server is not initialized')
-    if (this.shuttingDown) throw new Error('SDK server is shutting down')
-    const parsed = parseCommand(params.line.trimStart())
-    if (parsed === undefined) {
-      throw new TypeError(COMMAND_USAGE)
-    }
-    const commands = this.ctx.get('commands')
-    if (commands === undefined) {
-      throw new Error('Commands are unavailable in this SDK profile')
-    }
-    const rec = await this.getOrCreateSession(params.sessionId)
-    this.lifetime.signal.throwIfAborted()
-    this.assertLiveAgent(rec, params.sessionId)
-    const descriptor = resolveCommand(parsed.name, commands.list(rec.handle.agent))
-    if (descriptor === undefined) throw new Error(`/${parsed.name} is unavailable in this SDK profile`)
-    const builtin = builtinCommandName(descriptor)
-    if (builtin !== 'compact' && builtin !== 'plan' && builtin !== 'goal'
-      && (builtin !== 'permission' || parsed.rawInput.trim() === '')) {
-      throw new TypeError(COMMAND_USAGE)
-    }
-    const line = `/${descriptor.name}${parsed.rawInput}`
-    const task = commands.execute(rec.handle.agent, line, images.map(image => ({
-      type: 'image', data: image.data, mediaType: image.mimeType,
-      ...image.name === undefined ? {} : { name: image.name },
-    })), this.lifetime.signal)
-    this.commandTasks.add(task)
-    try {
-      const result = await task
-      if (result === undefined) {
-        throw new Error(`/${parsed.name} is unavailable in this SDK profile`)
-      }
-      return result
-    } finally {
-      this.commandTasks.delete(task)
-    }
   }
 
   /**
@@ -553,21 +503,12 @@ export class HarnessSdkJsonRpcServer {
         return this.prompt(params as unknown as SessionPromptParams)
       case 'session/query': {
         if (typeof params?.sessionId !== 'string' || params.sessionId.length === 0
-          || (params.delivery !== 'queue' && params.delivery !== 'steer')
-          || Object.keys(params).some(key => key !== 'sessionId' && key !== 'contentBlocks' && key !== 'delivery')) {
-          throw new TypeError('session/query requires only a non-empty sessionId, contentBlocks and queue/steer delivery')
+          || Object.keys(params).some(key => key !== 'sessionId' && key !== 'contentBlocks')) {
+          throw new TypeError('session/query requires only a non-empty sessionId and contentBlocks')
         }
         return this.query({
-          sessionId: brandString<SessionId>(params.sessionId), contentBlocks: queryContent(params.contentBlocks), delivery: params.delivery,
+          sessionId: brandString<SessionId>(params.sessionId), contentBlocks: queryContent(params.contentBlocks),
         })
-      }
-      case 'session/command': {
-        if (typeof params?.sessionId !== 'string' || params.sessionId.length === 0
-          || typeof params.line !== 'string'
-          || Object.keys(params).some(key => key !== 'sessionId' && key !== 'line')) {
-          throw new TypeError('session/command requires only a non-empty sessionId and a line string')
-        }
-        return this.executeCommand({ sessionId: brandString<SessionId>(params.sessionId), line: params.line })
       }
       case 'session/resume': {
         const sessionId = params?.sessionId

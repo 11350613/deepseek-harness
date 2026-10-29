@@ -10,7 +10,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Literal, TypeAlias, TypeVar
+from typing import Callable, TypeAlias, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -225,24 +225,19 @@ class HarnessClient:
             response_model=_EmptyResponse,
         )
 
-    def session_command(self, session_id: str, line: str) -> CommandExecution:
-        """Execute an explicit command and return its handler result without waiting for a turn."""
-        result = self._request_raw("session/command", {"sessionId": session_id, "line": line})
-        return _command_execution(result, "session/command")
-
     def _query(
-        self, session_id: str, input: str | list[JsonObject], delivery: Literal["queue", "steer"],
+        self, session_id: str, input: str | list[JsonObject],
     ) -> str | CommandExecution:
         """Return a validated prompt receipt or command result for high-level run callers."""
         blocks = [{"type": "text", "text": input}] if isinstance(input, str) else input
         result = self._request_raw("session/query", {
-            "sessionId": session_id, "contentBlocks": blocks, "delivery": delivery,
+            "sessionId": session_id, "contentBlocks": blocks,
         })
         if isinstance(result, dict):
             if result.get("kind") == "prompt" and isinstance(result.get("messageId"), str) and result["messageId"]:
                 return result["messageId"]
             if result.get("kind") == "command":
-                return _command_execution(result.get("execution"), "session/query")
+                return _command_execution(result.get("execution"))
         raise SdkProtocolError("session/query requires a prompt messageId or command execution result")
 
     def get_working_directory(self, session_id: str) -> str:
@@ -732,9 +727,9 @@ def _int_or_none(value: object) -> int | None:
     return value if isinstance(value, int) else None
 
 
-def _command_execution(value: JsonValue, method: str) -> CommandExecution:
+def _command_execution(value: JsonValue) -> CommandExecution:
     """Decode native command results and report malformed data as a protocol error."""
     try:
         return CommandExecution.model_validate(value)
     except ValidationError as error:
-        raise SdkProtocolError(f"{method} returned an invalid command result") from error
+        raise SdkProtocolError("session/query returned an invalid command result") from error

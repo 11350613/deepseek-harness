@@ -191,10 +191,9 @@ class DeepSeekHarness:
         *,
         session_id: str | None = None,
         on_notification: Callable[[Notification], None] | None = None,
-        delivery: Literal["queue", "steer"] = "queue",
     ) -> RunResult:
         """Run input to completion on a fresh or named Session and return its RunResult."""
-        return self.start_session(session_id).run(input, on_notification=on_notification, delivery=delivery)
+        return self.start_session(session_id).run(input, on_notification=on_notification)
 
 
 class Session:
@@ -217,7 +216,6 @@ class Session:
         input: str | list[JsonObject],
         *,
         on_notification: Callable[[Notification], None] | None = None,
-        delivery: Literal["queue", "steer"] = "queue",
     ) -> RunResult:
         """Run text or content blocks through native input routing.
 
@@ -228,17 +226,15 @@ class Session:
         The first text block selects native commands. Matched commands require
         one text block with only encoded images beside it; native handlers decide
         which commands accept those images. Ordinary prompts retain block order
-        and use the requested queue or steer delivery. Notifications retain
+        and are queued through the existing prompt operation. Notifications retain
         wire order. Every result retains this Session id, its root events and
         Session-tree notifications, including overlapping work. Native refusals
         return finish_reason="error". Routing, transport and observer failures
         raise without rolling back work.
         """
-        if delivery not in ("queue", "steer"):
-            raise ValueError("run delivery must be queue or steer")
         self.harness.start()
         with self.harness.client.subscribe_session_notifications(self.id) as subscription:
-            response = self.harness.client._query(self.id, input, delivery)
+            response = self.harness.client._query(self.id, input)
             if isinstance(response, CommandExecution):
                 activity = _RunActivity(self.id, "command", response.command_id)
                 while True:

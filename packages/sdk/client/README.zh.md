@@ -52,11 +52,11 @@ const result = await harness.run('say hi')
 console.log(result.finalResponse)
 ```
 
-子进程在首次使用时惰性启动，并在多次 `run()` 调用之间持续归实例所有；请调用 `close()`（或使用 `await using`），子进程才总能被回收。`start()` 会记忆化有界的 `initialize` 握手，其中包含工作区 cwd、提供方／模型路由、可选且由适配器持有的 `reasoningEffort`，以及可选的正整数 `maxTokens` 输出上限。服务器会在接受提示词前校验该确切路由；省略推理强度时保留模型自身的默认值。`initializeTimeoutMs` 默认 10 秒，诊断会写明所选 profile 并附带保留的 stderr 尾部。`run(input, { sessionId?, onNotification?, delivery? })` 接受文本或 `SdkPromptContentBlock[]`；内联栅格图像块携带规范 base64 与 `mimeType`，并在运行时内变成持久附件。对于普通输入，该调用拥有一个活动区间：它将提示词排入队列，等待其消息 id 出现在持久入队回执中，然后持续收集到整个 agent 下一次进入 `idle`。该路径返回 `RunResult { sessionId, finalResponse, finishReason, events, notifications }`，其中 `finalResponse` 是该区间内根会话最后提交的助手文本——并非因果上归属于该提示词的响应，因为 steering（中途引导）、注入的上下文和其他排队工作都可能在 idle 前参与其中。`session(id?)` 打开具名或全新的会话句柄。握手失败且清理成功时，实例会换入全新客户端，使后续调用用新进程重试，直到终结性的 `close()`；如果初始化和清理均失败，`start()` 会返回保留两个原因的有序 `AggregateError`，并继续保留失败的客户端，避免在原进程退出尚未得到证明时启动另一个进程。`maxTokens` 限制每个根 agent 请求的输出量，并由进程内后代继承；压缩（compaction）插件单独持有摘要上限。
+子进程在首次使用时惰性启动，并在多次 `run()` 调用之间持续归实例所有；请调用 `close()`（或使用 `await using`），子进程才总能被回收。`start()` 会记忆化有界的 `initialize` 握手，其中包含工作区 cwd、提供方／模型路由、可选且由适配器持有的 `reasoningEffort`，以及可选的正整数 `maxTokens` 输出上限。服务器会在接受提示词前校验该确切路由；省略推理强度时保留模型自身的默认值。`initializeTimeoutMs` 默认 10 秒，诊断会写明所选 profile 并附带保留的 stderr 尾部。`run(input, { sessionId?, onNotification? })` 接受文本或 `SdkPromptContentBlock[]`；内联栅格图像块携带规范 base64 与 `mimeType`，并在运行时内变成持久附件。对于普通输入，该调用拥有一个活动区间：它将提示词排入队列，等待其消息 id 出现在持久入队回执中，然后持续收集到整个 agent 下一次进入 `idle`。该路径返回 `RunResult { sessionId, finalResponse, finishReason, events, notifications }`，其中 `finalResponse` 是该区间内根会话最后提交的助手文本——并非因果上归属于该提示词的响应，因为 steering（中途引导）、注入的上下文和其他排队工作都可能在 idle 前参与其中。`session(id?)` 打开具名或全新的会话句柄。握手失败且清理成功时，实例会换入全新客户端，使后续调用用新进程重试，直到终结性的 `close()`；如果初始化和清理均失败，`start()` 会返回保留两个原因的有序 `AggregateError`，并继续保留失败的客户端，避免在原进程退出尚未得到证明时启动另一个进程。`maxTokens` 限制每个根 agent 请求的输出量，并由进程内后代继承；压缩（compaction）插件单独持有摘要上限。
 
 ### 运行文本与原生命令
 
-`await session.run(input, { delivery: 'queue', onNotification })` 接受字符串或 `SdkPromptContentBlock[]`，两者都交给运行时的[命令形式与 Desktop 别名](../server/README.zh.md#command-input)识别规则。未识别的输入保持普通提示词及原始内容块顺序。delivery 默认为 `queue`；对普通输入，包括图片，`steer` 指向下一个可用步骤。命令保留原生接纳规则与执行时序。
+`await session.run(input, { onNotification })` 接受字符串或 `SdkPromptContentBlock[]`，两者都交给运行时的[命令形式与 Desktop 别名](../server/README.zh.md#command-input)识别规则。未识别的输入保持普通提示词及原始内容块顺序。普通输入（包括图片）使用既有的提示词队列。命令保留原生接纳规则与执行时序。
 
 先选择支持图片输入的模型。通过现有内容块数组同时提交命令和图片，例如 `session.run([{ type: 'text', text: '/plan Analyze this image.' }, { type: 'image', data: imageBase64, mimeType: 'image/png' }])`；`harness.run()` 接受相同输入。计划输入和目标创建、编辑接受图片；`/plan off`、目标控制、压缩和权限命令按[原生附件规则](../server/README.zh.md#command-input)拒绝图片。原生命令输入支持编码栅格图片，不支持一般文件上传或客户端提供的附件引用。
 
@@ -78,10 +78,6 @@ console.log(result.finalResponse)
 `run('/plan')` 进入计划模式；`/plan off` 退出；`/plan <message>` 进入并通过 steer 提交正文。`run()` 等待提交的模型活动、原生审阅及获批后的执行，无需调用者另行订阅或等待。通过用户问题处理器回答计划审阅；`exit_plan_mode` 的计划正文位于问题的 `detail`。计划模式不改变权限。通过 `run()` 创建或恢复目标时，会跨越自动轮次等待，直到目标停止及最后回复结束；暂停或清除返回 `aborted`，目标阻塞或失去激活状态报告失败。
 
 ### 用 HarnessClient 做低层控制
-
-`client.executeCommand(sessionId, line)` 接受受支持内置定义的 ASCII 注册名或英文规范别名，不回退为提示词，也不接受附件；permission preset 必须非空，返回原生 `CommandExecution`。中文别名使用 `run()`。非空的未知 preset 会进入原生 handler，返回 `result.kind === "error"`。需要通知时，应在命令调用前订阅。请求超时仅放弃本地等待，运行时工作仍可继续。
-
-使用 `client.executeCommand()` 时，目标创建和恢复可在调用返回后启动自动轮次。发送前应订阅；先观察终态 `goal/change` 操作，再用 `session/wait` 等待收尾回复。轮次之间的 idle 不代表目标完成。暂停、清除、恢复和权限行为见[服务端语义](../server/README.zh.md)。
 
 `HarnessClient` 是运行 API 之下的协议客户端：显式 `start()`、`initialize()`、`prompt()`、`request()` 与 `close()`，外加通知订阅。`prompt()` 在运行时接受排队消息后立即返回该消息的 id，绝不等待 agent 活动。`subscribe(filter?)` 返回 `NotificationSubscription`（可等待的 `next()`、非阻塞 `tryNext()`、异步迭代）；`subscribeSessionTree(id)` 把范围限定到一个会话及从 `subagent.started` 血缘边发现的后代——运行时对上下文内每个会话都发通知，范围限定在客户端完成，与 Python SDK 完全一致。
 

@@ -353,7 +353,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     if (entry === 'prompt') {
       await server.prompt({ sessionId: 'image', contentBlocks })
     } else {
-      await server.handleRequest('session/query', { sessionId: 'image', contentBlocks, delivery: 'queue' })
+      await server.handleRequest('session/query', { sessionId: 'image', contentBlocks })
     }
 
     expect(saveImages).toHaveBeenCalledWith([{ data: Uint8Array.of(1), mediaType: 'image/png', name: 'diagram.png' }])

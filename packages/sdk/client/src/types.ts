@@ -6,7 +6,7 @@
  */
 
 import type { ContentBlock, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { CommandExecution, SdkPromptContentBlock, SdkUserQuestionResult, SdkUserQuestionRequest } from '@deepseek-ai/dsh-sdk-protocol'
+import type { SdkPromptContentBlock, SdkUserQuestionResult, SdkUserQuestionRequest } from '@deepseek-ai/dsh-sdk-protocol'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
 /** One server-to-client notification as received off the wire. */
@@ -86,7 +86,6 @@ export interface RunResult {
 
 /** Re-exported content-block alias so SDK callers need no extra import. */
 export type { ContentBlock }
-export type { CommandExecution }
 export type { SdkPromptContentBlock }
 export type { SdkEncodedImageBlock } from '@deepseek-ai/dsh-sdk-protocol'
 export type { SdkUserQuestionAnswer, SdkUserQuestionResult, SdkUserQuestionRequest } from '@deepseek-ai/dsh-sdk-protocol'

@@ -59,7 +59,7 @@ async function scenario(path: 'sdk' | 'native', outcome: 'approve' | 'dismiss', 
     if (agent === undefined) throw new Error('The initial prompt did not create its Agent')
     const line = '/plan Design the change.'
     const result = path === 'sdk'
-      ? await server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }], delivery: 'queue' })
+      ? await server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }] })
       : await ctx.commands.execute(agent, line, [], new AbortController().signal)
     if (result === undefined) throw new Error('The plan command was not found')
     const command = 'kind' in result && result.kind === 'command' ? result.execution : result

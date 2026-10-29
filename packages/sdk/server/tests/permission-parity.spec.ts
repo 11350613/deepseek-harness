@@ -105,7 +105,7 @@ async function switchAndContinue(path: 'sdk' | 'native', cwd: string) {
     if (agent === undefined) throw new Error('The initial prompt did not create its Agent')
     const dispatch = async (line: string) => {
       if (path === 'native') return ctx.commands.execute(agent, line, [], new AbortController().signal)
-      const routed = await runtime.query({ sessionId, contentBlocks: [{ type: 'text', text: line }], delivery: 'queue' })
+      const routed = await runtime.query({ sessionId, contentBlocks: [{ type: 'text', text: line }] })
       if (routed.kind !== 'command') throw new Error('The explicit permission input was submitted as a prompt')
       return routed.execution
     }

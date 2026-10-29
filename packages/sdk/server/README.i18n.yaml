@@ -15,8 +15,8 @@
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-sdk-jsonrpc-server/use-this-package:
-  en: f8caa6b998e5e306
-  zh: ecd701dec7b9a90d
+  en: d229158284c7e2af
+  zh: cd9b226792f30eaa
 /deepseek-ai-dsh-sdk-jsonrpc-server/use-this-package/wiring:
   en: 47a33e9397e36e15
   zh: e6d173820f9ea6e5
@@ -60,8 +60,8 @@
   en: 04d1b73cd8e06dfe
   zh: cd67fbbfdf39f776
 /deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/sdk-user-message/what-the-model-sees:
-  en: fd31787017832f45
-  zh: b70ed1535363dc42
+  en: 04c09df4f7053490
+  zh: 236f0f0b97892821
 /deepseek-ai-dsh-sdk-jsonrpc-server/model-experience/sdk-user-message/token-effect:
   en: 372ed851986b76d2
   zh: 075b94a565275368

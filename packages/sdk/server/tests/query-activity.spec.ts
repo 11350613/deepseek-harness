@@ -61,7 +61,7 @@ async function setup(model = new MockAdapter([]), goal = false) {
   onTestFinished(async () => { try { await server.shutdown() } finally { await ctx.fiber.dispose() } })
   await server.initialize({ cwd: process.cwd(), provider: 'query-activity', model: 'model' })
   const sessionId = SessionId('query-activity')
-  const run = (text: string) => server.query({ sessionId, contentBlocks: [{ type: 'text', text }], delivery: 'queue' })
+  const run = (text: string) => server.query({ sessionId, contentBlocks: [{ type: 'text', text }] })
   const register = (handler: CommandDefinition['handler']) => ctx.commands.register({
     name: 'plan', definitionId: CommandDefinitionId('@deepseek-ai/dsh-plan-mode'), description: 'Plan', handler,
   })
@@ -276,7 +276,7 @@ describe('SDK query activity completion', () => {
     const releaseMaintenance = Promise.withResolvers<undefined>()
     const maintenance = agent.runMaintenance(() => releaseMaintenance.promise)
     try {
-      const response = await h.server.query({ sessionId: h.sessionId, delivery: 'queue', contentBlocks: [
+      const response = await h.server.query({ sessionId: h.sessionId, contentBlocks: [
         { type: 'text', text: '/goal inspect the reference' },
         { type: 'image', data: 'AQ==', mimeType: 'image/png' },
       ] })

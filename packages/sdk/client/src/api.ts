@@ -121,7 +121,7 @@ export class DeepSeekHarness implements AsyncDisposable {
   /**
    * Run text or content blocks on a fresh or named Session through native input routing.
    * @param input - prompt or command text, optionally accompanied by image content blocks.
-   * @param options - optional Session identity, delivery and notification observer.
+   * @param options - optional Session identity and notification observer.
    * @returns the completed input's RunResult, including its Session id.
    */
   run(input: string | SdkPromptContentBlock[], options?: RunOptions): Promise<RunResult> {
@@ -162,22 +162,15 @@ export function createProcessDeepSeekHarness(
   }, () => createProcessHarnessClient(runtime))
 }
 
-/** Per-run Session identity, input delivery, and notification observer. */
+/** Per-run Session identity and notification observer. */
 export interface RunOptions {
   /** Session id to run on; omitted mints a fresh session per call. */
   sessionId?: string
-  /** Ordinary prompt delivery, defaulting to queue; commands retain their native execution timing. */
-  delivery?: 'queue' | 'steer'
   /**
    * Observe the input's Session-tree activity in wire order until completion.
    * The interval can include overlapping work from other inputs.
    */
   onNotification?: (notification: HarnessNotification) => void
-}
-
-/** Resolve omitted delivery to the ordinary prompt queue. */
-function resolveRunDelivery(requested: RunOptions['delivery']): 'queue' | 'steer' {
-  return requested ?? 'queue'
 }
 
 /** Collect one input's root events and Session-tree notifications from its admission. */
@@ -258,19 +251,18 @@ export class HarnessSession {
   /**
    * Run text or content blocks through native prompt-or-command routing.
    * @param input - prompt or command text, optionally accompanied by image content blocks; image-only input is an ordinary prompt.
-   * @param options - input delivery and a per-notification observer.
+   * @param options - a per-notification observer.
    * @returns RunResult after prompt activity, a state-only command, or command-started model work ends.
    * Goal creation and resume include automatic rounds through goal termination and the closing reply.
    * Native handler refusals return finishReason="error".
    * @throws on routing, protocol, transport or observer failure; runtime work is not rolled back.
    */
-  async run(input: string | SdkPromptContentBlock[], options?: Omit<RunOptions, 'sessionId'>): Promise<RunResult> {
-    const delivery = resolveRunDelivery(options?.delivery)
+  async run(input: string | SdkPromptContentBlock[], options?: Pick<RunOptions, 'onNotification'>): Promise<RunResult> {
     await this.harness.start()
     const client = this.harness.client
     const subscription = client.subscribeSessionTree(this.id)
     try {
-      const response = await queryInput(client, this.id, input, delivery)
+      const response = await queryInput(client, this.id, input)
       if (response.kind === 'command') {
         const activity = new RunActivity(this.id, { commandId: response.execution.commandId })
         while (true) {

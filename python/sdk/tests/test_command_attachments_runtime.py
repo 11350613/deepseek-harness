@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from deepseek_harness import CommandExecution, RunResult
+from deepseek_harness.models import CommandExecution
+from deepseek_harness import RunResult
 from deepseek_harness.errors import JsonRpcError
 from test_commands_runtime import (
     _Completion, _SESSION_ID, _WAIT_SECONDS, _command_pair, _native_result, _of_type,
@@ -122,10 +123,10 @@ def test_goal_create_and_edit_images_reach_following_requests_as_durable_referen
     second = _Completion("REVISED_GOAL_IMAGE", blocked=True)
     with _runtime(tmp_path, [first, second], model=_IMAGE_MODEL) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
-        created = runtime.call(runtime.harness.client._query, session.id, [original, {"type": "text", "text": "/goal Inspect the original picture."}], "queue")
+        created = runtime.call(runtime.harness.client._query, session.id, [original, {"type": "text", "text": "/goal Inspect the original picture."}])
         assert isinstance(created, CommandExecution) and created.result.kind == "success"
         assert first.entered.wait(_WAIT_SECONDS), runtime.model.failures
-        edited = runtime.call(runtime.harness.client._query, session.id, [revised, {"type": "text", "text": "/goal edit Inspect the revised picture."}], "queue")
+        edited = runtime.call(runtime.harness.client._query, session.id, [revised, {"type": "text", "text": "/goal edit Inspect the revised picture."}])
         assert isinstance(edited, CommandExecution) and edited.result.kind == "success"
         _command(runtime, session, "/goal clear")
         assert not first.release.is_set()
@@ -209,11 +210,11 @@ def test_goal_controls_with_images_leave_the_active_request_and_goal_unchanged(t
     assert not _image_messages(events)
 
 
-@pytest.mark.parametrize("delivery", ["queue", "steer"])
-def test_prompt_images_use_the_requested_delivery_during_an_active_turn(tmp_path: Path, delivery: str) -> None:
+@pytest.mark.parametrize("image_first", [False, True])
+def test_prompt_images_queue_during_an_active_turn(tmp_path: Path, image_first: bool) -> None:
     picture = _image()
     text = {"type": "text", "text": "Inspect the image."}
-    content = [text, picture] if delivery == "queue" else [picture, text]
+    content = [picture, text] if image_first else [text, picture]
     first = _Completion("BEFORE_IMAGE", blocked=True)
     with _runtime(tmp_path, [first, _Completion("IMAGE_RECEIVED")], model=_IMAGE_MODEL) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
@@ -221,7 +222,7 @@ def test_prompt_images_use_the_requested_delivery_during_an_active_turn(tmp_path
         assert first.entered.wait(_WAIT_SECONDS), runtime.model.failures
         accepted = threading.Event()
         following = runtime.workers.submit(
-            session.run, content, delivery=delivery,
+            session.run, content,
             on_notification=lambda _notification: accepted.set(),
         )
         assert accepted.wait(_WAIT_SECONDS), "image prompt did not reach its inbox receipt"
@@ -240,10 +241,9 @@ def test_prompt_images_use_the_requested_delivery_during_an_active_turn(tmp_path
     assert [block["type"] for block in recorded] == [block["type"] for block in content]
     assert [block for block in recorded if block["type"] == "text"] == [text]
     assert not _of_type(events, "command/run")
-    assert [event["data"] for event in _of_type(events, "step/start")] == (
-        [{"turn": 1, "step": 1}, {"turn": 2, "step": 1}] if delivery == "queue"
-        else [{"turn": 1, "step": 1}, {"turn": 1, "step": 2}]
-    )
+    assert [event["data"] for event in _of_type(events, "step/start")] == [
+        {"turn": 1, "step": 1}, {"turn": 2, "step": 1},
+    ]
 
 
 def test_top_level_run_accepts_an_image_without_text(tmp_path: Path) -> None:

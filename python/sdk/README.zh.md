@@ -61,7 +61,7 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
 <a id="run-text-and-commands"></a>
 ## 运行文本与命令
 
-`session.run(input, on_notification=..., delivery="queue")` 是字符串和内容块数组共用的公开提示词／命令输入入口。两者都使用运行时的[命令形式与 Desktop 别名](../../packages/sdk/server/README.zh.md#command-input)识别规则；未识别的输入保持普通提示词及原始内容块顺序。对普通输入，包括图片，`delivery="steer"` 指向下一个可用步骤。命令的接纳规则与执行时序仍由原生处理器负责。
+`session.run(input, on_notification=...)` 是字符串和内容块数组共用的公开提示词／命令输入入口。两者都使用运行时的[命令形式与 Desktop 别名](../../packages/sdk/server/README.zh.md#command-input)识别规则；未识别的输入保持普通提示词及原始内容块顺序。普通输入（包括图片）使用既有的提示词队列。命令的接纳规则与执行时序仍由原生处理器负责。
 
 每次调用都返回 `RunResult`，包含接收输入的 `session_id`、根会话事件和会话树通知。`final_response` 包含最终助手文本；活动未输出助手文本时为空字符串。仅改变状态的命令返回原生 handler 的结果文本。`finish_reason` 表示结束结果。原生命令身份与结果保留在 `command/run` 和 `command/done` 事件中。完成通知缺少匹配的命令生命周期事件时抛出 `SdkProtocolError`，不会返回不完整的结果。
 
@@ -71,7 +71,7 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
 
 每次调用在发送前订阅，并在返回或抛出异常前释放订阅。`on_notification` 按传输顺序接收本次输入的会话树活动；区间可以包含重叠工作。调用可以重叠，不会消耗彼此的结果。原生拒绝返回 `finish_reason="error"`；路由、协议、传输和观察回调失败则抛出异常。格式错误的原生命令响应抛出 `SdkProtocolError`，保留校验原因。超时或观察回调失败不回滚运行时工作，也不授权自动重试。`request_timeout_seconds` 限制协议响应等待，不限制之后的输入活动。
 
-默认的完整 `sdk` profile 提供已支持的原生命令；`sdk-minimal` 将未支持的输入保留在普通提示词路径。`/compact` 可以发起辅助模型请求，其完成不需要普通 turn 或 idle 通知；空历史可以在不生成摘要时成功。底层 `HarnessClient.session_command(session_id, line)` 接受受支持内置定义的 ASCII 注册名或英文规范别名，不回退为提示词，也不接受附件，返回原生 `CommandExecution`。中文别名使用 `run()`。见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
+默认的完整 `sdk` profile 提供已支持的原生命令；`sdk-minimal` 将未支持的输入保留在普通提示词路径。`/compact` 可以发起辅助模型请求，其完成不需要普通 turn 或 idle 通知；空历史可以在不生成摘要时成功。见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
 
 `/permission <preset>` 只修改接收命令的 Session。未知 preset 返回命令错误，不改变策略。后续输入与恢复保留成功的修改，其他 Session 和调用方的 `DeepSeekHarnessConfig` 保留自己的值。运行中的审批策略变化可以注入通知并触发下一模型步骤。见[权限示例](examples/README.zh.md#change-session-permissions)。
 

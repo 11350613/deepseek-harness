@@ -28,7 +28,6 @@ export type {
   SdkUserQuestionResult,
   SdkUserQuestionCancelled,
   SessionEventNotification,
-  SessionCommandParams,
   SessionQueryParams,
   SessionQueryResult,
   SessionStatusNotification,

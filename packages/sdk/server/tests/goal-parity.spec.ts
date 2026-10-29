@@ -45,7 +45,7 @@ async function scenario(path: 'sdk' | 'native', cwd: string) {
     })
     const line = '/goal Verify the change.'
     const result = path === 'sdk'
-      ? await server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }], delivery: 'queue' })
+      ? await server.query({ sessionId, contentBlocks: [{ type: 'text', text: line }] })
       : await ctx.commands.execute(agent, line, [], new AbortController().signal)
     if (result === undefined) throw new Error('The goal command was not found')
     const command = 'kind' in result && result.kind === 'command' ? result.execution : result

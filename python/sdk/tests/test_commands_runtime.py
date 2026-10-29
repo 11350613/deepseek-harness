@@ -23,7 +23,8 @@ from typing import Callable, Iterator, TypeVar
 import pytest
 from pydantic import BaseModel
 
-from deepseek_harness import CommandExecution, DeepSeekHarness, Notification, RunResult, Session
+from deepseek_harness.models import CommandExecution
+from deepseek_harness import DeepSeekHarness, Notification, RunResult, Session
 from deepseek_harness.client import UserQuestionHandler
 
 
@@ -353,7 +354,7 @@ def test_compact_without_history_returns_without_a_model_turn(tmp_path: Path) ->
         session = runtime.harness.start_session(_SESSION_ID)
         observer = runtime.harness.client.subscribe_session_notifications(_SESSION_ID)
         try:
-            execution = runtime.call(session.run, " \n/压缩\t ", delivery="queue")
+            execution = runtime.call(session.run, " \n/压缩\t ")
             done = runtime.call(_wait_command_done, observer.next)
         except BaseException:
             # Wake a timed-out observer before unregistering its otherwise blocking queue.
@@ -379,11 +380,11 @@ def test_compact_rejects_busy_agent_before_the_model_is_released(tmp_path: Path)
     with _runtime(tmp_path, [response]) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
         running = runtime.workers.submit(
-            session.run, "Hold this request while compaction is attempted.", delivery="queue",
+            session.run, "Hold this request while compaction is attempted.",
         )
         assert response.entered.wait(_WAIT_SECONDS), runtime.model.failures
         assert not running.done() and not response.release.is_set()
-        execution = runtime.call(session.run, "/compact", delivery="queue")
+        execution = runtime.call(session.run, "/compact")
         assert isinstance(execution, RunResult)
         execution = _native_result(execution)
         assert execution.result.kind == "error"
@@ -410,11 +411,11 @@ def run_compaction_scenario(tmp_path: Path, *, capture_patch: Path | None = None
         session = runtime.harness.start_session(_SESSION_ID)
         # The replaced span is deliberately larger than the framed summary.
         prompt = _HISTORY_MARKER + "\n" + "Keep the original request only in the stored history. " * 256
-        first_result = runtime.call(session.run, prompt, delivery="queue")
+        first_result = runtime.call(session.run, prompt)
         assert isinstance(first_result, RunResult)
         assert first_result.final_response == _FIRST_REPLY
 
-        compacting = runtime.workers.submit(session.run, "/compact", delivery="queue")
+        compacting = runtime.workers.submit(session.run, "/compact")
         assert summary_response.entered.wait(_WAIT_SECONDS), runtime.model.failures
         assert not summary_response.release.is_set()
         assert not compacting.done(), "command returned before its summary request completed"
@@ -450,7 +451,7 @@ def run_compaction_scenario(tmp_path: Path, *, capture_patch: Path | None = None
         assert "<compacted-summary>" in checkpoint_text and "</compacted-summary>" in checkpoint_text
         assert len(_of_type(checkpointed, "turn/start")) == len(_of_type(checkpointed, "turn/end")) == 1
 
-        continued = runtime.call(session.run, _CONTINUE_PROMPT, delivery="queue")
+        continued = runtime.call(session.run, _CONTINUE_PROMPT)
         assert isinstance(continued, RunResult)
         assert continued.final_response == _CONTINUE_REPLY
         first, compaction, following = runtime.model.captured()
@@ -486,7 +487,7 @@ def test_unknown_slash_and_compact_arguments_follow_the_plain_prompt_path(tmp_pa
     with _runtime(tmp_path, [_Completion(text) for text in replies]) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
         for prompt, reply in zip(prompts, replies):
-            result = runtime.call(session.run, prompt, delivery="queue")
+            result = runtime.call(session.run, prompt)
             assert isinstance(result, RunResult)
             assert result.final_response == reply
         requests = runtime.model.captured()
@@ -506,11 +507,11 @@ def test_unimplemented_slash_remains_plain_text_without_recording_feedback(tmp_p
     reply = "DSH_AFTER_PLAN_TEXT_REPLY"
     with _runtime(tmp_path, [_Completion(reply_before), _Completion(reply)]) as runtime:
         session = runtime.harness.start_session(_SESSION_ID)
-        first = runtime.call(session.run, input_text, delivery="queue")
+        first = runtime.call(session.run, input_text)
         assert isinstance(first, RunResult)
         assert first.final_response == reply_before
 
-        result = runtime.call(session.run, following, delivery="queue")
+        result = runtime.call(session.run, following)
         assert isinstance(result, RunResult)
         assert result.final_response == reply
         initial, continued = runtime.model.captured()

@@ -42,7 +42,6 @@ kind: "package-library"
 | client→server | `initialize` | `InitializeParams` → `InitializeResult` |
 | client→server | `session/prompt` | `SessionPromptParams` → `SessionPromptResult`（持久入队回执） |
 | client→server | `session/query` | `SessionQueryParams` → `SessionQueryResult` |
-| client→server | `session/command` | `SessionCommandParams` → `CommandExecution` |
 | client→server | `session/resume` | `SessionResumeParams` → `{}` |
 | client→server | `session/wait` | `SessionWaitParams` → `{}` |
 | 客户端→服务端 | `session/working-directory/get` | `SessionWorkingDirectoryParams` → `SessionWorkingDirectoryResult` |
@@ -61,11 +60,11 @@ kind: "package-library"
 
 `session/wait` 接受已有 SDK 会话的 `{ sessionId }`，在根 Agent 持续空闲且活跃的受管理后代工作结束后返回 `{}`。带有停放输入的空闲后代保持驻留，不阻塞这次等待。未知 id，以及没有后续终止事件记录的 Agent 运行时错误，都会使请求失败。等待期间提交的通知在同一传输上先于响应到达；原始 `session.status` 转换仍表示整个 Agent 的状态。
 
-`session/query` 接受 `{ sessionId, contentBlocks, delivery }`，其中 `contentBlocks` 使用 `SdkPromptContentBlock[]`，delivery 为 `queue` 或 `steer`。两个 SDK 都将字符串规范化为文本块，并通过同一入口发送内容块数组。普通输入保留内容块顺序，返回 `{ kind: "prompt", messageId }`；受支持命令结束后返回 `{ kind: "command", execution }`。已识别命令要求一个完整文本块，其他块只能是编码图片；其他组合会在执行或入队前被拒绝。图片经过原生附件接纳与处理器校验。空数组和只包含空白文本的数组会被拒绝；允许仅图片输入。Prompt 回执不是模型结果，命令完成也不要求 inbox 回执或 idle 通知。识别规则及受支持命令由 [SDK 服务端](../server/README.zh.md)定义。
+`session/query` 接受 `{ sessionId, contentBlocks }`，其中 `contentBlocks` 使用 `SdkPromptContentBlock[]`。两个 SDK 都将字符串规范化为文本块，并通过同一入口发送内容块数组。普通输入保留内容块顺序排队，返回 `{ kind: "prompt", messageId }`；受支持命令结束后返回 `{ kind: "command", execution }`。已识别命令要求一个完整文本块，其他块只能是编码图片；其他组合会在执行或入队前被拒绝。图片经过原生附件接纳与处理器校验。空数组和只包含空白文本的数组会被拒绝；允许仅图片输入。Prompt 回执不是模型结果，命令完成也不要求 inbox 回执或 idle 通知。识别规则及受支持命令由 [SDK 服务端](../server/README.zh.md)定义。
 
-`session/command` 在初始化后接受 `{ sessionId, line }`，将[支持内置定义的 ASCII 注册名或英文规范别名](../server/README.zh.md#command-input)委托给原生注册器。忽略前导空白。中文别名使用 `session/query`。preset 必须非空，裸 `/permission` 会被拒绝。Handler 结束后返回 `CommandExecution`，未知 preset 或其他业务失败以 `result.kind: "error"` 返回。命令不可用、不受支持或请求格式错误时返回 JSON-RPC 错误。不回退为普通 prompt，也不接受附件；携带编码图片的命令使用 `session/query`。不要求 inbox 回执或普通 turn。`session/prompt` 将内容块排入队列，不经过原生 slash command 路由；运行时 skill（技能）识别仍然适用。
+`session/prompt` 将内容块排入队列，不经过原生 slash command 路由；运行时 skill（技能）识别仍然适用。
 
-`session/command` 和 `session/query` 的命令生命周期通知先于原生 handler 响应到达。命令查询另以同一 `commandId` 的 `session.query.completed` 通知结束高层观察，等待命令启动的模型活动；目标创建和恢复还等待目标终止及收尾活动。状态命令无需模型 turn，其完成通知可以先于响应到达。SDK 内部消费该回执并返回 `RunResult`，转发器必须保持顺序。关闭会取消尚未结束的观察。
+命令生命周期通知先于 `session/query` 的 handler 响应到达。命令查询以同一 `commandId` 的 `session.query.completed` 通知结束高层观察，等待命令启动的模型活动；目标创建和恢复还等待目标终止及收尾活动。状态命令无需模型 turn，其完成通知可以先于响应到达。SDK 内部消费该回执并返回 `RunResult`，转发器必须保持顺序。关闭会取消尚未结束的观察。
 
 `session/resume` 接受非空的持久化 `{ sessionId }`，恢复该会话后返回 `{}`。它要求先完成初始化并使用原持久化存储，不发送新输入；会话缺失、不可读、不兼容或被占用时，请求失败且不创建替代会话。历史事件保留在存储日志中，通知只报告新提交的事件。
 

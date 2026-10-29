@@ -50,8 +50,6 @@
  * - `FAKE_STDERR_NO_NEWLINE`: write this to stderr WITHOUT a newline (buffer-flush probe).
  * - `FAKE_APPROVAL`: send one server approval request after initialization and echo its response as a notification.
  * - `FAKE_RECORD_INIT`: append each `initialize` params JSON to this file (handshake probe).
- * - `FAKE_COMMAND_RESULT`: command response JSON; omission echoes the requested line.
- * - `FAKE_COMMAND_ERROR`: reject a command with a JSON-RPC error.
  */
 
 import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
@@ -319,26 +317,13 @@ reader.on('line', (line) => {
       respond({ cwd })
       return
     }
-    case 'session/command': {
-      if (env.FAKE_COMMAND_ERROR !== undefined) {
-        write({ jsonrpc: '2.0', id: frame.id, error: { code: -32603, message: 'command unavailable' } })
-      } else {
-        const result: unknown = env.FAKE_COMMAND_RESULT === undefined
-          ? { commandId: 'command-1', result: { kind: 'success', text: frame.params?.line } }
-          : JSON.parse(env.FAKE_COMMAND_RESULT)
-        respond(result)
-      }
-      return
-    }
     case 'session/query':
     case 'session/prompt': {
       const blocks = frame.params?.contentBlocks as { type: string; text?: string }[]
       const text = blocks.filter(block => block.type === 'text').map(block => block.text).join('\n')
       if (frame.method === 'session/query' && text === '/compact') {
-        const execution: unknown = env.FAKE_COMMAND_RESULT === undefined
-          ? { commandId: 'command-1', result: { kind: 'success', text: '/compact' } }
-          : JSON.parse(env.FAKE_COMMAND_RESULT)
-        const completed = execution as { commandId?: string; result?: { kind?: string; text?: string } }
+        const execution = { commandId: 'command-1', result: { kind: 'success', text: '/compact' } }
+        const completed = execution
         event(sessionIdOf(frame.params), 'command/run', { commandId: completed.commandId })
         event(sessionIdOf(frame.params), 'command/done', { commandId: completed.commandId, ...completed.result })
         notify('session.query.completed', { sessionId: frame.params?.sessionId, commandId: completed.commandId,

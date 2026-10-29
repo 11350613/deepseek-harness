@@ -86,7 +86,7 @@ async function compactAndContinue(path: 'sdk' | 'native', cwd: string) {
     if (agent === undefined) throw new Error('SDK prompt did not create its Agent')
 
     const routed = path === 'sdk'
-      ? await server.query({ sessionId, contentBlocks: [{ type: 'text', text: '/compact' }], delivery: 'queue' })
+      ? await server.query({ sessionId, contentBlocks: [{ type: 'text', text: '/compact' }] })
       : undefined
     const execution = path === 'sdk'
       ? routed?.kind === 'command' ? routed.execution : undefined

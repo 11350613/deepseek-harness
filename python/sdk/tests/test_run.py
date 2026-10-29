@@ -10,7 +10,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from deepseek_harness import CommandExecution, DeepSeekHarness, Notification, RunResult, SdkProtocolError
+from deepseek_harness.models import CommandExecution
+from deepseek_harness import DeepSeekHarness, Notification, RunResult, SdkProtocolError
 from deepseek_harness.errors import JsonRpcError
 
 
@@ -68,11 +69,12 @@ for line in sys.stdin:
     method = frame["method"]
     if method == "initialize":
         send({"id": frame["id"], "result": {"serverInfo": {"name": "query-peer"}}})
+    elif method == "session/prompt":
+        send({"id": frame["id"], "result": {"messageId": "literal-input"}})
     elif method == "session/query":
         serial += 1
         params = frame["params"]
-        assert set(params) == {"sessionId", "contentBlocks", "delivery"}
-        assert params["delivery"] in ("queue", "steer")
+        assert set(params) == {"sessionId", "contentBlocks"}
         text = input_text(frame)
         if text == "/plan hold":
             identity = "plan-" + str(serial)
@@ -225,7 +227,7 @@ def test_run_adds_session_identity_without_changing_command_results(peer: Path, 
         assert returned.session_id
         assert returned.final_response == result.get("text", "")
         assert returned.finish_reason == ("error" if result["kind"] == "error" else "completed")
-        low_level = sdk.client._query(returned.session_id, "custom-response", "queue")
+        low_level = sdk.client._query(returned.session_id, "custom-response")
         assert isinstance(low_level, CommandExecution)
         assert low_level.model_dump(by_alias=True, exclude_none=True) == execution
         assert_released(sdk)
@@ -243,21 +245,15 @@ def test_run_preserves_ordinary_text_and_result(sdk: DeepSeekHarness, text: str)
     assert_released(sdk)
 
 
-def test_run_accepts_steer_for_text(sdk: DeepSeekHarness) -> None:
-    result = sdk.start_session("main").run("next step", delivery="steer")
-    assert isinstance(result, RunResult)
-    assert result.final_response == "answer for next step"
-
-
-@pytest.mark.parametrize("entry,text,delivery", [
-    ("harness", "/plan Describe this image.", "queue"),
-    ("session", "/plan Describe this image.", "steer"),
-    ("harness", "Explain this image.", "queue"),
-    ("session", "/unknown-slash", "steer"),
-    ("session", "", "queue"),
+@pytest.mark.parametrize("entry,text", [
+    ("harness", "/plan Describe this image."),
+    ("session", "/plan Describe this image."),
+    ("harness", "Explain this image."),
+    ("session", "/unknown-slash"),
+    ("session", ""),
 ])
 def test_run_forwards_content_blocks_with_the_routed_result_and_notifications(
-    sdk: DeepSeekHarness, tmp_path: Path, entry: str, text: str, delivery: str,
+    sdk: DeepSeekHarness, tmp_path: Path, entry: str, text: str,
 ) -> None:
     blocks = [
         {"type": "text", "text": text},
@@ -265,9 +261,9 @@ def test_run_forwards_content_blocks_with_the_routed_result_and_notifications(
     ]
     notifications = []
     result = (
-        sdk.run(blocks, session_id="main", delivery=delivery, on_notification=notifications.append)
+        sdk.run(blocks, session_id="main", on_notification=notifications.append)
         if entry == "harness" else sdk.start_session("main").run(
-            blocks, delivery=delivery, on_notification=notifications.append,
+            blocks, on_notification=notifications.append,
         )
     )
     if text == "/plan Describe this image.":
@@ -280,7 +276,7 @@ def test_run_forwards_content_blocks_with_the_routed_result_and_notifications(
     sent = [json.loads(line) for line in (tmp_path / "requests.jsonl").read_text(encoding="utf-8").splitlines()]
     assert sent[-1]["method"] == "session/query"
     assert sent[-1]["params"] == {
-        "sessionId": "main", "contentBlocks": blocks, "delivery": delivery,
+        "sessionId": "main", "contentBlocks": blocks,
     }
     assert_released(sdk)
 
@@ -290,7 +286,7 @@ def test_run_normalizes_strings_without_changing_their_text(sdk: DeepSeekHarness
     assert isinstance(result, RunResult)
     sent = [json.loads(line) for line in (tmp_path / "requests.jsonl").read_text(encoding="utf-8").splitlines()]
     assert sent[-1]["params"] == {
-        "sessionId": "main", "contentBlocks": [{"type": "text", "text": "  preserve whitespace  "}], "delivery": "queue",
+        "sessionId": "main", "contentBlocks": [{"type": "text", "text": "  preserve whitespace  "}],
     }
 
 
@@ -365,14 +361,6 @@ def test_command_timeout_keeps_runtime_responsive(sdk: DeepSeekHarness) -> None:
     assert isinstance(sdk.start_session("main").run("/compact"), RunResult)
 
 
-def test_run_requires_supported_delivery(sdk: DeepSeekHarness) -> None:
-    session = sdk.start_session("main")
-    with pytest.raises(ValueError, match="delivery"):
-        session.run("ordinary", delivery="unknown")
-    with pytest.raises(ValueError, match="delivery"):
-        session.run([{"type": "text", "text": "ordinary"}], delivery="unknown")
-
-
 @pytest.mark.parametrize("response", [
     None, [], {"kind": "unknown"}, {"kind": "prompt"}, {"kind": "prompt", "messageId": ""},
     {"kind": "prompt", "messageId": 4},
@@ -427,3 +415,40 @@ def test_run_rejects_malformed_completion_and_releases_its_subscription(
         with pytest.raises(SdkProtocolError):
             sdk.run("custom-response")
         assert_released(sdk)
+
+
+@pytest.mark.parametrize("execution", [
+    {},
+    {"commandId": "command-1"},
+    {"commandId": "", "result": {"kind": "success"}},
+    {"commandId": "command-1", "result": {"kind": "unknown"}},
+    {"commandId": "command-1", "result": {"kind": "error"}},
+    {"commandId": "command-1", "result": {"kind": "error", "text": ""}},
+    {"commandId": "command-1", "result": {"kind": "error", "text": " \t\n"}},
+    {"commandId": "command-1", "result": {"kind": "success", "text": None}},
+    {"commandId": "command-1", "result": {"kind": "success", "sourceEventSeq": None}},
+    {"commandId": "command-1", "result": {"kind": "success", "sourceEventSeq": "4"}},
+    {"commandId": "command-1", "result": {"kind": "success", "sourceEventSeq": True}},
+    {"commandId": "command-1", "result": {"kind": "success", "sourceEventSeq": -1}},
+    {"commandId": "command-1", "result": {"kind": "success", "sourceEventSeq": 2**53}},
+])
+def test_run_rejects_malformed_native_results(peer: Path, tmp_path: Path, execution: dict) -> None:
+    with DeepSeekHarness(
+        cwd=str(tmp_path), dsh_home=str(tmp_path / "home"),
+        _launch_args=(sys.executable, str(peer)),
+        env={"REQUEST_LOG": str(tmp_path / "requests.jsonl"), "QUERY_RESPONSE": json.dumps({
+            "kind": "command", "execution": execution,
+        })},
+    ) as sdk:
+        with pytest.raises(SdkProtocolError) as raised:
+            sdk.run("custom-response")
+        assert isinstance(raised.value.__cause__, ValidationError)
+        assert_released(sdk)
+
+
+def test_low_level_prompt_keeps_slash_text_as_an_ordinary_prompt(sdk: DeepSeekHarness, tmp_path: Path) -> None:
+    blocks = [{"type": "text", "text": "/compact"}]
+    assert sdk.client.session_prompt("main", blocks) == "literal-input"
+    sent = [json.loads(line) for line in (tmp_path / "requests.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert sent[-1]["method"] == "session/prompt"
+    assert sent[-1]["params"] == {"sessionId": "main", "contentBlocks": blocks}

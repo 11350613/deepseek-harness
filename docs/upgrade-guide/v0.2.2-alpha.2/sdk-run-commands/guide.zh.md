@@ -20,5 +20,5 @@ Python 和 TypeScript 的 `run()` 通过原有入口接受字符串和内容块�
 1. 普通提示词和命令均继续使用 `result.final_response` / `result.finalResponse`。通过 `finish_reason` / `finishReason` 检查失败；命令 id 和原生结果保留在 `command/run` 与 `command/done` 事件中。保存结果的 Session id，以便继续或恢复会话。
 2. 计划审阅期间保持用户问题回调可用。状态变更命令的失败体现在 `RunResult` 中；路由、协议数据格式和传输失败仍抛出或拒绝。超时或观察回调失败不会回滚运行时工作。
 3. 需要按原文排队输入时，使用 Python `client.session_prompt(session_id, blocks)` 或 TypeScript `client.prompt(sessionId, blocks)`，并管理后续活动。运行时技能识别仍然适用。
-4. 自定义 `session/query` 客户端发送 `{ sessionId, contentBlocks, delivery }`。命令响应确认原生 handler 完成；对应的 `session.query.completed` 通知携带本次输入的最终结果。保持通知顺序，并在发送前订阅。`session/command` 保持严格、无附件的行为。
+4. 自定义 `session/query` 客户端发送 `{ sessionId, contentBlocks }`。命令响应确认原生 handler 完成；对应的 `session.query.completed` 通知携带本次输入的最终结果。保持通知顺序，并在发送前订阅。
 5. 调用 `run()` 前过滤空输入。图片使用支持图片的模型及原有 `run([text_block, image_block])` 形式。Python 对格式错误的原生命令响应抛出 `SdkProtocolError`，保留校验原因；调用者自行选择的通用响应模型保留原有校验行为。
