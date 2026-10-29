@@ -7,7 +7,7 @@
 // draws the panel is a recorded, reversible choice, so this file asserts against
 // the frame's track as much as against the panel itself. The way back in while
 // collapsed is not in the column at all: it is one button in the conversation
-// header, and it leaves when the panel opens.
+// header, visible only while the panel is collapsed.
 //
 // Ordering is the product's own: the hero comes before any session, so the
 // empty right edge is asserted first and the session-bound cases follow in a
@@ -114,7 +114,7 @@ async function holdPanelSlide(panel: Locator) {
   })
 }
 
-/** The expand button in the conversation header, present only while collapsed. */
+/** The conversation header's expand control, visible only while collapsed. */
 function expandOf(page: Page): Locator {
   return page.locator('[data-sidebar-right-expand]')
 }
@@ -379,8 +379,7 @@ describe('web e2e: shipped right Sidebar', () => {
       onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-right-pageup'))
       const frame = page.locator('[class*="frame"]').first()
       const composer = page.locator('textarea, [contenteditable="true"]').first()
-      // The expand button exists only while the panel is collapsed, when its
-      // docked hosts sit translated past the frame's right edge.
+      // Collapsed docked hosts sit translated past the frame's right edge.
       await expandOf(page).waitFor({ timeout: 15_000 })
       await composer.click()
       await composer.pressSequentially('caret')
@@ -644,17 +643,31 @@ describe('web e2e: shipped right Sidebar', () => {
       expect(tripwire.warnings).toEqual([])
     })
 
-    it.each([390, 767])('keeps the mobile conversation title still while the right sidebar slides at %ipx', async (viewportWidth) => {
-      onTestFailed(() => saveFailureShot(page, `web-e2e-sidebar-right-mobile-title-${viewportWidth}`))
+    it.each([
+      { viewportWidth: 390, frameWidth: 390 },
+      { viewportWidth: 767, frameWidth: 767 },
+      { viewportWidth: 1024, frameWidth: 767 },
+    ])('keeps the mobile conversation title still in a $frameWidth px frame inside a $viewportWidth px viewport', async ({ viewportWidth, frameWidth }) => {
+      const caseName = `mobile-title-${frameWidth}-viewport-${viewportWidth}`
+      onTestFailed(() => saveFailureShot(page, `web-e2e-sidebar-right-${caseName}`))
       const viewport = page.viewportSize()
       if (viewport === null) throw new Error('expected a fixed viewport')
       const column = await resetSidebar(page)
+      const frame = page.locator('[class*="frame"]').first()
+      const frameStyle = await frame.evaluate(node => ({
+        width: node.style.width,
+        priority: node.style.getPropertyPriority('width'),
+      }))
       const panel = column.locator('[data-sidebar-right-panel]')
       const title = page.locator('[class*="titleCluster"]').first()
       const utilities = page.locator('[class*="headerUtilities"]').first()
       try {
         await page.emulateMedia({ reducedMotion: 'no-preference' })
         await page.setViewportSize({ width: viewportWidth, height: viewport.height })
+        if (frameWidth !== viewportWidth) {
+          await frame.evaluate((node, width) => { node.style.width = `${width}px` }, frameWidth)
+        }
+        await expect.poll(async () => (await frame.boundingBox())?.width).toBe(frameWidth)
         await expect.poll(() => panel.getAttribute('data-sidebar-right-panel')).toBe('fullscreen')
         await column.locator('[data-sidebar-right-toggle]').click()
         await panel.evaluate(async (node) => {
@@ -667,23 +680,22 @@ describe('web e2e: shipped right Sidebar', () => {
         const utilitiesBefore = await utilities.boundingBox()
         expect(titleBefore?.width).toBeGreaterThan(0)
         expect(utilitiesBefore?.width).toBeGreaterThan(0)
-        await shot(page, `mobile-title-${viewportWidth}-collapsed`)
+        await shot(page, `${caseName}-collapsed`)
         try {
           for (const opening of [true, false]) {
             const held = await holdPanelSlide(panel)
             try {
               await (opening ? expandOf(page) : column.locator('[data-sidebar-right-toggle]')).click()
               await expect.poll(() => held.evaluate(state => state.animation?.playState)).toBe('paused')
-              const sliding = await paneAt(column, 0).boundingBox()
-              if (sliding === null) throw new Error('sliding panel is not rendered')
-              expect(sliding.x).toBeGreaterThan(0)
-              expect(sliding.x).toBeLessThan(viewportWidth)
+              const progress = await held.evaluate(state => state.animation?.effect?.getComputedTiming().progress)
+              expect(progress).toBeGreaterThan(0)
+              expect(progress).toBeLessThan(1)
               expect(await title.boundingBox()).toEqual(titleBefore)
               expect(await utilities.boundingBox()).toEqual(utilitiesBefore)
               expect(await titleNode.evaluate(node => node.isConnected)).toBe(true)
               expect(await expandOf(page).isDisabled()).toBe(opening)
               expect(await page.getByRole('button', { name: 'Open right sidebar', exact: true }).count()).toBe(opening ? 0 : 1)
-              await shot(page, `mobile-title-${viewportWidth}-${opening ? 'opening' : 'closing'}`)
+              await shot(page, `${caseName}-${opening ? 'opening' : 'closing'}`)
               await held.evaluate((state) => { (state.animation as Animation).finish() })
               expect(await title.boundingBox()).toEqual(titleBefore)
               expect(await utilities.boundingBox()).toEqual(utilitiesBefore)
@@ -699,6 +711,10 @@ describe('web e2e: shipped right Sidebar', () => {
           await titleNode.dispose()
         }
       } finally {
+        await frame.evaluate((node, original) => {
+          if (original.width) node.style.setProperty('width', original.width, original.priority)
+          else node.style.removeProperty('width')
+        }, frameStyle)
         await page.setViewportSize(viewport)
         await page.emulateMedia({ reducedMotion: null })
       }

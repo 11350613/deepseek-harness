@@ -40,7 +40,7 @@ import type {} from './contract/slots.ts'
 import { GuideBody, type GuideInjected } from './tabs/guide/GuideBody.tsx'
 import { GuideTitle } from './tabs/guide/GuideTitle.tsx'
 import { ExpandButton } from './shell/ExpandButton.tsx'
-import { AUTO_FULLSCREEN_WIDTH, RightbarSeat, type SidebarRightInjected } from './shell/SidebarRight.tsx'
+import { RightbarSeat, type SidebarRightInjected } from './shell/SidebarRight.tsx'
 import { closeWithPaneFocus, openWithPaneFocus } from './shell/close-focus.ts'
 import { RightbarRoot, type RightbarRootInjected } from './shell/RightbarRoot.tsx'
 import { SidebarSessionViews } from './session-views.ts'
@@ -86,6 +86,9 @@ export type { SidebarRightOpenTab } from './tab-inventory.ts'
 /** This package's copy namespace. */
 const NS = 'sidebarRight'
 
+/** Frames below this width present the right sidebar as an overlay. */
+const AUTO_FULLSCREEN_WIDTH = 768
+
 /** Required browser services: the slot registry, the frame's panel actions, copy, and the resource model. */
 export const inject = ['contextMenus', 'slots', 'layout', 'locale', 'resources', 'sessions', 'uiSession', 'shortcuts']
 
@@ -124,14 +127,15 @@ export function apply(ctx: ClientContext): void {
     return () => { unsubscribe(); views.dispose() }
   }, 'ui-sidebar-right: retained Session views')
   const layout: ILayout = ctx.layout
-  // The automatic fullscreen rule as the seats last rendered it: the frame
-  // hands them its width as owner props, and every seat reports the same rule.
-  let autoFullscreen = false
+  const narrowViewport: HostObservable<boolean> = {
+    getSnapshot: () => layout.frameWidth.getSnapshot() < AUTO_FULLSCREEN_WIDTH,
+    subscribe: listener => layout.frameWidth.subscribe(listener),
+  }
   const { controller, adopt, forget, show, measure } = createSidebarRightController(
     tabs,
     (address, signal) => { ctx.resources.pin(address, signal) },
     {
-      autoFullscreen: () => autoFullscreen,
+      autoFullscreen: () => narrowViewport.getSnapshot(),
       openWithFocus: (sessionId, open) => { openWithPaneFocus(document, sessionId, open) },
       closeWithFocus: (sessionId, paneId, close) => { closeWithPaneFocus(document, sessionId, paneId, close) },
     },
@@ -223,7 +227,6 @@ export function apply(ctx: ClientContext): void {
         if (shown) layout.openRightbar(track, fullscreen)
         else layout.closeRightbar()
       },
-      reportAutoFullscreen: (value) => { autoFullscreen = value },
       splitPane: (paneId) => { controller.split(paneId) },
       toggleFullscreen: () => { const target = controller.commandTarget(); if (target !== undefined) controller.toggleFullscreen(target) },
       openTab: (kind, options) => { controller.openTab(kind, options) },
@@ -251,7 +254,8 @@ export function apply(ctx: ClientContext): void {
         inject: (sessionId): SidebarRightInjected => ({
           ...injected,
           hooks: {
-            contextMenuTarget: ctx.contextMenus.active, shortcuts: ctx.shortcuts.catalog, tabTypes, flash: controller.flashOf(sessionId),
+            contextMenuTarget: ctx.contextMenus.active, shortcuts: ctx.shortcuts.catalog, tabTypes,
+            flash: controller.flashOf(sessionId), narrowViewport,
           },
           measureRoom: (canSplitPane) => { measure(sessionId, canSplitPane) },
           closeTab: (tabId) => {
@@ -263,17 +267,8 @@ export function apply(ctx: ClientContext): void {
         }),
       }, RightbarSeat)
     })
-    // The expand button retains its width under narrow-screen overlays;
-    // wide-screen panels collapse the header's corner seat while shown.
-    const query = typeof matchMedia === 'function'
-      ? matchMedia(`(width < ${AUTO_FULLSCREEN_WIDTH}px)`) : undefined
-    const narrowViewport: HostObservable<boolean> = {
-      getSnapshot: () => query?.matches ?? false,
-      subscribe: (listener) => {
-        query?.addEventListener('change', listener)
-        return () => { query?.removeEventListener('change', listener) }
-      },
-    }
+    // Narrow frames retain the opener's width under the overlay. Wide frames
+    // collapse the corner seat even when the panel uses manual fullscreen.
     const disposeExpand = ctx.slots.inject('conversation.session.header.corner', () => ctx.slots.register({
       name: 'conversation.session.header.corner',
       locale: NS,

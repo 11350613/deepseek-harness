@@ -72,6 +72,7 @@ async function boot(shortcuts: Partial<Shortcuts> = {}) {
   const layout = {
     openRightbar: vi.fn(), closeRightbar: vi.fn(),
     panelInfo: createSnapshotStore<{ activePanelId: string | null }>({ activePanelId: null }),
+    frameWidth: createSnapshotStore(1920),
   }
   const current = createSnapshotStore<{ key: SessionId | undefined }>({ key: undefined })
   const resources = { pin: vi.fn<(address: string, signal: AbortSignal) => void>() }
@@ -151,7 +152,7 @@ describe('ui-sidebar-right apply', () => {
       'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
     ])
     expect(seat('sidebar.right.pane.tab').children).toMatchObject({ 'sidebar.right.tab.guide': { kind: 'chain', scope: 'session' } })
-    // Both seats read one store: the button only needs to know whether the panel is expanded.
+    // Both seats share the session's panel state.
     expect(seat('rightbar.session').store).toBeDefined()
     expect(seat('conversation.session.header.corner').store).toBe(seat('rightbar.session').store)
   })
@@ -169,44 +170,34 @@ describe('ui-sidebar-right apply', () => {
     expect(ctx.sidebarRight.mounted.getSnapshot()).toBeUndefined()
   })
 
-  it('shares a live narrow viewport source and releases its media listener', async () => {
+  it('shares measured frame width between the panel and opener and releases subscriptions', async () => {
     onTestFinished(() => { vi.unstubAllGlobals() })
-    const query = Object.assign(new EventTarget(), { matches: true })
-    const matchMedia = vi.fn(() => query)
+    const matchMedia = vi.fn(() => Object.assign(new EventTarget(), { matches: false }))
     vi.stubGlobal('matchMedia', matchMedia)
-    const { ctx, seat, injectedOf } = await boot()
+    const { ctx, layout, seat, injectedOf } = await boot()
     onTestFinished(async () => { await ctx.fiber.dispose() })
     const entry = seat('conversation.session.header.corner')
     const first = injectedOf(entry) as { hooks: { narrowViewport: HostObservable<boolean> } }
     const second = injectedOf(entry) as typeof first
+    const panel = injectedOf(seat('rightbar.session')) as SidebarRightInjected
     const viewport = first.hooks.narrowViewport
     expect(second.hooks.narrowViewport).toBe(viewport)
-    expect(matchMedia).toHaveBeenCalledWith('(width < 768px)')
-    expect(viewport.getSnapshot()).toBe(true)
-    const listener = vi.fn()
+    expect(panel.hooks.narrowViewport).toBe(viewport)
+    expect(viewport.getSnapshot()).toBe(false)
+    const listener = vi.fn(() => viewport.getSnapshot())
     const unsubscribe = viewport.subscribe(listener)
     try {
-      query.matches = false
-      query.dispatchEvent(new Event('change'))
+      layout.frameWidth.set(767)
+      expect(viewport.getSnapshot()).toBe(true)
+      expect(listener).toHaveLastReturnedWith(true)
+      layout.frameWidth.set(768)
       expect(viewport.getSnapshot()).toBe(false)
-      expect(listener).toHaveBeenCalledOnce()
+      expect(listener).toHaveLastReturnedWith(false)
+      expect(listener).toHaveBeenCalledTimes(2)
     } finally { unsubscribe() }
-    query.matches = true
-    query.dispatchEvent(new Event('change'))
-    expect(listener).toHaveBeenCalledOnce()
-  })
-
-  it('uses the wide header presentation without browser media APIs', async () => {
-    onTestFinished(() => { vi.unstubAllGlobals() })
-    vi.stubGlobal('matchMedia', undefined)
-    const { ctx, seat, injectedOf } = await boot()
-    onTestFinished(async () => { await ctx.fiber.dispose() })
-    const injected = injectedOf(seat('conversation.session.header.corner')) as { hooks: { narrowViewport: HostObservable<boolean> } }
-    const viewport = injected.hooks.narrowViewport
-    expect(viewport.getSnapshot()).toBe(false)
-    const listener = vi.fn()
-    viewport.subscribe(listener)()
-    expect(listener).not.toHaveBeenCalled()
+    layout.frameWidth.set(767)
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(matchMedia).not.toHaveBeenCalled()
   })
 
   it('hands the panel seat the frame report, the room rule, the opens, the observable registry, and the Tab domain', async () => {
@@ -254,11 +245,11 @@ describe('ui-sidebar-right apply', () => {
     injected.measureRoom(() => true)
     injected.splitPane(surface.layout.activePaneId)
     expect(panes()).toHaveLength(2)
-    // The fullscreen command follows the automatic fullscreen rule the seats report.
+    // Commands read the current frame width even before a seat renders it.
     const layoutOf = () => instance.getSnapshot().bySession[SESSION]?.layout
     injected.toggleFullscreen()
     expect(layoutOf()?.mode).toBe('fullscreen')
-    injected.reportAutoFullscreen(true)
+    layout.frameWidth.set(767)
     injected.toggleFullscreen()
     expect(layoutOf()?.expanded).toBe(false)
     expect(layoutOf()?.mode).toBe('push')

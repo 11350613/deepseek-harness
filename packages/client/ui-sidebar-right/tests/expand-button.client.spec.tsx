@@ -4,7 +4,7 @@ import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
  * Narrow overlays preserve the header control's identity; wide panels release
  * its header space while open.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -17,6 +17,7 @@ import type { ExpandButtonProps } from '../src/client/shell/ExpandButton.tsx'
 import { createSidebarRightStore } from '../src/client/stores.ts'
 
 const SESSION = 's-test' as SessionId
+afterEach(cleanup)
 const unused = (): never => { throw new Error('This isolated component does not consume framework hooks') }
 const standard: GlobalStandardProps & SessionStandardProps = {
   sessionId: SESSION, useSession: unused, useProjection: unused, useConversation: unused,
@@ -66,7 +67,6 @@ describe('ExpandButton', () => {
     expect(Array.from(tooltip.querySelectorAll('kbd'), key => key.textContent)).toEqual(['Ctrl', 'B'])
     act(() => { instance.actions.setExpanded(SESSION, true) })
     expect(view.queryByRole('tooltip')).toBeNull()
-    cleanup()
   })
   it('offers the way in while the session has no surface yet, and asks the panel to expand', () => {
     const { instance, control } = mountButton()
@@ -78,7 +78,6 @@ describe('ExpandButton', () => {
     expect(control()).toBeNull()
     act(() => { instance.actions.setExpanded(SESSION, false) })
     expect(control()?.disabled).toBe(false)
-    cleanup()
   })
 
   it('retains the disabled control through a narrow overlay opening and closing', () => {
@@ -91,7 +90,6 @@ describe('ExpandButton', () => {
     act(() => { instance.actions.setExpanded(SESSION, false) })
     expect(control()).toBe(button)
     expect(button.disabled).toBe(false)
-    cleanup()
   })
 
   it('keeps an available control across viewport changes and releases its space only for an open wide panel', () => {
@@ -105,6 +103,17 @@ describe('ExpandButton', () => {
     expect(control()).toBeNull()
     act(() => { viewport.set(true) })
     expect(control()?.disabled).toBe(true)
-    cleanup()
+  })
+
+  it('releases header space for a manually fullscreen panel on a wide frame', () => {
+    const { instance, control } = mountButton()
+    act(() => {
+      instance.actions.setMode(SESSION, 'fullscreen')
+      instance.actions.setExpanded(SESSION, true)
+    })
+    expect(instance.getSnapshot().bySession[SESSION]?.layout.mode).toBe('fullscreen')
+    expect(control()).toBeNull()
+    act(() => { instance.actions.setExpanded(SESSION, false) })
+    expect(control()?.disabled).toBe(false)
   })
 })

@@ -6,11 +6,10 @@
  * column so that a collapsed Sidebar costs the conversation nothing — no rail,
  * no width, and the transcript's scrollbar stays at the column's edge. The
  * corner seat is its own, past the utilities' edge, so the button never joins
- * the utilities row. On narrow viewports, the disabled button stays mounted
+ * the utilities row. On narrow frames, the disabled button stays mounted
  * and hidden while the panel is shown, preserving the title's width during
- * the overlay slide. Wide viewports collapse the seat while the panel is shown.
- * It shares the panel's per-session store, which the
- * slot runtime allows because both seats are session-scoped.
+ * the overlay slide. Wide frames collapse the seat while the panel is shown.
+ * It shares the panel's per-session store because both seats are session-scoped.
  *
  * The glyph is the left sidebar's collapse icon mirrored: the same affordance,
  * on the other edge.
@@ -35,7 +34,7 @@ export type ExpandButtonProps =
     narrowViewport: HostObservable<boolean>
   } }>
 
-/** The hidden expand control retains its header space only on narrow viewports. */
+/** Opens a collapsed panel; when expanded, hides and disables on narrow frames and renders nothing on wide frames. */
 export function ExpandButton({ sessionId, useStore, actions, t, useShortcuts, useNarrowViewport }: ExpandButtonProps): ReactNode {
   // A session with no surface yet is collapsed: the panel seat materializes the
   // surface on its own mount, and until then there is nothing expanded.
