@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, waitFor } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { apply as menusApply, inject as menusInject } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { apply as resourcesApply, inject as resourcesInject } from '@deepseek-ai/dsh-client-resources/src/client/index.ts'
@@ -37,7 +38,12 @@ afterEach(async () => {
 async function boot() {
   const rt = await SlotTestRuntime.create()
   runtime = rt
-  rt.ctx.provide('layout', { openRightbar: vi.fn(), closeRightbar: vi.fn(), panelInfo: rt.panelInfo } as never)
+  const layout = {
+    openRightbar: vi.fn(), closeRightbar: vi.fn(), panelInfo: rt.panelInfo,
+    frameWidth: createSnapshotStore(1440), selectPanel: vi.fn(), toggleSidebar: vi.fn(),
+    beginNavigation: vi.fn(() => new AbortController().signal),
+  } satisfies typeof rt.ctx.layout
+  rt.ctx.provide('layout', layout)
   rt.ctx.provide('shortcuts', {
     register: () => () => {},
     catalog: { getSnapshot: () => SHORTCUT_CATALOG, subscribe: () => () => {} },
@@ -55,7 +61,7 @@ async function boot() {
   await rt.mount({ inject: [...menusInject], apply: menusApply })
   await rt.mount({ inject: [...sidebarInject], apply: sidebarApply })
   await rt.mount({ inject: [...inject], apply })
-  const view = rt.renderSlot('rightbar', { width: 600, viewportWidth: 1440, canShow: true })
+  const view = rt.renderSlot('rightbar', { width: 600, viewportWidth: layout.frameWidth.getSnapshot(), canShow: true })
   return { rt, view }
 }
 
