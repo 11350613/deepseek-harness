@@ -23,17 +23,15 @@ flowchart TD
   Prov["Source providers: plugins, code<br/>time, GitHub; later mail, IM, memory"]
   Trig["Event trigger: one per task, code<br/>compare with stored state, match parameters, merge"]
   Rec[("Run records")]
-  Sess["Target Session<br/>by Session mode"]
   Src{"Source"}
-  Exec["Run the instruction<br/>with Session permissions"]
-  RO["Read-only turn"]
+  Exec["Run the instruction in the target Session<br/>with its permissions"]
+  RO["Read-only turn<br/>in the task's own Session"]
   Note["Notify: unread mark,<br/>action card, system notification"]
-  Acc["User accepts: next turn<br/>with Session permissions"]
+  Acc["User accepts: the action runs in the Session<br/>that created the task, with its permissions"]
   Task --> Trig
   Prov -- events --> Trig
   Trig -- "each change" --> Rec
-  Trig -- deliver --> Sess
-  Sess --> Src
+  Trig -- deliver --> Src
   Src -- time --> Exec
   Src -- "other sources" --> RO
   RO -- notify --> Note
@@ -56,11 +54,11 @@ flowchart TD
 **The agent** receives a delivered event as a message in the target Session, together with the task's instruction in the user's words. What the turn may do depends on the source.
 
 - **Time**: the turn runs the instruction with the Session's permissions, and its reply is the result, as scheduled tasks behave today.
-- **Other sources**: the turn is read-only. It can read files, logs, and pull request state, but cannot edit, push, or send messages, and it ends with one of two new tools. **Notify** takes a title, a summary, and a proposed action: the Session gets its unread mark, an [action card](../../../../packages/experimental/action-cards/README.md) with the proposed action appears in the Session, and the desktop app sends a system notification. **End** takes a reason: the Session gets no unread mark, the turn is collapsed, and the reason stays in the run record. A turn that calls neither tool counts as end. When the user accepts the card, the proposed action is sent as the next message, and that turn runs with the Session's permissions.
+- **Other sources**: the turn is read-only. It can read files, logs, and pull request state, but cannot edit, push, or send messages, and it ends with one of two new tools. **Notify** takes a title, a summary, and a proposed action: the Session gets its unread mark, an [action card](../../../../packages/experimental/action-cards/README.md) with the proposed action appears in the Session, and the desktop app sends a system notification. **End** takes a reason: the Session gets no unread mark, the turn is collapsed, and the reason stays in the run record. A turn that calls neither tool counts as end. When the user accepts the card, the proposed action is sent to the Session that handles the task, as described under Sessions, and that turn runs with that Session's permissions.
 
 ### Sessions
 
-A task delivers to its target Session in one of three modes: a specified Session, a new Session per trigger, or a new Session on the first trigger that later triggers reuse. A task created in a conversation defaults to that conversation's Session, where the pull request and its history already are. A task created on the automation page or enabled from a template defaults to a new Session on its first trigger, reused afterwards. The user can change the mode on the task.
+A task delivers to its target Session in one of three modes: a specified Session, a new Session per trigger, or a new Session on the first trigger that later triggers reuse. Time tasks keep today's target, the Session they were created in. Event tasks separate judging from handling. The read-only turn runs in the task's own Session, created on the first trigger and reused afterwards, because it needs the instruction, the event, and the task's earlier decisions rather than the long history of the conversation the task came from. When the model creates a task in a conversation, it writes the facts the judgment needs into the instruction, such as which check is known to be flaky. When the user accepts a card, the proposed action goes to the Session the task was created in, where the code and its history are; a task created on the automation page or enabled from a template continues in its own Session. The user can change the mode on the task.
 
 No task runs while the Host is stopped. On restart, each task compares the current source state with its stored state once and does not replay intermediate changes. Time keeps today's rule: a recurring task runs its latest missed occurrence once.
 
@@ -95,6 +93,10 @@ The trigger layer is shared infrastructure for DSH, not a feature of the automat
 
 **Judge every observation in a resident Session.** The model reads each poll and replies with a silence marker when nothing changed. It lost because each observation costs a full turn over the Session's context, polls spaced beyond the prefix cache lifetime read that context uncached, and silence depends on the model following an instruction while it holds a messaging tool. Here code drops unchanged and unmatched observations, and only a notify call reaches the user.
 
+**Judge in the Session that created the task.** That conversation already holds the code and its history, so the instruction would need no extra facts. It lost because most delivered events end without a notification, and each of them would add a turn over the conversation's whole context, read uncached once the prefix cache has expired, and queue behind or interrupt the user's own work there. Only accepted work goes to that Session.
+
+**Let the agent choose the Session for each event.** The choice could differ from one event to the next, so the user could not predict where a notification appears, and deciding whether the history is needed requires reading it first.
+
 **Condition scripts per task.** A task would carry a script that fetches and decides. It lost because the script runs with the user's credentials without the review a plugin installation gets, and each task would carry its own fetch logic instead of sharing a provider.
 
 **Notify from code when code can decide.** A failed check could notify without a model. It lost because the notification would carry only the raw status. With one path, the agent reads the logs first and the notification states the cause; change-only delivery keeps these turns rare.
@@ -114,12 +116,14 @@ The trigger layer is shared infrastructure for DSH, not a feature of the automat
 - An observation without a change writes no record and starts no turn; a change that fails the conditions writes a filtered record and starts no turn.
 - An event turn that ends with end, or with neither tool, gives the Session no unread mark and sends no system notification.
 - An event turn cannot edit files, push, or send messages; after the user accepts its card, the next turn runs with the Session's permissions.
+- An event task's read-only turns run in the task's own Session, and accepting its card sends the proposed action to the Session the task was created in.
 - After a restart, a task compares the current source state with its stored state once and does not replay intermediate changes.
 - The task list filters by source type, task details show source parameters read-only, and the Session mode can be changed.
 
 ## Risks
 
-- Delivering into a long Session reads its whole context once the prefix cache has expired. Change-only delivery keeps this rare, and tasks created outside a conversation use their own Session.
+- The read-only turn sees the instruction, the event, and the task's earlier decisions, not the conversation the task came from. Facts the judgment needs from that conversation must be written into the instruction when the task is created; a user who switches the task to its original Session gets the history back at the cost of reading the long context on each delivery.
+- A notification appears in the task's own Session, not in the conversation that created the task; accepting its card moves the work to that conversation.
 - The agent may notify too often or end too readily. Run records and the accepted and dismissed cards show which instructions need rewriting.
 - Source parameters cannot be edited by hand; every change goes through the model.
 - A fix on an event waits for the user to accept the card instead of running unattended.
