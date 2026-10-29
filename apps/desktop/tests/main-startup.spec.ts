@@ -550,13 +550,11 @@ describe('desktop main startup', () => {
     expect((await handler(new Request('dsh-app://unknown/update-dialog.html'))).status).toBe(404)
   })
 
-  it('installs hidden native DevTools shortcuts in the macOS application menu', async () => {
-    vi.stubGlobal('process', { ...process, platform: 'darwin' })
+  it.each(['darwin', 'win32', 'linux'] as const)('shows one DevTools command and retains native shortcuts on %s', async (platform) => {
+    vi.stubGlobal('process', { ...process, platform })
     await readyForUpdate()
-    expect(applicationMenuItems().slice(-2)).toEqual([
-      { role: 'toggleDevTools', visible: false },
-      { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
-    ])
+    await expect(JSON.stringify(applicationMenuItems().slice(-2), null, 2) + '\n')
+      .toMatchFileSnapshot('./expected/devtools-menu.json')
     expect(harness.windows[0]!.options).toMatchObject({ webPreferences: { devTools: true } })
   })
 
@@ -1030,8 +1028,8 @@ describe('desktop main startup', () => {
     expect(() => handler(event, 'arbitrary-command', 48, 34)).toThrow('invalid popup request')
     expect(() => handler(event, 'application', NaN, 34)).toThrow('invalid popup request')
     const application = handler(event, 'application', 48, 34)
-    expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type)).toEqual([
-      '关于 DeepSeek Harness', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', '退出',
+    expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type ?? item.role)).toEqual([
+      '关于 DeepSeek Harness', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', '退出', 'toggleDevTools', 'toggleDevTools',
     ])
     expect(harness.popup.mock.lastCall![0]).toMatchObject({ window, x: 48, y: 34 })
     expect(harness.popup.mock.lastCall![0].callback).toBeTypeOf('function')
@@ -1068,8 +1066,8 @@ describe('desktop main startup', () => {
       : ['Application', 'editMenu'])
     const application = template[0]!.submenu as MenuItemConstructorOptions[]
     expect(application.filter(item => item.visible !== false).map(describeItem)).toEqual(platform === 'darwin'
-      ? ['about', 'separator', en.checkUpdatesMenu, en.cliCommandMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
-      : ['about', 'separator', en.checkUpdatesMenu, 'separator', 'quit'])
+      ? ['about', 'separator', en.checkUpdatesMenu, en.cliCommandMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit', 'toggleDevTools']
+      : ['about', 'separator', en.checkUpdatesMenu, 'separator', 'quit', 'toggleDevTools'])
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
 

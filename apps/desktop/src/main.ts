@@ -1075,14 +1075,15 @@ async function main(): Promise<void> {
       : process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
   ]
   const devToolsItems: MenuItemConstructorOptions[] = [
-    { role: 'toggleDevTools', visible: false },
+    { role: 'toggleDevTools' },
     { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
   ]
   const refreshApplicationMenu = (): void => {
-    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? devToolsItems : [{
-      label: darwin ? app.name : currentDesktopLocale().messages.application,
-      submenu: [...applicationItems(), ...devToolsItems],
-    }, ...platformMenus()]))
+    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32'
+      ? devToolsItems.map(item => ({ ...item, visible: false })) : [{
+        label: darwin ? app.name : currentDesktopLocale().messages.application,
+        submenu: [...applicationItems(), ...devToolsItems],
+      }, ...platformMenus()]))
     tray?.relabel()
   }
   refreshApplicationMenu()
@@ -1128,7 +1129,7 @@ async function main(): Promise<void> {
           shortcuts.sendEditingKey(keyCode, modifiers)
         },
       })
-      const items: MenuItemConstructorOptions[] = name === 'application' ? applicationItems() : [
+      const items: MenuItemConstructorOptions[] = name === 'application' ? [...applicationItems(), ...devToolsItems] : [
         editItem(currentDesktopLocale().messages.undo, 'Z', ['control'], 'Ctrl+Z'),
         editItem(currentDesktopLocale().messages.redo, 'Y', ['control'], 'Ctrl+Y'),
         { type: 'separator' },
