@@ -254,12 +254,12 @@ describe.skipIf(process.platform === 'win32')('Web sidebar shortcuts', () => {
         await menuTab.click({ button: 'right' })
         await page.getByRole('menu').waitFor()
         expect(await page.getByRole('tooltip').count()).toBe(0)
-        expect(await page.getByRole('menuitem').getAttribute('aria-keyshortcuts')).toBeNull()
+        expect(await page.getByRole('menuitem', { name: 'Close', exact: true }).getAttribute('aria-keyshortcuts')).toBe(aria)
         if (attempt === 0) {
           await compareOrRefreshGolden(join(expected, 'tab-menu.expected.md'),
-            await captureStableAria(page, '[data-dockkit-tab-menu]', scaffold.workspaceCwd), mode)
+            await captureStableAria(page, '[data-context-menu][role="menu"]', scaffold.workspaceCwd), mode)
         } else {
-          await page.getByRole('menuitem').focus()
+          await page.getByRole('menuitem', { name: 'Close', exact: true }).focus()
         }
         await page.keyboard.press('Escape')
         await page.getByRole('menu').waitFor({ state: 'detached' })
