@@ -492,24 +492,40 @@ describe('TextPreview — navigation and view', () => {
     expect(h.instance.getSnapshot().byTab[TAB_ID]?.scrollTop).toBe(360)
   })
 
-  /** A Markdown file that also offers Code and plain text; only the latter two expose source lines. */
-  function markdownProps(h: ReturnType<typeof harness>, navigation: { params?: unknown; revision: number }): TextPreviewProps {
-    const definitions: DocumentPreviewDefinition[] = [
-      { id: 'markdown', extensions: ['md'], title: () => 'Markdown', loading: 'text-pages', wrap: false },
-      { id: 'code', extensions: ['md'], title: () => 'Code', loading: 'text-pages', wrap: true, sourceLines: true },
-      { id: PLAIN_BODY_ID, extensions: [], title: () => 'Plain text', loading: 'text-pages', wrap: true, sourceLines: true },
-    ]
+  const CODE_DEFINITION: DocumentPreviewDefinition = {
+    id: 'code', extensions: ['md'], title: () => 'Code', loading: 'text-pages', wrap: true, sourceLines: true,
+  }
+  const PLAIN_DEFINITION: DocumentPreviewDefinition = {
+    id: PLAIN_BODY_ID, extensions: [], title: () => 'Plain text', loading: 'text-pages', wrap: true, sourceLines: true,
+  }
+
+  /**
+   * Offer `definitions` for a Markdown file; plain text renders lines, Code renders lines unless `codeDrawsLines` is false,
+   * and every other renderer draws no source lines.
+   */
+  function rendererProps(
+    h: ReturnType<typeof harness>,
+    navigation: { params?: unknown; revision: number },
+    definitions: DocumentPreviewDefinition[],
+    codeDrawsLines: boolean,
+  ): TextPreviewProps {
     const base = h.props(navigation)
     return {
       ...base,
       useDocumentPreviews: selector => selector(definitions),
       renderSlot: documentSlots((_key, owner, opts) => {
         const documentOwner = owner as unknown as OwnerOf<'sidebar.right.tab.document'>
-        if (opts.entryKey === 'code') return <CodeBody {...base} {...documentOwner} t={key => key} />
+        if (opts.entryKey === 'code' && codeDrawsLines) return <CodeBody {...base} {...documentOwner} t={key => key} />
         if (opts.entryKey === PLAIN_BODY_ID) return <TextBody {...base} {...documentOwner} />
         return <div data-test-no-lines />
       }),
     }
+  }
+
+  /** A Markdown file that also offers Code and plain text; only the latter two expose source lines. */
+  function markdownProps(h: ReturnType<typeof harness>, navigation: { params?: unknown; revision: number }): TextPreviewProps {
+    const markdown: DocumentPreviewDefinition = { id: 'markdown', extensions: ['md'], title: () => 'Markdown', loading: 'text-pages', wrap: false }
+    return rendererProps(h, navigation, [markdown, CODE_DEFINITION, PLAIN_DEFINITION], true)
   }
 
   it.each([['Code', 'code'], ['Plain text', PLAIN_BODY_ID]])(
@@ -548,17 +564,7 @@ describe('TextPreview — navigation and view', () => {
 
   it('keeps a line navigation pending while a source-line renderer has not drawn the line', async () => {
     const h = harness({ 1: page(1, ['a', 'b', 'c'], true) })
-    const code = codeProps(h, { params: { line: 3 }, revision: 1 })
-    const props: TextPreviewProps = {
-      ...code,
-      useDocumentPreviews: selector => selector([
-        { id: 'code', extensions: ['md'], title: () => 'Code', loading: 'text-pages', wrap: true, sourceLines: true },
-        { id: PLAIN_BODY_ID, extensions: [], title: () => 'Plain text', loading: 'text-pages', wrap: true, sourceLines: true },
-      ]),
-      renderSlot: documentSlots((_key, owner, opts) => opts.entryKey === PLAIN_BODY_ID
-        ? <TextBody {...code} {...owner as unknown as OwnerOf<'sidebar.right.tab.document'>} />
-        : <div data-late-renderer />),
-    }
+    const props = rendererProps(h, { params: { line: 3 }, revision: 1 }, [CODE_DEFINITION, PLAIN_DEFINITION], false)
     const view = render(<TextPreview {...props} />)
     await settle()
     expect(h.instance.getSnapshot().byTab[TAB_ID]?.revision).toBeUndefined()
