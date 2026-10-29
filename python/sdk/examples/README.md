@@ -29,6 +29,19 @@ The bundle does not include `dsh-base`, so every additional row is an explicit p
 
 The persistent PTY can modify any path available to the runtime process, so use a disposable checkout or container.
 
+## Manage full-profile plugins with approvals
+
+[`manage_plugins.py`](manage_plugins.py) explicitly downloads the optional authoring runtime, then starts the full `sdk` profile with `workspace-write` permissions and stdio approvals. It displays each requested operation and requires `y` to grant it once; any other answer rejects it. The prepared Node/pnpm runs package operations even without system pnpm. Downloading this payload also prepares its Python libraries and Office skills.
+
+```sh
+python python/sdk/examples/manage_plugins.py \
+  --dsh-home /absolute/path/to/example-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  "Install and enable the bundle at /absolute/path/to/my-plugin-bundle."
+```
+
+The current process keeps its original plugins. After a `restart-required` result, rerun the example with the same home to use the saved configuration. Removing a bundle still used by the running startup composition requires stopping that runtime and using `dsh plugin`.
+
 ## Add plugins
 
 Use the runtime wheel's `dsh` command against the same explicit home for persistent profile changes:

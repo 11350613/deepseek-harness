@@ -61,6 +61,8 @@ with DeepSeekHarness(dsh_home="/absolute/path/to/saved-home") as harness:
 <a id="client-approvals"></a>
 ## 客户端审批
 
+完整 profile 的交互示例见 [`examples/manage_plugins.py`](examples/manage_plugins.py)：它显式准备 Node/pnpm，在运行任务时通过已有 stdio 审批协议逐项询问权限，并在等待请求工作线程结束前关闭运行时。插件配置在运行时重启后生效。
+
 此底层示例接收一次审批并拒绝。完整运行应使用专门处理请求的线程或循环：`next_request()` 会阻塞，请求处理器必须与 `session/wait` 或高层 `run()` 并行运行。仅在处理器就绪时，在 `HarnessClient.initialize()` 或 `DeepSeekHarnessConfig` 设置 `approval_requests=True`；省略时保留运行时应答链。决定只作用于单次操作；无效响应和断连会拒绝放行，取消后丢弃迟到响应。构造决定时，可用 `ApprovalRequestResult` 校验响应值。
 
 ```py
