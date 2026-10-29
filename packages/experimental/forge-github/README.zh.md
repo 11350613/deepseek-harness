@@ -38,7 +38,7 @@ kind: "package-reference"
 
 当主机在配置中时，提供方服务 `https`、`http`、`ssh`、`git` 形式的远端 URL，以及 `git@github.com:owner/name.git` 这类 scp 形式。HTTP(S) 远端在主机标识中保留自定义端口；SSH 和 Git 传输端口不计入主机标识。它服务 `https://<host>/<owner>/<name>/pull/<number>` 形式的 pull request URL，允许其后附带任意路径、查询或片段，并以去掉这些后缀的形式作为规范 URL。就绪探测运行 `gh auth status --hostname <host>`：退出码为 0 时为 `ready`，其他退出码为 `unauthenticated` 并带第一行诊断，`gh` 无法启动时为 `unavailable`。按 head 分支查找时，最多返回 20 个以该分支为 head 的打开状态 pull request，按创建时间从新到旧排列，不包含来自 fork 的 pull request；查找默认分支时返回空结果。
 
-检查分页读取 head 提交的完整汇总后才发布快照。同一应用、工作流、触发事件与检查名称的运行只保留运行 id 最新的一条；新的排队运行会替代旧的已完成运行。缺少数字数据库 id 的运行无法确定先后，因此按节点 id 保留。提交状态上下文按名称保留最新结果。数量与总体指示图标都使用这些当前结果；遇到未知上下文类型时保留 GitHub 的汇总状态。分页失败或游标不前进时，该 PR 的快照读取失败，不发布不完整的数量。
+轮询只返回 head 提交的前 100 条检查上下文，不追读后续页。预览不完整时设置 `checksTruncated` 并保留 GitHub 的汇总状态，局部计数不代表完整列表。`fetchChecks(ref, signal)` 仅按需读取指定 PR 的完整详情，后续页固定使用首次响应的 rollup。所有 JSON 响应的 UTF-8 字节总量受 `maxOutputBytes` 限制，超出时返回 `too-large`。分页失败或游标不前进只使此次详情读取失败，保留轮询结果。同一应用、工作流、触发事件与检查名称的运行只保留运行 id 最新的一条；新的排队运行会替代旧的已完成运行。缺少数字数据库 id 的运行无法确定先后，因此按节点 id 保留。提交状态上下文按名称保留最新结果。完整列表从这些结果计算总体指示；未知上下文类型保留 GitHub 的汇总状态。
 
 未完成的检查运行（check run），以及结论已过期、缺失或无法识别的已完成运行，均映射为 `pending`。其他已完成的检查映射为 `success`、`failure`（失败、超时、启动失败或需要操作）、`cancelled`、`skipped` 或 `neutral`。已取消的检查使汇总保持未通过状态。检查运行保留其开始与完成时间。提交状态上下文把 `SUCCESS` 映射为 `success`，把 `FAILURE` 与 `ERROR` 映射为 `failure`，其余状态均映射为 `pending`，且不带时间。GraphQL 的 `NOT_FOUND` 错误转为 `not-found` 失败。响应不含 GraphQL data 或 errors 时（包括 HTTP 错误 JSON），使用 stderr 的首条诊断或响应体的 message。认证诊断转为 `unauthenticated`；超出输出大小上限的检查分页转为 `too-large`；限流与其他失败转为 `unavailable`。head 查找在拒绝时保留相同诊断。
 

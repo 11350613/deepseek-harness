@@ -94,6 +94,7 @@ export function checkCounts(checks: readonly ChangeRequestCheck[]): CheckCounts 
  */
 export function ciSummary(snapshot: ChangeRequestSnapshot): CiSummary {
   if (snapshot.checksRollup === 'failure') {
+    if (snapshot.checksTruncated) return { kind: 'failed', count: 0 }
     const counts = checkCounts(snapshot.checks)
     return counts.failed === 0 && counts.cancelled > 0
       ? { kind: 'cancelled', count: counts.cancelled }

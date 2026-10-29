@@ -394,6 +394,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   RestoredWorktree: 'worktrees.md',
   ChangeRequestListener: 'forge.md',
   ChangeRequestRef: 'forge.md',
+  ChangeRequestSnapshot: 'forge.md',
   ChangeRequestUpdate: 'forge.md',
   ForgeActionFailure: 'forge.md',
   ForgeLineComment: 'forge.md',

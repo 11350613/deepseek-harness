@@ -474,10 +474,14 @@ it.skipIf(MODE === 'record')('starts a Session in a worktree before its first me
   // The random branch suffix can read as a duration, so the branch is replaced before the capture normalizes durations.
   await compareOrRefreshGolden(join(EXPECTED, 'panel.expected.md'),
     await captureStableAria(page, '[data-forge-panel]', scaffold.workspaceCwd, { replacements: [[branch, 'dsh-{{worktree}}']] }), MODE)
+  const beforeChecks = (await readFile(join(root, 'calls.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line) as string[])
+  expect(beforeChecks.some(args => args.includes('id=rollup-7'))).toBe(false)
   const checksRow = change.getByRole('button', { name: /^检查/ })
   await checksRow.click()
   const checks = page.getByRole('menu')
   await expect.poll(() => checks.getByRole('menuitem').allTextContents()).toEqual([expect.stringMatching(/^test/), expect.stringMatching(/^lint/)])
+  const afterChecks = (await readFile(join(root, 'calls.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line) as string[])
+  expect(afterChecks.filter(args => args.includes('id=rollup-7'))).toHaveLength(1)
   await page.keyboard.press('Escape')
   await checks.waitFor({ state: 'detached' })
   expect(await checksRow.getAttribute('aria-expanded')).toBe('false')

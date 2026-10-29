@@ -9,7 +9,7 @@ import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SidebarRightTabDefinition, TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import type { ForgeReviewRequest, ForgeReviewResult } from '@deepseek-ai/dsh-experimental-forge/types'
+import type { ChangeRequestSnapshot, ForgeReviewRequest, ForgeReviewResult } from '@deepseek-ai/dsh-experimental-forge/types'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, type RemoteResult, type TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -159,6 +159,9 @@ async function base() {
     localDiff: vi.fn(async (_sessionId: SessionId, _scope: ForgeLocalScope, _signal?: AbortSignal): Read<ForgeLocalDiff> =>
       ({ ok: true, value: LOCAL })),
     localText: vi.fn(async (_sessionId: SessionId, _scope: ForgeLocalScope, _path: string): Read<string> => ({ ok: true, value: 'a\n' })),
+    changeRequestChecks: vi.fn(async (
+      _sessionId: SessionId, _url: string, _headSha: string, _signal: AbortSignal,
+    ): Read<ChangeRequestSnapshot> => ({ ok: true, value: snapshot(7) })),
     changeRequestDiff: vi.fn(async (_sessionId: SessionId, _url: string, _signal?: AbortSignal): Read<ForgeChangeRequestDiff> =>
       ({ ok: true, value: CHANGE })),
     changeRequestText: vi.fn(async (_sessionId: SessionId, _url: string, _commit: string, _path: string): Read<string> => ({ ok: true, value: 'b\n' })),
@@ -255,6 +258,16 @@ async function fixture() {
 }
 
 describe('mountForgePanel registration', () => {
+  it('routes complete check reads through the bound Session and propagates failures', async () => {
+    const f = await fixture()
+    const signal = new AbortController().signal
+    const url = 'https://github.com/octo/demo/pull/7'
+    expect(await f.tab(S1).readChecks(url, 'a'.repeat(40), signal)).toEqual(snapshot(7))
+    expect(f.forgePanel.changeRequestChecks).toHaveBeenCalledWith(S1, url, 'a'.repeat(40), signal)
+    f.forgePanel.changeRequestChecks.mockResolvedValueOnce(REFUSED.failed)
+    await expect(f.tab(S1).readChecks(url, 'a'.repeat(40), signal)).rejects.toThrow()
+  })
+
   it('declares the browser services it needs', () => {
     expect(inject).toEqual(['remote', 'slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'sessions'])
   })

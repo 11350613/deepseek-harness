@@ -58,6 +58,8 @@ interface ForgeProvider {
     refs: readonly ChangeRequestRef[],
     signal: AbortSignal,
   ): Promise<ReadonlyMap<ChangeRequestKey, ChangeRequestSnapshot | ForgeFailure>>
+  /** Read all checks for one change request on demand; omission declares that only the polling preview is available. */
+  fetchChecks?(ref: ChangeRequestRef, signal: AbortSignal): Promise<ChangeRequestSnapshot | ForgeFailure>
   /** Find open change requests whose head is `branch` in `repository`, excluding the default branch and forks. */
   findByHead(repository: ForgeRepository, branch: string, signal: AbortSignal): Promise<readonly ChangeRequestRef[]>
   /** Report whether the provider can reach `host` with current credentials. */
@@ -769,6 +771,15 @@ async markReady(ref: ChangeRequestRef, signal: AbortSignal): Promise<ForgeAction
 async merge(ref: ChangeRequestRef, request: MergeRequest, signal: AbortSignal): Promise<ForgeActionFailure | undefined>
 
 /**
+ * Read complete check details independently of periodic polling.
+ * @param ref - change request served by a registered provider.
+ * @param signal - cancellation of the detail view.
+ * @returns a complete snapshot or the provider's failure; unsupported providers return unavailable.
+ * @throws on cancellation, provider disposal, or expiry of this read's own `fetchTimeoutMs` deadline.
+ */
+async fetchChecks(ref: ChangeRequestRef, signal: AbortSignal): Promise<ChangeRequestSnapshot | ForgeFailure>
+
+/**
  * Read the changes of a change request as its host computes them.
  * @param ref - change request served by a registered provider.
  * @param signal - cancellation of the read.
@@ -926,6 +937,18 @@ Serves the forge panel. Following a Session inspects the checkout of its current
  * an error for a path outside the checkout, binary content, or a failed read.
  */
 @Remote async localText(session: Session, scope: ForgeLocalScope, path: string, signal: AbortSignal): Promise<string>
+
+/**
+ * Load complete checks for the change request whose list the user opened.
+ * @param session - Session retaining the visible binding.
+ * @param url - binding URL.
+ * @param headSha - commit displayed by the card; a different head rejects the result.
+ * @param signal - cancellation when the list closes.
+ * @returns the complete snapshot at the displayed head.
+ * @throws `forgePanel/not-bound` for an invisible binding, `forgePanel/stale-head` for a moved head,
+ * or `forgePanel/checks-failed` when the provider cannot complete the read.
+ */
+@Remote async changeRequestChecks(session: Session, url: string, headSha: string, signal: AbortSignal): Promise<ChangeRequestSnapshot>
 
 /**
  * Read the changes of a change request of a Session as its code host

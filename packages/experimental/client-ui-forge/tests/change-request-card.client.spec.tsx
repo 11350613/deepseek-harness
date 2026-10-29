@@ -293,8 +293,8 @@ describe('expanded ChangeRequestCard', () => {
     const toggle = within(b.item).getByText(en['change.row.checks']).closest('button')
     if (toggle === null) throw new Error('the checks row does not open a list')
     const summary = rowValue(b.item, en['change.row.checks'])
-    expect(summary.textContent).toBe('1 failed · 2 running · 2 passed · 1 cancelled · 2 other')
-    expect(summary.getAttribute('data-tone')).toBe('error')
+    expect(summary.textContent).toBe('8 checks loaded; more available')
+    expect(summary.getAttribute('data-tone')).toBeNull()
     // The row leads with the combined outcome.
     expect(toggle.querySelector('[data-forge-check]')?.getAttribute('data-forge-check')).toBe('failure')
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
@@ -312,12 +312,49 @@ describe('expanded ChangeRequestCard', () => {
       'skipped|e2e||no link',
       'cancelled|perf|1h 30m|no link',
     ])
-    expect(screen.getByText('Only the first 8 are listed')).toBeTruthy()
+    expect(screen.getAllByText('8 checks loaded; more available')).toBeTruthy()
 
     fireEvent.click(screen.getAllByRole('menuitem')[0]!)
     expect(b.openLink).toHaveBeenCalledWith('https://ci.example.test/lint')
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
     expect(checkRows()).toEqual([])
+  })
+
+  it('loads complete checks only while their list is open and retries without losing the preview', async () => {
+    const partial = snapshot(1, { checks: [check('old lint', { state: 'failure' })], checksTruncated: true })
+    const waiting = Promise.withResolvers<ReturnType<typeof snapshot>>()
+    const readChecks = vi.fn<NonNullable<ChangeRequestActions['readChecks']>>()
+      .mockReturnValueOnce(waiting.promise)
+      .mockResolvedValueOnce(snapshot(1, { checks: [check('current lint')] }))
+    const b = card(entry(1, partial), { expanded: true, actions: { readChecks } })
+    expect(readChecks).not.toHaveBeenCalled()
+    fireEvent.click(within(b.item).getByText(en['change.row.checks']))
+    expect(readChecks).toHaveBeenCalledWith(partial.url, partial.headSha, expect.any(AbortSignal))
+    expect(screen.getByText('old lint')).toBeTruthy()
+    expect(screen.getByText(en['change.checks.loading'])).toBeTruthy()
+    await act(async () => { waiting.reject(new Error('timeout')); await Promise.resolve() })
+    expect(screen.getByText('old lint')).toBeTruthy()
+    expect(screen.getByText('Could not load more checks: timeout')).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: en['change.checks.retry'] })) })
+    expect(screen.queryByText('old lint')).toBeNull()
+    expect(screen.getByText('current lint')).toBeTruthy()
+    expect(rowValue(b.item, en['change.row.checks']).textContent).toBe('1 passed')
+  })
+
+  it.each(['close', 'unmount', 'head'] as const)('cancels a check read on %s and ignores its late completion', async (change) => {
+    const partial = snapshot(1, { checks: [check('preview')], checksTruncated: true })
+    const pending = Promise.withResolvers<ReturnType<typeof snapshot>>()
+    const readChecks = vi.fn<NonNullable<ChangeRequestActions['readChecks']>>(() => pending.promise)
+    const b = card(entry(1, partial), { expanded: true, actions: { readChecks } })
+    fireEvent.click(within(b.item).getByText(en['change.row.checks']))
+    const signal = readChecks.mock.calls[0]![2]
+    if (change === 'close') fireEvent.click(within(b.item).getByText(en['change.row.checks']))
+    else if (change === 'unmount') b.view.unmount()
+    else b.view.rerender(<ul><ChangeRequestCard entry={entry(1, { ...partial, headSha: 'b'.repeat(40) })} expanded onToggle={b.onToggle}
+      now={NOW} locale="en" actions={{ openLink: b.openLink, copyLink: b.copyLink, retry: b.retry, readChecks }} t={t} /></ul>)
+    expect(signal.aborted).toBe(true)
+    await act(async () => { pending.resolve(snapshot(1, { checks: [check('late result')] })); await Promise.resolve() })
+    expect(screen.queryByText('late result')).toBeNull()
   })
 
   it('closes the checks list from its row and from an outside press', () => {

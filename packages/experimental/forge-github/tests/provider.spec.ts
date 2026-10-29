@@ -24,7 +24,7 @@ function output(stdout: unknown, exitCode = 0, stderr = ''): GhOutput {
 }
 
 function provider(run: GhRunner): GitHubProvider {
-  return new GitHubProvider(run, ['github.com', 'GHE.corp.example'])
+  return new GitHubProvider(run, ['github.com', 'GHE.corp.example'], 8_388_608)
 }
 
 describe('GitHub provider addressing', () => {
@@ -46,7 +46,7 @@ describe('GitHub provider addressing', () => {
 
   it('uses a configured HTTP port for URL mapping and GitHub queries', async () => {
     const gh = fakeGh(() => output({ data: { r0: { p0: pullRequestNode(1) } } }))
-    const subject = new GitHubProvider(gh.run, ['ghe.example.com:8443'])
+    const subject = new GitHubProvider(gh.run, ['ghe.example.com:8443'], 8_388_608)
     const repository = subject.repositoryFromRemote('https://ghe.example.com:8443/team/repo.git')!
     const ref = { repository, number: 1 }
     expect(subject.changeRequestFromUrl(subject.changeRequestUrl(ref))).toEqual(ref)
@@ -61,13 +61,51 @@ describe('GitHub provider fetch', () => {
       nodes: Array.from({ length: 100 }, (_, index) => ({ ...checkRun('lint', 'COMPLETED', 'FAILURE'), databaseId: index + 1 })) },
   } } }] } })
 
+  it('publishes the first page and other PRs without requesting check continuations', async () => {
+    const gh = fakeGh(() => output({ data: { r0: { p0: firstPage(), p1: pullRequestNode(2) } } }))
+    const results = await provider(gh.run).fetch([pull(1), pull(2)], signal)
+    expect(results.get(changeRequestKey(pull(1)))).toMatchObject({ checksTruncated: true, checksRollup: 'success', checks: [{ state: 'failure' }] })
+    expect(results.get(changeRequestKey(pull(2)))).toMatchObject({ title: 'Change 2', checksTruncated: false })
+    expect(gh.calls).toHaveLength(1)
+  })
+
+  it.each([
+    [new GhTimeoutError('timed out'), 'unavailable'],
+    [new GhOutputLimitError('too much output'), 'too-large'],
+    [new GhUnavailableError('gh missing'), 'unavailable'],
+  ] as const)('reports an initial check-detail process failure', async (error, code) => {
+    await expect(provider(fakeGh(() => { throw error }).run).fetchChecks(pull(1), signal))
+      .resolves.toEqual({ code, message: error.message })
+  })
+
+  it('refuses unconfigured hosts before starting a detail read', async () => {
+    const gh = fakeGh(() => output(''))
+    await expect(provider(gh.run).fetchChecks(pull(1, { ...demo, host: 'unconfigured.example' }), signal))
+      .resolves.toMatchObject({ code: 'unavailable' })
+    expect(gh.calls).toEqual([])
+  })
+
+  it('bounds the complete detail read by combined UTF-8 JSON bytes', async () => {
+    const first = output({ data: { r0: { p0: firstPage() } } })
+    const last = output({ data: { node: { contexts: { pageInfo: { hasNextPage: false, endCursor: null },
+      nodes: [checkRun('检查', 'COMPLETED', 'SUCCESS')] } } } })
+    const total = Buffer.byteLength(first.stdout) + Buffer.byteLength(last.stdout)
+    for (const limit of [total, total - 1, Buffer.byteLength(first.stdout) - 1]) {
+      const gh = fakeGh(args => args.includes('id=fixed-rollup') ? last : first)
+      const result = await new GitHubProvider(gh.run, ['github.com'], limit).fetchChecks(pull(1), signal)
+      if (limit === total) expect(result).toMatchObject({ checksTruncated: false })
+      else expect(result).toMatchObject({ code: 'too-large' })
+      expect(gh.calls).toHaveLength(limit < Buffer.byteLength(first.stdout) ? 1 : 2)
+    }
+  })
+
   it('reads past 100 historical runs from the pinned rollup and counts only the latest run', async () => {
     const gh = fakeGh(args => output(args.includes('id=fixed-rollup')
       ? { data: { node: { contexts: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [
         { ...checkRun('lint', 'COMPLETED', 'SUCCESS'), databaseId: 101 }, checkRun('test', 'COMPLETED', 'SUCCESS'),
       ] } } } }
       : { data: { r0: { p0: firstPage() } } }))
-    const result = (await provider(gh.run).fetch([pull(1)], signal)).get(changeRequestKey(pull(1)))
+    const result = await provider(gh.run).fetchChecks(pull(1), signal)
     expect(result).toMatchObject({ checks: [{ name: 'lint', state: 'success' }, { name: 'test', state: 'success' }], checksTruncated: false })
     expect(gh.calls).toHaveLength(2)
     expect(gh.calls[1]).toContain('cursor=page-1')
@@ -81,16 +119,18 @@ describe('GitHub provider fetch', () => {
     [output({ data: { node: { contexts: { pageInfo: { hasNextPage: true, endCursor: null }, nodes: [] } } } }), 'GitHub check pagination did not advance'],
   ])('rejects an incomplete check read without losing another pull request', async (page, message) => {
     const gh = fakeGh(args => args.includes('id=fixed-rollup') ? page : output({ data: { r0: { p0: firstPage(), p1: pullRequestNode(2) } } }))
-    const results = await provider(gh.run).fetch([pull(1), pull(2)], signal)
-    expect(results.get(changeRequestKey(pull(1)))).toEqual({ code: 'unavailable', message })
+    const subject = provider(gh.run)
+    const results = await subject.fetch([pull(1), pull(2)], signal)
+    const details = await subject.fetchChecks(pull(1), signal)
+    expect(details).toEqual({ code: 'unavailable', message })
     expect(results.get(changeRequestKey(pull(2)))).toMatchObject({ title: 'Change 2' })
-    expect(gh.calls).toHaveLength(2)
+    expect(gh.calls).toHaveLength(3)
   })
 
   it('stops before requesting another check page when cancelled', async () => {
     const controller = new AbortController()
     const gh = fakeGh(() => { controller.abort(new Error('cancelled')); return output({ data: { r0: { p0: firstPage() } } }) })
-    await expect(provider(gh.run).fetch([pull(1)], controller.signal)).rejects.toThrow('cancelled')
+    await expect(provider(gh.run).fetchChecks(pull(1), controller.signal)).rejects.toThrow('cancelled')
     expect(gh.calls).toHaveLength(1)
   })
 
@@ -104,8 +144,10 @@ describe('GitHub provider fetch', () => {
         if (args.includes('id=fixed-rollup')) throw error
         return output({ data: { r0: { p0: firstPage(), p1: pullRequestNode(2) } } })
       })
-      const results = await provider(gh.run).fetch([pull(1), pull(2)], signal)
-      expect(results.get(changeRequestKey(pull(1)))).toEqual({ code, message: error.message })
+      const subject = provider(gh.run)
+      const results = await subject.fetch([pull(1), pull(2)], signal)
+      const details = await subject.fetchChecks(pull(1), signal)
+      expect(details).toEqual({ code, message: error.message })
       expect(results.get(changeRequestKey(pull(2)))).toMatchObject({ title: 'Change 2' })
     },
   )
@@ -120,7 +162,7 @@ describe('GitHub provider fetch', () => {
         }
         return output({ data: { r0: { p0: firstPage() } } })
       })
-      await expect(provider(gh.run).fetch([pull(1)], controller.signal)).rejects.toThrow(cancel ? 'cancelled' : 'unexpected')
+      await expect(provider(gh.run).fetchChecks(pull(1), controller.signal)).rejects.toThrow(cancel ? 'cancelled' : 'unexpected')
     }
   })
 
@@ -150,7 +192,7 @@ describe('GitHub provider fetch', () => {
   it('rejects references retained after their host was removed from configuration', async () => {
     const gh = fakeGh(() => output(''))
     const retained = provider(gh.run).changeRequestFromUrl('https://ghe.corp.example/team/svc/pull/2')!
-    const replacement = new GitHubProvider(gh.run, ['github.com'])
+    const replacement = new GitHubProvider(gh.run, ['github.com'], 8_388_608)
     const results = await replacement.fetch([retained], signal)
     await expect(replacement.findByHead(retained.repository, 'topic', signal)).rejects.toThrow('is not configured')
     expect(results.get(changeRequestKey(retained))).toMatchObject({ code: 'unavailable' })

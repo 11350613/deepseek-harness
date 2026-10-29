@@ -208,14 +208,15 @@ export function snapshotQuery(refs: readonly ChangeRequestRef[]): SnapshotQuery 
  * Map a snapshot response, including GitHub's partial-error form, into one
  * result per alias target. Path-scoped errors apply to their repository or
  * pull request; errors without a path apply to every unresolved target. A
- * repository without readable merge settings offers no merge. All check pages must succeed before its snapshot is published.
+ * repository without readable merge settings offers no merge. Polling returns
+ * the first check page; an explicit detail read can complete its pagination.
  * @param body - parsed JSON printed by `gh api graphql`.
  * @param query - the query that produced the response.
- * @param readChecks - reads the next page of the same commit's check rollup; a failure rejects only that pull request's snapshot.
- * @returns a complete snapshot or failure for every target.
+ * @param readChecks - optional detail reader for the same commit; omission returns the first page with its truncation flag.
+ * @returns a snapshot with its check truncation flag, or a failure, for every target.
  */
 export async function mapSnapshotResponse(
-  body: unknown, query: SnapshotQuery, readChecks: (id: RollupId, cursor: string) => Promise<CheckPageResult>,
+  body: unknown, query: SnapshotQuery, readChecks?: (id: RollupId, cursor: string) => Promise<CheckPageResult>,
 ): Promise<Map<ChangeRequestKey, ChangeRequestSnapshot | ForgeFailure>> {
   const results = new Map<ChangeRequestKey, ChangeRequestSnapshot | ForgeFailure>()
   const parsed = responseSchema.safeParse(body)
@@ -237,7 +238,7 @@ export async function mapSnapshotResponse(
       const rollup = node.data.commits.nodes[0]?.commit.statusCheckRollup
       if (rollup !== undefined && rollup !== null) {
         const cursors = new Set<string>()
-        while (rollup.contexts.pageInfo.hasNextPage) {
+        while (readChecks !== undefined && rollup.contexts.pageInfo.hasNextPage) {
           const cursor = rollup.contexts.pageInfo.endCursor
           if (cursor === null || cursors.has(cursor)) {
             results.set(key, { code: 'unavailable', message: 'GitHub check pagination did not advance' })
@@ -340,8 +341,8 @@ function toSnapshot(
     }
   }
   const checks = [...latest.values()].map(value => value.check)
-  // The icon and counts summarize the same current checks; unknown context kinds retain GitHub's aggregate state.
-  const summary: ChecksRollup = unknownContext || checks.length === 0 ? checksRollup(rollup?.state)
+  // An incomplete list cannot determine the overall outcome.
+  const summary: ChecksRollup = rollup?.contexts.pageInfo.hasNextPage || unknownContext || checks.length === 0 ? checksRollup(rollup?.state)
     : checks.some(check => check.state === 'failure' || check.state === 'cancelled') ? 'failure'
       : checks.some(check => check.state === 'pending') ? 'pending' : 'success'
   return {
@@ -363,7 +364,7 @@ function toSnapshot(
     reviewDecision: reviewDecision(node.reviewDecision),
     checks,
     checksRollup: summary,
-    checksTruncated: false,
+    checksTruncated: rollup?.contexts.pageInfo.hasNextPage ?? false,
     unresolvedThreads: node.reviewThreads.nodes.filter(thread => !thread.isResolved).length,
     updatedAt: node.updatedAt,
     closedAt: node.closedAt,

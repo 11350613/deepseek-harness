@@ -374,6 +374,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
      * or its provider refuses a change request's diff or file over a size limit.
      */
     'forgePanel/diff-too-large': Record<string, never>
+    /** Complete checks could not be loaded; the polling preview remains available. */
+    'forgePanel/checks-failed': Record<string, never>
     /** The code host did not provide the change request's diff or file, or its status has not been read yet; the message says why. */
     'forgePanel/diff-failed': Record<string, never>
   }
