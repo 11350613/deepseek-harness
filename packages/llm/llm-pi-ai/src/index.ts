@@ -103,6 +103,8 @@ declare module '@deepseek-ai/cordis' {
      * Listeners run synchronously and must call next(); they may edit only the
      * request-owned headers and must not retain them. Throws fail the call with
      * REQUEST_HEADERS before inference I/O. Harness attribution wins afterward.
+     * Non-TypeError messages are user-visible and must exclude secrets. TypeError
+     * details and non-Error values are replaced with safe guidance.
      * @mode waterfall
      * @param request - immutable routing metadata from the exact prepared call.
      * @param headers - fresh profile headers, shared only within this dispatch.

@@ -110,6 +110,8 @@ export interface PiAiAdapterOptions {
    * contains a fresh copy of profile headers; attribution is enforced afterward.
    * Omission preserves profile headers. Throws fail the call with REQUEST_HEADERS
    * before inference I/O. Do not retain or mutate headers after returning.
+   * Non-TypeError messages become public diagnostics and must exclude secrets;
+   * TypeError details and non-Error values are replaced with safe guidance.
    * @param request - immutable routing metadata from the prepared call.
    * @param headers - request-owned headers initialized from the profile.
    * @returns headers to pass to pi-ai after applying Harness attribution.
@@ -224,6 +226,16 @@ function reasoningInfo(
   }
 }
 
+/** Native header TypeErrors can echo credentials; other plugin errors own their public message. */
+function requestHeaderDiagnostic(error: unknown): string {
+  if (error instanceof TypeError) {
+    return 'TypeError during header preparation; check the contributing plugin\'s header names, values, and configuration'
+  }
+  return error instanceof Error
+    ? error.message
+    : 'the contributing plugin threw a non-Error value; throw an Error with a safe diagnostic'
+}
+
 /** Prepare request-owned headers without allowing contributors to replace attribution. */
 function requestHeaders(
   configured: Readonly<Record<string, string>> | undefined,
@@ -232,7 +244,9 @@ function requestHeaders(
   prepare: PiAiAdapterOptions['prepareHeaders'],
 ): Record<string, string> {
   try {
-    const initial = new Headers(configured)
+    const initial = new Headers()
+    // Profile aliases overwrite case-insensitively; the Headers constructor appends them.
+    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
     const request: PiAiRequestHeaderContext = Object.freeze({
       provider: options.provider,
       model: options.model,
@@ -244,7 +258,10 @@ function requestHeaders(
     for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
     return Object.fromEntries(headers)
   } catch (error) {
-    throw new LlmError('pi-ai request header preparation failed', 'REQUEST_HEADERS', { cause: error })
+    throw new LlmError(
+      `pi-ai request header preparation failed for provider "${options.provider}": ${requestHeaderDiagnostic(error)}`,
+      'REQUEST_HEADERS', { cause: error },
+    )
   }
 }
 

@@ -13,19 +13,39 @@ afterEach(async () => {
   vi.unstubAllEnvs()
 })
 
-async function harness(baseURL: string, otherURL?: string): Promise<Context> {
+async function harness(baseURL: string, otherURL?: string, headers?: Record<string, string>): Promise<Context> {
   vi.stubEnv('PI_HEADERS_KEY', 'fixture-key')
   const ctx = new Context()
   onTestFinished(() => ctx.fiber.dispose())
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(PiAi, { providers: { deepseek: {
     apiKeyEnv: 'PI_HEADERS_KEY', baseURL,
-    headers: { 'X-Company': 'static', 'X-Request-Session': 'static-session' },
+    headers: { 'X-Company': 'static', 'X-Request-Session': 'static-session', ...headers },
   }, ...otherURL === undefined ? {} : { gateway: {
     apiKeyEnv: 'PI_HEADERS_KEY', api: 'openai-completions', baseURL: otherURL, models: [{ id: 'm' }],
   } } } })
   return ctx
 }
+
+it.each([false, true])('keeps the last configured value of case-insensitive headers with contributor=%s', async (contribute) => {
+  const server = await mockServer([{ events: textEvents }])
+  const ctx = await harness(server.url, undefined, {
+    Authorization: 'Bearer old-fixture', authorization: 'Bearer new-fixture',
+    'X-Tenant': 'old-tenant', 'x-tenant': 'new-tenant',
+  })
+  if (contribute) {
+    ctx.on('llm-pi-ai/request-headers', (_request, headers, next) => {
+      expect(headers.get('authorization')).toBe('Bearer new-fixture')
+      headers.set('X-Tenant', 'contributed-tenant')
+      return next()
+    })
+  }
+  const result = await assemble(ctx, { model: 'deepseek-flash', messages: [] })
+  expect(result.finish).toEqual({ kind: 'stop' })
+  expect(server.headers[0]?.authorization).toBe('Bearer new-fixture')
+  expect(server.headers[0]?.['x-tenant']).toBe(contribute ? 'contributed-tenant' : 'new-tenant')
+  expect(server.headers[0]?.['user-agent']).toBe(userAgent())
+})
 
 it('composes request-local headers, enforces attribution, and removes disposed listeners', async () => {
   const server = await mockServer(Array.from({ length: 3 }, () => ({ events: textEvents })))
@@ -84,15 +104,26 @@ it('uses the prepared endpoint and isolates overlapping requests', async () => {
   expect(second.headers[0]?.['x-request-session']).toBe('second')
 })
 
-it.each(['throw', 'invalid header'] as const)('fails before HTTP dispatch when a contributor reports %s', async (failure) => {
+it.each([
+  ['throw', 'fixture header failure'],
+  ['invalid name', 'TypeError during header preparation; check the contributing plugin\'s header names, values, and configuration'],
+  ['invalid value', 'TypeError during header preparation; check the contributing plugin\'s header names, values, and configuration'],
+  ['non-Error', 'the contributing plugin threw a non-Error value; throw an Error with a safe diagnostic'],
+] as const)('reports a safe reason before HTTP dispatch when a contributor reports %s', async (failure, detail) => {
   const server = await mockServer([])
   const ctx = await harness(server.url)
   ctx.on('llm-pi-ai/request-headers', (_request, headers, next) => {
-    if (failure === 'throw') throw new Error('fixture header failure')
-    headers.set('invalid\nname', 'value')
+    if (failure === 'throw') throw new Error('fixture header failure', { cause: new Error('private-cause-fixture') })
+    if (failure === 'non-Error') throw 'private-thrown-fixture'
+    if (failure === 'invalid name') headers.set('invalid\nname', 'value')
+    else headers.set('authorization', 'Bearer private-header-fixture\nsuffix')
     return next()
   })
   const result = await assemble(ctx, { model: 'deepseek-flash', messages: [] })
-  expect(result.finish).toMatchObject({ kind: 'error', failure: { code: 'REQUEST_HEADERS' } })
+  expect(result.finish).toMatchObject({ kind: 'error', failure: {
+    code: 'REQUEST_HEADERS',
+    message: `pi-ai request header preparation failed for provider "deepseek": ${detail}`,
+  } })
+  expect(JSON.stringify(result.finish)).not.toContain('private-')
   expect(server.requests).toHaveLength(0)
 })
