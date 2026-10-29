@@ -47,6 +47,8 @@ describe('diff helper restrictions', () => {
   it.each(['read-only', 'workspace-write'] as const)('passes filter overrides to the subprocess after %s confinement', async (mode) => {
     const b = await setup(mode)
     await writeFile(join(b.repo, '.gitattributes'), 'tracked.txt filter=demo -text\n')
+    // Other drivers, including globally configured Git LFS, can precede this fixture's filter.
+    await git(b.repo, 'config', 'filter.other.clean', `${b.command} clean`)
     await git(b.repo, 'config', 'filter.demo.clean', `${b.command} clean`)
     await writeFile(join(b.repo, 'tracked.txt'), 'changed\n')
     const spawn = vi.spyOn(b.ctx.subprocess, 'spawn')
@@ -57,12 +59,13 @@ describe('diff helper restrictions', () => {
       const diffs = spawn.mock.calls.map(([spec]) => spec).filter(spec => spec.argv.includes('diff'))
       expect(diffs).toHaveLength(2)
       for (const spec of diffs) {
-        expect(spec.env).toMatchObject({
-          GIT_CONFIG_COUNT: '3',
-          GIT_CONFIG_KEY_0: 'filter.demo.clean', GIT_CONFIG_VALUE_0: '',
-          GIT_CONFIG_KEY_1: 'filter.demo.process', GIT_CONFIG_VALUE_1: '',
-          GIT_CONFIG_KEY_2: 'filter.demo.required', GIT_CONFIG_VALUE_2: 'false',
-        })
+        const overrides = Array.from({ length: Number(spec.env?.GIT_CONFIG_COUNT) }, (_, index) => [
+          spec.env?.[`GIT_CONFIG_KEY_${index}`], spec.env?.[`GIT_CONFIG_VALUE_${index}`],
+        ])
+        expect(overrides).toEqual(expect.arrayContaining([
+          ['filter.other.clean', ''], ['filter.other.process', ''], ['filter.other.required', 'false'],
+          ['filter.demo.clean', ''], ['filter.demo.process', ''], ['filter.demo.required', 'false'],
+        ]))
       }
       expect(b.record.calls.filter(call => call.argv.includes('diff')).map(call => call.policy.mode)).toEqual([mode, mode])
       await expect(access(b.marker)).rejects.toThrow()
