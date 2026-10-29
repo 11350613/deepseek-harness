@@ -17,7 +17,7 @@
   },
   {
     "role": "toggleDevTools",
-    "label": "切换开发者工具"
+    "label": "开发者工具"
   },
   {
     "type": "separator"

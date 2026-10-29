@@ -17,7 +17,7 @@
   },
   {
     "role": "toggleDevTools",
-    "label": "Toggle developer tools"
+    "label": "Developer tools"
   },
   {
     "type": "separator"
