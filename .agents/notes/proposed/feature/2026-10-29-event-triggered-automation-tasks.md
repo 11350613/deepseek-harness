@@ -6,7 +6,7 @@ English | [中文](2026-10-29-event-triggered-automation-tasks.zh.md)
 
 ## Problem
 
-Automation tasks run only on time rules today. The Host stores each rule, and every due time queues the task's instruction as a follow-up message in the task's original Session ([Host-owned scheduled messages](../../implemented/architecture/2026-09-16-host-schedule-storage.md)). Work that should start when something else changes, such as a pull request's checks failing, a reviewer requesting changes, or a message arriving, cannot be expressed as a task, so users check those sources by hand across Sessions.
+Automation tasks run only on time rules today. The Host stores each rule, and every due time queues the task's instruction as a follow-up message in the task's original Session ([Host-owned scheduled messages](../../implemented/architecture/2026-09-16-host-schedule-storage.md)); the model creates and edits tasks through preset-scoped tools ([Preset-scoped Schedule tools](../../implemented/architecture/2026-09-24-preset-scoped-schedule-tools.md)). Work that should start when something else changes, such as a pull request's checks failing, a reviewer requesting changes, or a message arriving, cannot be expressed as a task, so users check those sources by hand across Sessions.
 
 Reacting to changes brings two problems that time rules do not have.
 
@@ -15,7 +15,7 @@ Reacting to changes brings two problems that time rules do not have.
 
 ## Proposal
 
-An automation task becomes an instruction, a source with parameters, and a Session mode. Time is one source among several, so a scheduled task is an automation task whose source is time. Each observation passes three layers, and only the last one calls a model.
+An automation task becomes an instruction, a source with parameters, and a Session mode. Time is one source among several, so a scheduled task is an automation task whose source is time. Each observation passes three layers, and only the last one calls a model. This partially supersedes the two notes linked above: tasks stop being bound to their original Session, and task records stop meaning inbox delivery only.
 
 ```mermaid
 flowchart TD
@@ -30,13 +30,15 @@ flowchart TD
   Acc["User accepts: the action runs in the Session<br/>that created the task, with its permissions"]
   Task --> Trig
   Prov -- events --> Trig
-  Trig -- "each change" --> Rec
+  Trig -- "each change or failure" --> Rec
   Trig -- deliver --> Src
   Src -- time --> Exec
   Src -- "other sources" --> RO
   RO -- notify --> Note
   Note --> Acc
   RO -- "end, or no tool" --> Rec
+  Exec -. outcome .-> Rec
+  Note -. outcome .-> Rec
 ```
 
 | Layer | Decides | Model call | Output |
@@ -47,24 +49,33 @@ flowchart TD
 
 ### Layers
 
-**Source providers** are code, packaged as plugins. A provider owns one kind of source: it polls or subscribes, reports changes as events with a subject, a one-line summary, detail, and links, and declares the JSON schema of the parameters a task can set. One provider serves every task of its kind. Time is the first provider, and today's schedule rules become its parameters. Any installed plugin can register a provider, including one written in Creator mode; a task can name only a registered provider.
+**Source providers** are code, packaged as plugins; they provide event sources and are unrelated to model, SSH, or credential providers. A provider owns one kind of source: it polls or subscribes, reports changes as events with a subject, a one-line summary, detail, and links, and declares the JSON schema of the parameters a task can set. One provider serves every task of its kind. Time is the first provider, and today's schedule rules become its parameters. Any installed plugin can register a provider, including one written in Creator mode; a task can name only a registered provider.
 
-**The event trigger** is code that holds one task's parameters and the source state it last observed. For each observation it compares the new state with the stored one, and an observation without a change only updates the last-checked time. A check that turns from passing to failing is a change, a check that stays failing is not, and a pass followed by a new failure is a change again. For a change, the trigger matches the task's conditions, which are parameter fields such as conclusion is failure, author is the user, or commenter is not a bot; merges changes to the same subject inside the provider's merge window, so one push that fails three checks becomes one event; stores the new state; and decides whether to deliver. Each change and each failure writes a run record: delivered, filtered with its reason, or failed. A delivered record follows the turn to its outcome. One queue per task orders its evaluations.
+**The event trigger** is code that holds one task's parameters and the source state it last observed. For each observation it compares the new state with the stored one, and an observation without a change only updates the last-checked time. A check that turns from passing to failing is a change, a check that stays failing is not, and a pass followed by a new failure is a change again. For a change, the trigger matches the task's conditions, which are parameter fields such as conclusion is failure, author is the user, or commenter is not a bot; merges changes to the same subject inside the provider's merge window, so one push that fails three checks becomes one event; stores the new state with the task; and decides whether to deliver. Each change and each failure writes a run record, listed in the task's Records tab next to today's delivery records: delivered, filtered with its reason, or failed. Consecutive failures with the same cause share one record with a count. A delivered record follows the turn to its outcome. One queue per task orders its evaluations.
 
 **The agent** receives a delivered event as a message in the target Session, together with the task's instruction in the user's words. What the turn may do depends on the source.
 
 - **Time**: the turn runs the instruction with the Session's permissions, and its reply is the result, as scheduled tasks behave today.
-- **Other sources**: the turn is read-only. It can read files, logs, and pull request state, but cannot edit, push, or send messages, and it ends with one of two new tools. **Notify** takes a title, a summary, and a proposed action: the Session gets its unread mark, an [action card](../../../../packages/experimental/action-cards/README.md) with the proposed action appears in the Session, and the desktop app sends a system notification. **End** takes a reason: the Session gets no unread mark, the turn is collapsed, and the reason stays in the run record. A turn that calls neither tool counts as end. When the user accepts the card, the proposed action is sent to the Session that handles the task, as described under Sessions, and that turn runs with that Session's permissions.
+- **Other sources**: the turn gets the read-only tool set described under Mechanisms. It can read files and the source's state, such as check logs and pull request diffs, but has no tool that edits, pushes, or sends, and it ends with one of two new tools. **Notify** (`automation_notify`) takes a title, a summary, and a proposed action: the Session gets its unread mark, an [action card](../../../../packages/experimental/action-cards/README.md) with the proposed action appears in the Session, and the desktop app sends a system notification. **End** (`automation_end`) takes a reason: the Session gets no unread mark, the turn is collapsed, and the reason stays in the run record. A turn that calls neither tool counts as end. When the user accepts the card, the Host sends a follow-up to the Session that handles the task, as described under Sessions; the follow-up names the task and the event and quotes the proposed action as the automation's proposal, not as the user's words, and that turn runs with that Session's permissions.
 
 ### Sessions
 
-A task delivers to its target Session in one of three modes: a specified Session, a new Session per trigger, or a new Session on the first trigger that later triggers reuse. Time tasks keep today's target, the Session they were created in. Event tasks separate judging from handling. The read-only turn runs in the task's own Session, created on the first trigger and reused afterwards, because it needs the instruction, the event, and the task's earlier decisions rather than the long history of the conversation the task came from. When the model creates a task in a conversation, it writes the facts the judgment needs into the instruction, such as which check is known to be flaky. When the user accepts a card, the proposed action goes to the Session the task was created in, where the code and its history are; a task created on the automation page or enabled from a template continues in its own Session. The user can change the mode on the task.
+A task delivers to its target Session in one of three modes: a specified Session, a new Session per trigger, or a new Session on the first trigger that later triggers reuse. Time tasks keep today's target, the Session they were created in. Event tasks separate judging from handling. The read-only turn runs in the task's own Session, created on the first trigger and reused afterwards, because it needs the instruction, the event, and the task's earlier decisions rather than the long history of the conversation the task came from. When the model creates a task in a conversation, it writes the facts the judgment needs into the instruction, such as which check is known to be flaky. When the user accepts a card, the proposed action goes to the Session the task was created in, where the code and its history are. The automation page's New action already creates tasks in a new Session, which then handles them; a task enabled from an official template, which a later step adds, continues in its own Session. The user can change the mode on the task.
 
 No task runs while the Host is stopped. On restart, each task compares the current source state with its stored state once and does not replay intermediate changes. Time keeps today's rule: a recurring task runs its latest missed occurrence once.
 
 ### Configuration
 
 Configuration has two layers. Provider code decides what can be observed and how; task parameters decide what one task watches. The model writes the parameters from the user's words through the task tools, and the provider's schema validates them. A task carries no scripts or other code, so observing something new means changing or installing a provider plugin. The automation page shows source parameters read-only, and they change through conversation; the time editor stays.
+
+### Mechanisms
+
+- **Event-turn tool set.** Sandbox read-only mode limits only the filesystem, so it cannot stop a push or an outbound request. An event turn is offered a fixed tool set instead of the Session's: file reads and searches, the source provider's read operations, `automation_notify`, and `automation_end`. Shell, file writes, web fetch, and MCP tools are absent. The tool set is recorded in the Session log, and a user message queued during the turn starts a normal turn after it ends.
+- **Notify card.** The automation package registers an action-card kind, and `automation_notify` creates its card through the action-card service; the tool exists only in event turns, so no skill load precedes it. Accepting runs the kind's handler, which queues the follow-up through the Host, so the handling Session need not be open. A newer card replaces an unanswered older one in the same Session, as the service does today, and the run record marks the older notification as replaced; a refused card is recorded as failed.
+- **Unread mark.** The client derives the unread mark from turn completion. Each event turn's outcome is a Session event, and the client skips turns whose outcome is end when it derives the mark.
+- **Logging.** The delivered event, the turn's tool set, and the notify or end call are Session events, so replay rebuilds the turn; the TypeScript and Python SDK expected outputs and a recorded-session snapshot cover them.
+- **Storage.** Source, parameters, Session mode, trigger state, and run records extend the Host task domain in a new record version with an adjacent migration. A version-1 task reads as a time task, is not rewritten until it changes, and gets no invented records. Run records have their own count and age bounds, separate from delivery records.
+- **Provider configuration.** Polling intervals and request budgets are validated Config fields of each provider in cordis.yml.
 
 ### Product scope
 
@@ -79,15 +90,15 @@ Configuration has two layers. Provider code decides what can be observed and how
 The trigger layer is shared infrastructure for DSH, not a feature of the automation page. A feature that watches something and hands changes to an agent becomes a task on this layer instead of building its own polling, state, records, and notifications.
 
 - **DSH's own state as sources**: a Session turn ending in an error, a background job settling, and, once memory lands, a memory consolidation pass finishing or memory entries changing.
-- **Features on those sources**: plugin recommendations, where a workflow the user repeats by hand shows up after consolidation and the agent proposes a plugin on an action card; task recommendations, where a review of the day's Sessions proposes follow-up work. Each is a template task with a DSH source, an instruction, and the same notify-or-end ending.
+- **Features on those sources**: plugin recommendations, where a workflow the user repeats by hand shows up after consolidation and the agent proposes a plugin on an action card, and task recommendations, where a review of the day's Sessions proposes follow-up work. Each is a template task with a DSH source, an instruction, and the same notify-or-end ending. The plugin recommendations package, which proposes cards from conversation turns today, can move onto such a source once consolidation lands.
 - **What every consumer keeps**: change detection and condition matching in code, run records, Session modes, read-only event turns, and notify as the only way a task reaches the user.
 
 ### Delivery order
 
 1. Task–Session decoupling with the three Session modes.
-2. The trigger layer with time as its first provider; existing scheduled tasks behave as before.
-3. The GitHub provider for pull request checks, reviews, and comments; the notify and end tools; read-only event turns.
-4. Mail and IM providers, then DSH's own sources.
+2. The trigger layer with time as its first provider and the task-domain migration; existing scheduled tasks behave as before.
+3. The GitHub provider for pull request checks, reviews, and comments; the event-turn tool set, `automation_notify`, and `automation_end`; action cards leave experimental status or ship with the automation bundle.
+4. Mail and IM providers and official templates, then DSH's own sources.
 
 ## Alternatives considered
 
@@ -105,6 +116,8 @@ The trigger layer is shared infrastructure for DSH, not a feature of the automat
 
 **Event turns with the Session's permissions.** Acting directly would save one click. It lost because event content comes from other people, and a read-only turn keeps that text from driving edits, pushes, or messages before the user accepts.
 
+**A read-only sandbox for event turns.** It lost because sandbox read-only mode limits only the filesystem, and a turn in it can still push or send requests.
+
 **Parameter forms on the automation page.** Each provider would need its own form, validation, and display. Parameters written by the model and shown read-only cover creation and change through conversation, and the provider schema keeps a generated form possible later.
 
 **A separate notification entry.** An inbox page or tab would separate the notification from the Session that holds its context. The unread mark and the system notification lead to that Session, and the automation page keeps the records.
@@ -112,11 +125,16 @@ The trigger layer is shared infrastructure for DSH, not a feature of the automat
 ## Acceptance criteria
 
 - Existing scheduled tasks behave the same after time becomes a provider: the same due times, the same catch-up rule, and the same delivery into the Session.
+- A version-1 task loads as a time task without being rewritten and without invented records.
 - A GitHub task on a pull request's checks delivers once when a check turns from passing to failing, not again while it stays failing, and again after a pass followed by a new failure.
-- An observation without a change writes no record and starts no turn; a change that fails the conditions writes a filtered record and starts no turn.
+- One push that fails three checks produces one delivery.
+- An observation without a change writes no record and starts no turn; a change that fails the conditions writes a filtered record and starts no turn; consecutive failures with the same cause write one record with a count.
+- An event turn is offered no shell, file-write, web-fetch, or MCP tool, and its tool set appears in the Session log; after the user accepts its card, the next turn runs with the Session's permissions.
+- A notify turn produces the unread mark, the card, and the desktop system notification together; a replaced or refused card shows in the run records.
 - An event turn that ends with end, or with neither tool, gives the Session no unread mark and sends no system notification.
-- An event turn cannot edit files, push, or send messages; after the user accepts its card, the next turn runs with the Session's permissions.
 - An event task's read-only turns run in the task's own Session, and accepting its card sends the proposed action to the Session the task was created in.
+- Each Session mode delivers as defined: a specified Session receives every trigger, a new Session opens per trigger, or one Session opens on the first trigger and is reused.
+- Replaying the Session log rebuilds an event turn's input, tool set, and outcome.
 - After a restart, a task compares the current source state with its stored state once and does not replay intermediate changes.
 - The task list filters by source type, task details show source parameters read-only, and the Session mode can be changed.
 
@@ -129,3 +147,5 @@ The trigger layer is shared infrastructure for DSH, not a feature of the automat
 - A fix on an event waits for the user to accept the card instead of running unattended.
 - A source without a provider plugin cannot be watched.
 - Tasks run only while the Host runs: nothing runs while the app is closed or the machine sleeps.
+- Event tasks depend on action cards, which are experimental and mounted only by the Personalized recommendations bundle today.
+- The read-only tool set limits judgment to what files and the provider's read operations show; for a source whose provider offers no read operations, the agent judges from the event alone.

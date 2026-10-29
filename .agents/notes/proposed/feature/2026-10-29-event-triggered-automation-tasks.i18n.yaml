@@ -6,35 +6,38 @@
   en: fe57a78907eab083
   zh: 4ac96eeb365ac012
 /agent-note-event-triggered-automation-tasks/problem:
-  en: 21f876a5ca087672
-  zh: ff26ee396d724f72
+  en: 491a791a201d0b2c
+  zh: 5a98f693ac4b5e77
 /agent-note-event-triggered-automation-tasks/proposal:
-  en: 66950b7d5e1d28d1
-  zh: 677f4299af1f3eb1
+  en: 3293ca9838fbf82a
+  zh: 8bdb29cfe653e982
 /agent-note-event-triggered-automation-tasks/proposal/layers:
-  en: 3864fc7a85adc1aa
-  zh: e4edfc76194a6fe9
+  en: 601b7244564d7d01
+  zh: 36c21c9beeb2dc09
 /agent-note-event-triggered-automation-tasks/proposal/sessions:
-  en: aa9fb36ab974f9fe
-  zh: 66a684e48b937d7b
+  en: 7ec83684c8c19e31
+  zh: 27df2725836e5f7b
 /agent-note-event-triggered-automation-tasks/proposal/configuration:
   en: 21be7e27081aff54
   zh: 7973f7f0d064db35
+/agent-note-event-triggered-automation-tasks/proposal/mechanisms:
+  en: 9dd544a59b3b6ffc
+  zh: 3ddc2b3b36a11f69
 /agent-note-event-triggered-automation-tasks/proposal/product-scope:
   en: c003c908f407ccb2
   zh: 6113569a44d52202
 /agent-note-event-triggered-automation-tasks/proposal/event-triggers-as-infrastructure:
-  en: cbff14e8d0b7066c
-  zh: 036c5ab5b7ccea24
+  en: 390a93372a846758
+  zh: c27369fdd12701c5
 /agent-note-event-triggered-automation-tasks/proposal/delivery-order:
-  en: fdce5b7ee7d5f072
-  zh: 5fc24c433186ee26
+  en: 8f0888610ad7c205
+  zh: e69ee67bd6bf3e78
 /agent-note-event-triggered-automation-tasks/alternatives-considered:
-  en: 43ee9abd24bd7c21
-  zh: 03e6e4cf6e095bec
+  en: d17f07a127bbc4de
+  zh: 19b0dbf2f9b3dae6
 /agent-note-event-triggered-automation-tasks/acceptance-criteria:
-  en: dde5e341206d42e0
-  zh: 455935a810ee189a
+  en: d01d7a8058654abc
+  zh: faa73f742c4b91b7
 /agent-note-event-triggered-automation-tasks/risks:
-  en: a385c8fbdc3652fb
-  zh: 29745290b71aa426
+  en: e42a7b855b86df39
+  zh: 3fb96841ea3cec4a
