@@ -18,7 +18,7 @@
  * and collapse — ride the docking kit's chrome seat at the end of the top-right
  * pane's tab strip, so the strip is the panel's whole top edge. The way back in
  * while collapsed is not here either: it is one button in the conversation
- * header (`ExpandButton.tsx`), because it exists only while this panel is
+ * header (`ExpandButton.tsx`), where it is visible only while this panel is
  * hidden. Floating panels remain in the same content tree; untransformed
  * ancestors let their fixed-position frames cross the column and conversation.
  *
@@ -53,6 +53,9 @@ import type { SidebarRightTabNavigation } from '../contract/slots.ts'
 import type { TabHookContext } from '../tab-info.ts'
 import { flashPane } from './flash.ts'
 import css from './SidebarRight.module.css'
+
+/** Viewports below this width present the right sidebar as an overlay. */
+export const AUTO_FULLSCREEN_WIDTH = 768
 
 /** The store share the seat receives. */
 type Store = PropsStore<ReturnType<typeof createSidebarRightStore>>
@@ -395,7 +398,7 @@ export function RightbarSeat({
   const shortcuts = useShortcuts(entries => entries)
   const surface = useStore(state => state.bySession[sessionId])
   const shown = active && surface !== undefined && surface.layout.expanded
-  const autoFullscreen = viewportWidth < 768
+  const autoFullscreen = viewportWidth < AUTO_FULLSCREEN_WIDTH
   const fullscreen = autoFullscreen || surface?.layout.mode === 'fullscreen'
   const panelRef = useRef<HTMLDivElement | null>(null)
   // A reading never re-renders anything: the service applies it when it splits.

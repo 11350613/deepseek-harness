@@ -644,6 +644,68 @@ describe('web e2e: shipped right Sidebar', () => {
       expect(tripwire.warnings).toEqual([])
     })
 
+    it.each([390, 767])('keeps the mobile conversation title still while the right sidebar slides at %ipx', async (viewportWidth) => {
+      onTestFailed(() => saveFailureShot(page, `web-e2e-sidebar-right-mobile-title-${viewportWidth}`))
+      const viewport = page.viewportSize()
+      if (viewport === null) throw new Error('expected a fixed viewport')
+      const column = await resetSidebar(page)
+      const panel = column.locator('[data-sidebar-right-panel]')
+      const title = page.locator('[class*="titleCluster"]').first()
+      const utilities = page.locator('[class*="headerUtilities"]').first()
+      try {
+        await page.emulateMedia({ reducedMotion: 'no-preference' })
+        await page.setViewportSize({ width: viewportWidth, height: viewport.height })
+        await expect.poll(() => panel.getAttribute('data-sidebar-right-panel')).toBe('fullscreen')
+        await column.locator('[data-sidebar-right-toggle]').click()
+        await panel.evaluate(async (node) => {
+          await Promise.allSettled(node.getAnimations({ subtree: true }).map(animation => animation.finished))
+        })
+        await expandOf(page).waitFor()
+        const titleNode = await title.locator('[class*="crumbCurrent"]').elementHandle()
+        if (titleNode === null) throw new Error('conversation title is not rendered')
+        const titleBefore = await title.boundingBox()
+        const utilitiesBefore = await utilities.boundingBox()
+        expect(titleBefore?.width).toBeGreaterThan(0)
+        expect(utilitiesBefore?.width).toBeGreaterThan(0)
+        await shot(page, `mobile-title-${viewportWidth}-collapsed`)
+        try {
+          for (const opening of [true, false]) {
+            const held = await holdPanelSlide(panel)
+            try {
+              await (opening ? expandOf(page) : column.locator('[data-sidebar-right-toggle]')).click()
+              await expect.poll(() => held.evaluate(state => state.animation?.playState)).toBe('paused')
+              const sliding = await paneAt(column, 0).boundingBox()
+              if (sliding === null) throw new Error('sliding panel is not rendered')
+              expect(sliding.x).toBeGreaterThan(0)
+              expect(sliding.x).toBeLessThan(viewportWidth)
+              expect(await title.boundingBox()).toEqual(titleBefore)
+              expect(await utilities.boundingBox()).toEqual(utilitiesBefore)
+              expect(await titleNode.evaluate(node => node.isConnected)).toBe(true)
+              expect(await expandOf(page).isDisabled()).toBe(opening)
+              expect(await page.getByRole('button', { name: 'Open right sidebar', exact: true }).count()).toBe(opening ? 0 : 1)
+              await shot(page, `mobile-title-${viewportWidth}-${opening ? 'opening' : 'closing'}`)
+              await held.evaluate((state) => { (state.animation as Animation).finish() })
+              expect(await title.boundingBox()).toEqual(titleBefore)
+              expect(await utilities.boundingBox()).toEqual(utilitiesBefore)
+            } finally {
+              await held.evaluate((state) => {
+                state.dispose()
+                if (state.animation?.playState === 'paused') state.animation.finish()
+              })
+              await held.dispose()
+            }
+          }
+        } finally {
+          await titleNode.dispose()
+        }
+      } finally {
+        await page.setViewportSize(viewport)
+        await page.emulateMedia({ reducedMotion: null })
+      }
+      expect(tripwire.pageErrors).toEqual([])
+      expect(tripwire.warnings).toEqual([])
+    })
+
     it('keeps a capacity-closed panel closed after widening and uses fullscreen on a narrow viewport', async () => {
       const viewport = page.viewportSize()
       if (viewport === null) throw new Error('expected a fixed viewport')

@@ -32,6 +32,7 @@ import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { ILayout } from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -39,7 +40,7 @@ import type {} from './contract/slots.ts'
 import { GuideBody, type GuideInjected } from './tabs/guide/GuideBody.tsx'
 import { GuideTitle } from './tabs/guide/GuideTitle.tsx'
 import { ExpandButton } from './shell/ExpandButton.tsx'
-import { RightbarSeat, type SidebarRightInjected } from './shell/SidebarRight.tsx'
+import { AUTO_FULLSCREEN_WIDTH, RightbarSeat, type SidebarRightInjected } from './shell/SidebarRight.tsx'
 import { closeWithPaneFocus, openWithPaneFocus } from './shell/close-focus.ts'
 import { RightbarRoot, type RightbarRootInjected } from './shell/RightbarRoot.tsx'
 import { SidebarSessionViews } from './session-views.ts'
@@ -262,15 +263,22 @@ export function apply(ctx: ClientContext): void {
         }),
       }, RightbarSeat)
     })
-    // The expand button shares the panel's store: it only needs to know whether
-    // the panel is expanded, and to ask for it to be. The header's corner seat
-    // is its own place, past the utilities, so showing and hiding it moves
-    // nothing else in the row.
+    // The expand button retains its width under narrow-screen overlays;
+    // wide-screen panels collapse the header's corner seat while shown.
+    const query = typeof matchMedia === 'function'
+      ? matchMedia(`(width < ${AUTO_FULLSCREEN_WIDTH}px)`) : undefined
+    const narrowViewport: HostObservable<boolean> = {
+      getSnapshot: () => query?.matches ?? false,
+      subscribe: (listener) => {
+        query?.addEventListener('change', listener)
+        return () => { query?.removeEventListener('change', listener) }
+      },
+    }
     const disposeExpand = ctx.slots.inject('conversation.session.header.corner', () => ctx.slots.register({
       name: 'conversation.session.header.corner',
       locale: NS,
       store,
-      inject: () => ({ hooks: { shortcuts: ctx.shortcuts.catalog } }),
+      inject: () => ({ hooks: { shortcuts: ctx.shortcuts.catalog, narrowViewport } }),
     }, ExpandButton))
     // Stage two for the guide: it declares the chain child it hosts and reads
     // the registry's entry boxes, which an ordinary type has no reason to do.

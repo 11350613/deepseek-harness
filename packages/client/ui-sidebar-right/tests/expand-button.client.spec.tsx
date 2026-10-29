@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 /**
- * The way back into a hidden panel: the header's corner button exists exactly
- * while the panel is collapsed, asks for it to expand, and renders nothing
- * while the panel is shown.
+ * Narrow overlays preserve the header control's identity; wide panels release
+ * its header space while open.
  */
 import { describe, expect, it } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { GlobalStandardProps, SessionStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -37,11 +37,13 @@ function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapsho
 }
 
 /** Mount the button over its real store and an empty shortcut catalog. */
-function mountButton(shortcuts: readonly ShortcutCatalogEntry[] = []) {
+function mountButton(shortcuts: readonly ShortcutCatalogEntry[] = [], narrow = false) {
   const instance = createSidebarRightStore(() => ({ kind: 'guide', title: 'Start' })).create()
+  const viewport = createSnapshotStore(narrow)
   const props: ExpandButtonProps = {
     ...standard,
     useShortcuts: <T,>(selector: (entries: readonly ShortcutCatalogEntry[]) => T): T => selector(shortcuts),
+    useNarrowViewport: hookOf(viewport),
     sessionId: SESSION,
     useStore: hookOf(instance),
     actions: instance.actions,
@@ -49,39 +51,60 @@ function mountButton(shortcuts: readonly ShortcutCatalogEntry[] = []) {
     t: (key: string) => key,
   }
   const view = render(<ExpandButton {...props} />)
-  const control = (): HTMLElement | null => view.container.querySelector('[data-sidebar-right-expand]')
-  return { instance, view, control }
+  const control = (): HTMLButtonElement | null => view.container.querySelector('[data-sidebar-right-expand]')
+  return { instance, viewport, view, control }
 }
 
 describe('ExpandButton', () => {
   it('advertises the configured expand binding', async () => {
-    const { control, view } = mountButton([{ id: 'sidebar.right.toggle' as never, label: 'Toggle', aliases: [],
-      binding: null, keys: ['Ctrl', 'B'], aria: 'Control+B', modified: true, conflicts: [], issue: null }])
+    const { instance, control, view } = mountButton([{ id: 'sidebar.right.toggle' as never, label: 'Toggle', aliases: [],
+      binding: null, keys: ['Ctrl', 'B'], aria: 'Control+B', modified: true, conflicts: [], issue: null }], true)
     expect(control()?.getAttribute('aria-keyshortcuts')).toBe('Control+B')
     fireEvent.pointerEnter(control()!)
     const tooltip = await view.findByRole('tooltip')
     expect(tooltip.textContent).toContain('chrome.expand')
     expect(Array.from(tooltip.querySelectorAll('kbd'), key => key.textContent)).toEqual(['Ctrl', 'B'])
+    act(() => { instance.actions.setExpanded(SESSION, true) })
+    expect(view.queryByRole('tooltip')).toBeNull()
     cleanup()
   })
   it('offers the way in while the session has no surface yet, and asks the panel to expand', () => {
-    const { instance, view, control } = mountButton()
+    const { instance, control } = mountButton()
     const button = control()
     if (button === null) throw new Error('expected the expand control')
     expect(button.getAttribute('aria-label')).toBe('chrome.expandAria')
     fireEvent.click(button)
     expect(instance.getSnapshot().bySession[SESSION]?.layout.expanded).toBe(true)
-    // Shown: the seat is empty, so the header lays out without it.
-    expect(view.container.childElementCount).toBe(0)
+    expect(control()).toBeNull()
+    act(() => { instance.actions.setExpanded(SESSION, false) })
+    expect(control()?.disabled).toBe(false)
     cleanup()
   })
 
-  it('comes back when the panel collapses again', () => {
-    const { instance, control } = mountButton()
+  it('retains the disabled control through a narrow overlay opening and closing', () => {
+    const { instance, control } = mountButton([], true)
+    const button = control()
+    if (button === null) throw new Error('expected the expand control')
     act(() => { instance.actions.setExpanded(SESSION, true) })
-    expect(control()).toBeNull()
+    expect(control()).toBe(button)
+    expect(button.disabled).toBe(true)
     act(() => { instance.actions.setExpanded(SESSION, false) })
-    expect(control()).not.toBeNull()
+    expect(control()).toBe(button)
+    expect(button.disabled).toBe(false)
+    cleanup()
+  })
+
+  it('keeps an available control across viewport changes and releases its space only for an open wide panel', () => {
+    const { instance, viewport, control } = mountButton()
+    const button = control()
+    act(() => { viewport.set(true) })
+    expect(control()).toBe(button)
+    act(() => { instance.actions.setExpanded(SESSION, true) })
+    expect(control()).toBe(button)
+    act(() => { viewport.set(false) })
+    expect(control()).toBeNull()
+    act(() => { viewport.set(true) })
+    expect(control()?.disabled).toBe(true)
     cleanup()
   })
 })
