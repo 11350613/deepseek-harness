@@ -8,7 +8,7 @@ import { planPatch } from './plan.ts'
 import { preflightPatch } from './preflight.ts'
 import type { PatchExecutionReport, PatchExecutionRequest } from './types.ts'
 
-export type { PatchExecutionReport, PatchExecutionRequest, PatchFailure, PatchGuard, PatchFailureCode, PatchFileChange, PatchOperationOutcome, PatchOperationRecord, PatchRefusal } from './types.ts'
+export type { PatchExecutionReport, PatchExecutionRequest, PatchFailure, PatchFailureCode, PatchFileChange, PatchOperationOutcome, PatchOperationRecord, PatchRefusal } from './types.ts'
 
 /**
  * Preflight a whole patch before sequential guarded mutations; business failures become records.
@@ -29,8 +29,8 @@ export async function executePatch(
   }
   const [first, ...rest] = [
     ...plan.refusals,
-    ...await preflightPatch(ctx, sandbox, exec, request.sandboxPolicy, request.guard, plan.operations),
+    ...await preflightPatch(ctx, sandbox, exec, request.sandboxPolicy, plan.operations),
   ].sort((left, right) => left.operation.index - right.operation.index)
   if (first !== undefined) return { phase: 'preflight', refusals: [first, ...rest] }
-  return commitPatch(ctx, sandbox, exec, request.sandboxPolicy, request.guard, plan.operations)
+  return commitPatch(ctx, sandbox, exec, request.sandboxPolicy, plan.operations)
 }

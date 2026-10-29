@@ -39,7 +39,7 @@ kind: "package-reference"
 - name: '@deepseek-ai/dsh-tool-fs'
 ```
 
-策略插件是可选的：省略时，工具直接使用裸提供方（无条件写入、覆盖与编辑，无已观察状态）。加载这些工具的部署也应加载该插件，从而提供写入/编辑前读取行为。`read_image` 只在持久 `ctx.attachments` 服务已挂载时注册；执行时还拒绝确切模型未声明图像输入的路由，因此文本路由的持久历史不会出现图像块。
+策略插件是可选的：省略时，工具直接使用裸提供方（无条件写入、覆盖、编辑与补丁，无已观察状态），随发行版交付的组合就是这样运行的——[`dsh-base`](../../bundle/base/cordis.patch.yml) 中的 `fs-observation-policy` 行写着 `disabled: true`；改为 `false` 即对所有修改工具要求先读并拒绝过期版本。`read_image` 只在持久 `ctx.attachments` 服务已挂载时注册；执行时还拒绝确切模型未声明图像输入的路由，因此文本路由的持久历史不会出现图像块。
 
 ### 工具
 
@@ -55,7 +55,7 @@ kind: "package-reference"
 
 ### 配置
 
-所有键均为可选。`read`、`readImage`、`write` 和 `edit` 开关默认为 `true`；将开关设为 `false` 可省略对应工具及其指导文本。`applyPatch` 默认为 `false`，因此默认组合不注册 `apply_patch`；启用 `edit` 的随发行版交付的 `tool-fs` 行（[`dsh-base`](../../bundle/base/cordis.patch.yml) 以及 Web 的 `standard`、`ptc`、`cordis` preset）显式写出 `applyPatch: false`，把这一行改为 `true` 即在 `edit` 旁加入该工具。`applyPatchGuard` 选择 `apply_patch` 的修改防护：`observation` 像 `write` 和 `edit` 一样咨询已挂载的观察策略（必须先读、过期版本拒绝）；默认值 `none` 像 Codex 工具一样只凭 hunk 上下文匹配无条件应用，每个操作后仍发布 `fs/observed`，并把先读提示换成上下文匹配提醒。允许关闭全部五个工具。启用 `readImage` 仍需要附件存储和支持图片输入的模型。关闭 `read` 时仍会校验读取上限。
+所有键均为可选。`read`、`readImage`、`write` 和 `edit` 开关默认为 `true`；将开关设为 `false` 可省略对应工具及其指导文本。`applyPatch` 默认为 `false`；Web 的 `standard` preset 开启它，而 [`dsh-base`](../../bundle/base/cordis.patch.yml) 以及 Web 的 `ptc`、`cordis` preset 在各自的 `tool-fs` 行上显式写出 `applyPatch: false`，改这一行即可在 `edit` 旁加入或去掉该工具。允许关闭全部五个工具。启用 `readImage` 仍需要附件存储和支持图片输入的模型。关闭 `read` 时仍会校验读取上限。
 
 | 键 | 默认值 | 含义 |
 |---|---|---|
@@ -64,7 +64,6 @@ kind: "package-reference"
 | `write` | `true` | 注册 `write` 及其指导文本 |
 | `edit` | `true` | 注册 `edit` 及其指导文本 |
 | `applyPatch` | `false` | 注册 `apply_patch` 及其提示 |
-| `applyPatchGuard` | `none` | `observation` 为每个补丁操作咨询观察策略；`none` 只依赖 hunk 上下文 |
 | `readLimit` | `2000` | 一次 `read` 调用返回的默认和最大行数 |
 | `readMaxLineLength` | `2000` | 每行截断前保留的字符数 |
 | `readMaxBytes` | `51200` | 一次 `read` 调用所选行的字节上限；溢出时以「已达上限」footer 结束窗口 |
@@ -170,13 +169,13 @@ Use the read tool — not shell commands like cat — to inspect text files. Use
 ##### Write 指导
 
 ```markdown
-Read an existing file before overwriting it with write (the default fs-observation-policy requires it) and prefer edit for targeted changes.
+Read an existing file before overwriting it with write and prefer edit for targeted changes.
 ```
 
 ##### Edit 指导
 
 ```markdown
-Read a file before editing it (the default fs-observation-policy requires it), unless you just created or edited it in this session.
+Read a file before editing it unless you just created or edited it in this session.
 ```
 
 #### Token 影响
@@ -261,7 +260,7 @@ Read a file before editing it (the default fs-observation-policy requires it), u
 
 #### 模型看到的内容
 
-`apply_patch` schema 要求一个 `input` 字符串（沿用 Codex 的参数名，在该工具上训练过的模型会不经提示地发送这个键），包含 `*** Begin Patch` / `*** End Patch`、Add/Update/Delete 文件头、可选 Move to，以及上下文/新增/删除 hunk 行。路径相对于 Session 工作目录。有围栏后端追加与 write/edit 相同的提权字段。成功行按 A/M/D 分组，完成的移动显示 `M <destination>`，与 Codex rust-v0.158.0 一致。空补丁显示 `Success. No operations in patch.`。停止的补丁只包含适用的 Completed、Failed、Outcome unknown 与 Not executed 小节；结果不确定时以重读建议结束。语法错误保留解析器消息。`applyPatchGuard: observation` 时，`input` 的描述以 `Read existing files before updating, deleting, or moving them.` 结尾，指导文本第二句改为要求先读而非 hunk 上下文。
+`apply_patch` schema 要求一个 `input` 字符串（沿用 Codex 的参数名，在该工具上训练过的模型会不经提示地发送这个键），包含 `*** Begin Patch` / `*** End Patch`、Add/Update/Delete 文件头、可选 Move to，以及上下文/新增/删除 hunk 行。路径相对于 Session 工作目录。有围栏后端追加与 write/edit 相同的提权字段。成功行按 A/M/D 分组，完成的移动显示 `M <destination>`，与 Codex rust-v0.158.0 一致。空补丁显示 `Success. No operations in patch.`。停止的补丁只包含适用的 Completed、Failed、Outcome unknown 与 Not executed 小节；结果不确定时以重读建议结束。语法错误保留解析器消息。
 
 ##### 系统提示
 

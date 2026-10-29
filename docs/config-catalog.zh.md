@@ -4002,7 +4002,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-tool-fs`
 
 - `inject`: `tools` · `fs` · `systemPrompt` · `workingDirectory`
-- `source`: [`packages/fs/tool-fs/src/index.ts:28`](../packages/fs/tool-fs/src/index.ts)
+- `source`: [`packages/fs/tool-fs/src/index.ts:27`](../packages/fs/tool-fs/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config (all optional — `Config` supplies the defaults). */
@@ -4017,12 +4017,6 @@ export interface Config {
   edit?: boolean
   /** Register `apply_patch` and its guidance beside `edit`. Defaults to false; shipped compositions set it on their `tool-fs` rows. */
   applyPatch?: boolean
-  /**
-   * Mutation guards for `apply_patch`. `observation` consults the mounted observation policy (prior read required,
-   * stale versions rejected) like `write` and `edit`; `none` applies hunks unconditionally on context match alone,
-   * as the Codex tool does, and drops the read-first guidance. Defaults to `none`.
-   */
-  applyPatchGuard?: PatchGuard
   /** Default and maximum number of lines returned by one `read` call. */
   readLimit?: number
   /** Maximum characters returned for a single line before truncation. */
@@ -4032,13 +4026,6 @@ export interface Config {
   /** Files at or above this size stream instead of loading whole into memory. */
   readStreamMinSize?: number
 }
-
-/**
- * Which mutation guards a patch obtains. `observation` asks the `fs/*` intent waterfalls, so a mounted
- * observation policy can require prior reads and reject stale versions; `none` mutates unconditionally,
- * relying on hunk context matching alone, as the Codex tool does.
- */
-export type PatchGuard = 'observation' | 'none'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-fs -->
 

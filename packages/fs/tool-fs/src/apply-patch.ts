@@ -1,7 +1,7 @@
 /** Codex-style multi-file patch tool over the guarded patch executor. */
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { executePatch, type PatchGuard } from './patch/index.ts'
+import { executePatch } from './patch/index.ts'
 import { patchOutputSchema, patchToolValue, renderPatch, patchPresentationMeta } from './apply-patch-output.ts'
 import { presentPatchCall, presentPatchResult } from './apply-patch-presentation.ts'
 import type { FsEscalationArgs, FsSandboxController } from './sandbox.ts'
@@ -9,24 +9,17 @@ import type { FsEscalationArgs, FsSandboxController } from './sandbox.ts'
 /** Model arguments after tool-schema validation. */
 interface ApplyPatchArgs extends FsEscalationArgs { input: string }
 
-/** Guidance on prior reads follows the guard: an observation policy requires them, an unguarded patch relies on hunk context. */
-const GUARD_GUIDANCE: Record<PatchGuard, string> = {
-  observation: 'Read a file before updating, deleting, or moving it (the default fs-observation-policy requires it), unless you just created or edited it in this session. ',
-  none: 'Give every hunk enough surrounding context lines to match one place in the current file. ',
-}
-
 /**
  * Register the patch tool and scope-aware guidance using the shared mutation controller.
  * @param ctx - plugin effect scope and filesystem services.
  * @param sandbox - per-call policy resolver and denial mapper.
- * @param guard - whether patches consult the observation policy or mutate unconditionally.
  */
-export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController, guard: PatchGuard): void {
+export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController): void {
   ctx.systemPrompt.section({
     name: 'tool:apply_patch', order: ctx.systemPrompt.getSectionOrder('TOOL_APPLY_PATCH'),
     text: ({ scope }) => ctx.tools.get('apply_patch', scope) === undefined ? ''
       : 'Prefer apply_patch over separate edit calls for changes across files or separated regions. '
-        + GUARD_GUIDANCE[guard]
+        + 'Give every hunk enough surrounding context lines to match one place in the current file. '
         + 'The whole patch is checked first (syntax, hunk matching, missing files) and a rejected patch changes nothing; '
         + 'once applying starts, operations run in order, stop at the first failure, and are not rolled back, so re-read affected files before retrying when needed.',
   })
@@ -41,8 +34,7 @@ export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController, 
           + 'Use *** Add File: path with + lines; *** Update File: path, optionally followed by *** Move to: path, '
           + 'with @@ or @@ context and space-prefixed context, + added, or - removed lines; '
           + '*** End of File anchors the last hunk to the file end. Use *** Delete File: path to delete. '
-          + 'Paths are relative to the Session working directory.'
-          + (guard === 'observation' ? ' Read existing files before updating, deleting, or moving them.' : ''),
+          + 'Paths are relative to the Session working directory.',
       },
       ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
     },
@@ -53,7 +45,7 @@ export function applyApplyPatchTool(ctx: Context, sandbox: FsSandboxController, 
     },
     async execute(args: ApplyPatchArgs, exec) {
       const sandboxPolicy = await sandbox.resolvePolicy('apply_patch', args, exec)
-      return patchToolValue(await executePatch(ctx, sandbox, exec, { patch: args.input, sandboxPolicy, guard }))
+      return patchToolValue(await executePatch(ctx, sandbox, exec, { patch: args.input, sandboxPolicy }))
     },
     presentCall: args => presentPatchCall(args.input),
     presentResult: (_args, result) => presentPatchResult(result),

@@ -9,7 +9,7 @@ import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { FsSandboxController } from '../sandbox.ts'
 import { sessionResolveOptions } from '../session-cwd.ts'
 import { destinationIntent, patchFailure, sourceIntent } from './plan.ts'
-import type { PatchFailure, PatchGuard, PatchRefusal, PlannedOperation } from './types.ts'
+import type { PatchFailure, PatchRefusal, PlannedOperation } from './types.ts'
 
 interface SimulatedFile {
   exists: boolean
@@ -24,7 +24,7 @@ class Preflight {
 
   constructor(
     private readonly ctx: Context, private readonly sandbox: FsSandboxController, private readonly exec: ToolExecution,
-    private readonly policy: SandboxExecutionPolicy | undefined, private readonly guard: PatchGuard,
+    private readonly policy: SandboxExecutionPolicy | undefined,
   ) {}
 
   private async state(target: FsTarget): Promise<SimulatedFile> {
@@ -43,7 +43,7 @@ class Preflight {
   }
 
   private async source(state: SimulatedFile, target: FsTarget, kind: 'delete' | 'edit' | 'move'): Promise<void> {
-    const intent = state.touched ? undefined : await sourceIntent(this.ctx, this.exec, target, kind === 'delete' ? 'delete' : 'edit', this.guard)
+    const intent = state.touched ? undefined : await sourceIntent(this.ctx, this.exec, target, kind === 'delete' ? 'delete' : 'edit')
     if (!state.exists) throw new FsError(`cannot ${kind} "${target.displayPath}": not found`, 'FS_NOT_FOUND')
     this.regular(state, target)
     if (intent !== undefined && intent.version !== state.info?.version) {
@@ -52,7 +52,7 @@ class Preflight {
   }
 
   private async destination(state: SimulatedFile, target: FsTarget): Promise<void> {
-    const intent = state.touched ? undefined : await destinationIntent(this.ctx, this.exec, target, this.guard)
+    const intent = state.touched ? undefined : await destinationIntent(this.ctx, this.exec, target)
     this.regular(state, target)
     if (intent?.kind === 'createIfAbsent' && state.exists) {
       throw new FsError(`cannot overwrite existing "${target.displayPath}" without reading it first`, 'FS_NOT_OBSERVED')
@@ -140,15 +140,14 @@ class Preflight {
  * @param sandbox - model-facing denial mapper.
  * @param exec - observation actor and cancellation signal.
  * @param policy - resolved confinement policy used to label refusals.
- * @param guard - whether operations consult the observation policy.
  * @param operations - complete resolved operation plan.
  * @returns refused operations in patch order; any refusal forbids the commit phase.
  */
 export async function preflightPatch(
-  ctx: Context, sandbox: FsSandboxController, exec: ToolExecution, policy: SandboxExecutionPolicy | undefined, guard: PatchGuard,
+  ctx: Context, sandbox: FsSandboxController, exec: ToolExecution, policy: SandboxExecutionPolicy | undefined,
   operations: readonly PlannedOperation[],
 ): Promise<PatchRefusal[]> {
-  const preflight = new Preflight(ctx, sandbox, exec, policy, guard)
+  const preflight = new Preflight(ctx, sandbox, exec, policy)
   const refusals: PatchRefusal[] = []
   for (const operation of operations) {
     const failure = await preflight.check(operation)

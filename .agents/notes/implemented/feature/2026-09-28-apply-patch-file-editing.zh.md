@@ -20,7 +20,7 @@ Status: implemented
 
 [Review 采集](../../../../packages/deliverables/workspace-changes/README.zh.md)使用文件系统 intent 监听器，不解析参数。`tools/pre-execute` 将执行关联到轮次记录器；前置的 write、edit 和 delete 监听器先等待策略决策，再等待捕获完成，然后提供方才修改文件。移动捕获两端。每轮保留首次基线，比较实际最终字节，因此重复编辑形成一份净 diff，还原的变化不再显示。现有大小、数量、时间、位置和 Session 生命周期限制保持适用。
 
-`tool-fs.applyPatch` 默认为 `false`，因此所有随发行版交付的组合保持该工具出现之前的模型请求；启用 `edit` 的 `tool-fs` 行（`dsh-base` 以及 Web 的 `standard`、`ptc`、`cordis` preset）显式写出 `applyPatch: false`，部署只需改这一行即可开启，或在没有 preset 拥有该行时通过针对 `tool-fs` id 的 profile patch 开启。`tool-fs.applyPatchGuard` 选择该工具的修改防护：`observation` 像 `write` 和 `edit` 一样逐操作咨询已挂载的观察策略；默认值 `none` 像 Codex 工具一样只凭 hunk 上下文匹配无条件应用，但仍发布 `fs/observed`。在策略开启下录制的 2,226 条 DS-Bench 与 DeepSWE 轨迹中，`apply_patch` 失败里 20–27% 是先读拒绝、9–14% 是 hunk 能匹配当前文件却因版本过期被拒；hunk 上下文匹配本身已能拒绝内容偏离的文件，版本防护对该工具是冗余的。工具通过插件 effect 注册 schema、指导文本、native/PTC 执行与调用展示；不修改 agent loop（智能体循环）。
+`tool-fs.applyPatch` 默认为 `false`；Web 的 `standard` preset 在对随发行版交付的 Web 组合做过评测后开启它，而 `dsh-base` 以及 Web 的 `ptc`、`cordis` preset 在各自 `tool-fs` 行上显式写出 `applyPatch: false`，每处都是一行改动，没有 preset 拥有该行时可通过针对 `tool-fs` id 的 profile patch 开启。该工具像 `write` 和 `edit` 一样咨询 `fs/*` intent waterfall，而 `dsh-base` 以 `disabled: true` 交付 `fs-observation-policy` 行，因此除非部署启用该行，所有修改工具都无条件执行。在策略开启下录制的 2,226 条 DS-Bench 与 DeepSWE 轨迹中，14% 的 `apply_patch` 调用因使用 Codex 的参数名 `input` 被拒（schema 现已采用该名），其余失败里 20–27% 是先读拒绝、9–14% 是 hunk 能匹配当前文件却因版本过期被拒；hunk 上下文匹配本身已能拒绝内容偏离的文件，随后一轮关闭策略的评测决定了它的默认值。`apply_patch` 的提示语要求给足 hunk 上下文而非先读；`write` 与 `edit` 的提示语仍要求先读，但不再点名该策略。工具通过插件 effect 注册 schema、指导文本、native/PTC 执行与调用展示；不修改 agent loop（智能体循环）。
 
 ## 考虑过的替代方案
 

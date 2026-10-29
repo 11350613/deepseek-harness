@@ -76,8 +76,6 @@
 - id: tool-fs
   config:
     applyPatch: true
-    # Recorded under the observation policy, including its read-first refusal.
-    applyPatchGuard: observation
 
 - id: spill-local
   name: '@deepseek-ai/dsh-spill-local'

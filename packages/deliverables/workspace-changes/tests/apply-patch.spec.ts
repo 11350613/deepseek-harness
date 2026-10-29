@@ -52,7 +52,7 @@ async function boot(environment: string) {
   await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(LocalFileSystem, { cwd })
   await ctx.plugin(FsPolicy)
-  await ctx.plugin(ToolFs, { applyPatch: true, applyPatchGuard: 'observation' })
+  await ctx.plugin(ToolFs, { applyPatch: true })
   await ctx.plugin(WorkspaceChanges)
   const session = ctx.sessions.create(SessionId('patch-review'), { meta: { cwd } })
   const signal = new AbortController().signal

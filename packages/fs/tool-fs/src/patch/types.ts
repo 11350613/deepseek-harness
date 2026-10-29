@@ -3,21 +3,12 @@ import type { FsErrorCode, FsTarget } from '@deepseek-ai/dsh-fs'
 import type { PatchHunk } from '@deepseek-ai/dsh-fs-patch'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 
-/**
- * Which mutation guards a patch obtains. `observation` asks the `fs/*` intent waterfalls, so a mounted
- * observation policy can require prior reads and reject stale versions; `none` mutates unconditionally,
- * relying on hunk context matching alone, as the Codex tool does.
- */
-export type PatchGuard = 'observation' | 'none'
-
 /** One request after the caller resolves its per-call sandbox policy. */
 export interface PatchExecutionRequest {
   /** Raw patch text from the model. */
   patch: string
   /** Resolved per-call policy; undefined under an unconfined backend. */
   sandboxPolicy: SandboxExecutionPolicy | undefined
-  /** Guard source for every operation of this patch. */
-  guard: PatchGuard
 }
 
 /** One file operation; unresolved paths retain their original patch spelling on resolution failure. */
