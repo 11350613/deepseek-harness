@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for 2026-10-29-event-triggered-automation-tasks.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-10-29-event-triggered-automation-tasks.md
+/agent-note-event-triggered-automation-tasks:
+  en: fe57a78907eab083
+  zh: 4ac96eeb365ac012
+/agent-note-event-triggered-automation-tasks/problem:
+  en: 21f876a5ca087672
+  zh: ff26ee396d724f72
+/agent-note-event-triggered-automation-tasks/proposal:
+  en: 66950b7d5e1d28d1
+  zh: 677f4299af1f3eb1
+/agent-note-event-triggered-automation-tasks/proposal/layers:
+  en: 1c1ba3d40fb73876
+  zh: 8702bc4b11cfa800
+/agent-note-event-triggered-automation-tasks/proposal/sessions:
+  en: b750cd16d94f52a4
+  zh: 0971b64df64ef4c9
+/agent-note-event-triggered-automation-tasks/proposal/configuration:
+  en: 21be7e27081aff54
+  zh: 7973f7f0d064db35
+/agent-note-event-triggered-automation-tasks/proposal/product-scope:
+  en: c003c908f407ccb2
+  zh: 6113569a44d52202
+/agent-note-event-triggered-automation-tasks/proposal/event-triggers-as-infrastructure:
+  en: cbff14e8d0b7066c
+  zh: 036c5ab5b7ccea24
+/agent-note-event-triggered-automation-tasks/proposal/delivery-order:
+  en: fdce5b7ee7d5f072
+  zh: 5fc24c433186ee26
+/agent-note-event-triggered-automation-tasks/alternatives-considered:
+  en: 68ade9686e745e8e
+  zh: dd509a1a20e1ecc9
+/agent-note-event-triggered-automation-tasks/acceptance-criteria:
+  en: 65d540424f654ae6
+  zh: 286231d7dc1e08a6
+/agent-note-event-triggered-automation-tasks/risks:
+  en: 1e5b3f86b02b8626
+  zh: 621048fba8a87afe
