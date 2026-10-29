@@ -1117,11 +1117,14 @@ it('keeps a resource tab and reports a synchronous cleanup failure from its clos
 })
 
 describe('the reveal glow', () => {
-  it('marks the pane of a revealed tab, docked or floating, restarts on a repeat, and clears when the animation ends', async () => {
+  it('marks the pane of a revealed tab already on screen, docked or floating, restarts on a repeat, and clears when the animation ends', async () => {
     const h = await mountSeat()
     const a = h.open('a.txt')
     h.open('b.txt')
     const marked = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[data-sidebar-right-flash]')]
+    expect(marked()).toEqual([])
+    // Switching back to a background tab is the visible change and marks nothing.
+    h.open('a.txt')
     expect(marked()).toEqual([])
     h.open('a.txt')
     const pane = document.querySelector<HTMLElement>(`[data-dockkit-pane="${h.layout().activePaneId}"]`)!
@@ -1146,7 +1149,7 @@ describe('the reveal glow', () => {
     h.open('a.txt')
     h.open('b.txt')
     const marked = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[data-sidebar-right-flash]')]
-    h.open('a.txt')
+    h.open('b.txt')
     expect(marked()).toHaveLength(1)
     act(() => { h.runtime.panelInfo.set({ activePanelId: 'other-panel' as MainPanelId }) })
     expect(marked()).toEqual([])
@@ -1154,7 +1157,7 @@ describe('the reveal glow', () => {
     expect(marked()).toEqual([])
     // A request whose Session is hidden in the same commit is dropped, not deferred.
     act(() => {
-      h.controller.openResource('dsh-resource://file/session/s-test/a.txt')
+      h.controller.openResource('dsh-resource://file/session/s-test/b.txt')
       h.runtime.panelInfo.set({ activePanelId: 'other-panel' as MainPanelId })
     })
     expect(marked()).toEqual([])

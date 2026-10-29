@@ -73,7 +73,7 @@ describe('openResource with a destination — six transitions', () => {
     expect(h.layout().expanded).toBe(true)
   })
 
-  it('3. reveals a docked copy where it is and flashes its pane', () => {
+  it('3. reveals a docked copy where it is and flashes its pane once it is on screen', () => {
     const h = harness()
     h.controller.openResource(A, { destination: 'sidebar' })
     h.controller.openResource(B, { destination: 'sidebar' })
@@ -84,6 +84,9 @@ describe('openResource with a destination — six transitions', () => {
     expect(getPane(h.layout(), h.layout().activePaneId).activeTabId).toBe(a)
     expect(h.occurrence(a)).toBe(held)
     expect(held.navigation.getSnapshot()).toEqual({ address: A, params: { line: 9 }, revision: 2 })
+    // Switching to the tab is the visible change; only a reveal of the tab already on screen flashes.
+    expect(h.controller.flashOf(SESSION).getSnapshot()).toBeUndefined()
+    h.controller.openResource(A, { destination: 'sidebar' })
     expect(h.controller.flashOf(SESSION).getSnapshot()).toEqual({ paneId: findTabPane(h.layout(), a).id, serial: 1 })
   })
 

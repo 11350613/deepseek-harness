@@ -36,7 +36,7 @@
 import { sidebarTargetFromElement, type SidebarRightTarget } from './focus.ts'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { createSnapshotStore, type ObservableSnapshot, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { FloatRect, PaneId, TabId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
+import type { FloatRect, LayoutState, PaneId, TabId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { activeDockPaneId, canSplit, findContentTab, findPaneContentTab, dockPaneIds, findTabPane, getPane } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -467,7 +467,7 @@ export class SidebarRightController implements ISidebarRight {
     const revealed = layout === undefined ? undefined : findHostContentTab(layout, destination, claim.contentId, claim.kind)
     actions.openContent(sessionId, { kind: claim.kind, contentId: claim.contentId, title: claim.title, destination },
       (tabId) => { this.tabDomain.navigate(sessionId, tabId, { address, params }) })
-    if (layout !== undefined && revealed !== undefined) this.flash(sessionId, findTabPane(layout, revealed).id)
+    if (layout !== undefined && revealed !== undefined) this.flashShowing(sessionId, layout, revealed)
   }
 
   /** Place a page type in one session at the address pages are recorded under; an unregistered kind throws. */
@@ -527,7 +527,7 @@ export class SidebarRightController implements ISidebarRight {
     if (replaced === undefined || revealed !== undefined) commit()
     else this.removeAfterCleanup(sessionId, replaced, commit)
     // A reveal focuses the tab where it is.
-    if (layout !== undefined && revealed !== undefined) this.flash(sessionId, findTabPane(layout, revealed).id)
+    if (layout !== undefined && revealed !== undefined) this.flashShowing(sessionId, layout, revealed)
   }
 
   /**
@@ -548,6 +548,15 @@ export class SidebarRightController implements ISidebarRight {
       this.flashes.set(sessionId, source)
     }
     return source
+  }
+
+  /**
+   * Flash the pane holding a revealed tab only when that tab was already on screen; a reveal that switches
+   * tabs or expands the column is its own visible change.
+   */
+  private flashShowing(sessionId: SessionId, layout: LayoutState, tabId: TabId): void {
+    const pane = findTabPane(layout, tabId)
+    if (pane.activeTabId === tabId && (pane.host === 'float' || layout.expanded)) this.flash(sessionId, pane.id)
   }
 
   /** Ask a Session's seat to highlight the pane holding a revealed tab. */

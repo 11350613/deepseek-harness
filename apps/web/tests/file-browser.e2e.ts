@@ -113,13 +113,12 @@ it('browses workspace files in tabs that share one pane tree', async () => {
   expect(await column.locator(`[data-dockkit-tab="${pageTab}"]`).count()).toBe(1)
   expect(await column.locator('[data-dockkit-pane]').count()).toBe(1)
   expect(await toggle.getAttribute('aria-expanded')).toBe('false')
-  // Picking the open file again from the page reveals it and outlines its pane once.
+  // Picking the open file again from the page switches back to its tab, which is the visible change, so nothing glows.
   const flash = column.locator('[data-sidebar-right-flash]')
   await column.locator(`[data-dockkit-tab="${pageTab}"]`).click()
   await navigator.getByRole('button', { name: 'a.txt', exact: true }).click()
   await expect.poll(() => path.textContent()).toContain('a.txt')
-  await expect.poll(() => flash.count()).toBe(1)
-  await expect.poll(() => flash.count()).toBe(0)
+  expect(await flash.count()).toBe(0)
   expect(await tabs.count()).toBe(tabCount + 1)
   // The preview's toggle shows the pane's tree without changing the files page.
   await toggle.click()

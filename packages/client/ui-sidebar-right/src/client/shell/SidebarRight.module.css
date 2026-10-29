@@ -200,8 +200,10 @@
 
 /*
  * An open that reveals an existing tab makes the pane holding it glow once
- * (`flash.ts`), in the files navigator card's glow (ui-sidebar-files
- * FilesBody `.push`): brand-colored in light mode, white in dark mode. The
+ * (`flash.ts`), a softer, tighter version of the files navigator card's glow
+ * (ui-sidebar-files FilesBody `.push`): brand-colored in light mode, white in
+ * dark mode. Only a reveal of a tab already on screen glows; a reveal that
+ * switches tabs or expands the column is visible on its own. The
  * marker alternates between two values with their own keyframes, so a
  * repeated reveal restarts the glow; the marker goes when the animation ends.
  * Reduced motion holds the glow steady for the same duration instead of
@@ -217,8 +219,9 @@
 .panel :global([data-dockkit-pane][data-sidebar-right-flash]),
 .panel :global([data-dockkit-float][data-sidebar-right-flash]) {
   --sidebar-right-flash-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
-  --sidebar-right-flash-near: color-mix(in srgb, var(--sidebar-right-flash-color) 32%, transparent);
-  --sidebar-right-flash-far: color-mix(in srgb, var(--sidebar-right-flash-color) 24%, transparent);
+  --sidebar-right-flash-ring: color-mix(in srgb, var(--sidebar-right-flash-color) 48%, transparent);
+  --sidebar-right-flash-near: color-mix(in srgb, var(--sidebar-right-flash-color) 16%, transparent);
+  --sidebar-right-flash-far: color-mix(in srgb, var(--sidebar-right-flash-color) 10%, transparent);
 }
 
 :global(body[data-ds-dark-theme]) .panel :global([data-dockkit-pane][data-sidebar-right-flash]),
@@ -237,22 +240,22 @@
   z-index: 7;
   pointer-events: none;
   --sidebar-right-flash-from:
-    inset 0 0 0 1px var(--sidebar-right-flash-color),
-    inset 0 3px 8px 0 var(--sidebar-right-flash-near),
-    inset 0 0 20px 0 var(--sidebar-right-flash-far);
+    inset 0 0 0 1px var(--sidebar-right-flash-ring),
+    inset 0 2px 4px 0 var(--sidebar-right-flash-near),
+    inset 0 0 10px 0 var(--sidebar-right-flash-far);
   --sidebar-right-flash-to:
-    inset 0 0 0 1px transparent, inset 0 3px 8px 0 transparent, inset 0 0 20px 0 transparent;
+    inset 0 0 0 1px transparent, inset 0 2px 4px 0 transparent, inset 0 0 10px 0 transparent;
 }
 
 .panel :global([data-dockkit-float][data-sidebar-right-flash]) {
   --sidebar-right-flash-from:
     var(--dsw-elevation-prominent),
-    0 0 0 1px var(--sidebar-right-flash-color),
-    0 3px 8px 0 var(--sidebar-right-flash-near),
-    0 0 20px 0 var(--sidebar-right-flash-far);
+    0 0 0 1px var(--sidebar-right-flash-ring),
+    0 2px 4px 0 var(--sidebar-right-flash-near),
+    0 0 10px 0 var(--sidebar-right-flash-far);
   --sidebar-right-flash-to:
     var(--dsw-elevation-prominent),
-    0 0 0 1px transparent, 0 3px 8px 0 transparent, 0 0 20px 0 transparent;
+    0 0 0 1px transparent, 0 2px 4px 0 transparent, 0 0 10px 0 transparent;
 }
 
 .panel :global([data-dockkit-pane][data-sidebar-right-flash])::after,
